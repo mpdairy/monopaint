@@ -1,0 +1,22 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'dev.tilesmile.supernote'
+    compileSdk 34
+    ndkVersion '27.0.12077973'
+    externalNativeBuild {
+        cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.22.1' }
+    }
+    defaultConfig {
+        applicationId 'dev.tilesmile.supernote.paint'
+        minSdk 27
+        targetSdk 34
+        versionCode 26
+        versionName '0.26'
+        testInstrumentationRunner 'dev.tilesmile.supernote.WidthInstrumentation'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

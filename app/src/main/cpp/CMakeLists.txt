@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(tilesmile_display C)
+add_library(tilesmile_display SHARED direct_eink.c)
+target_compile_options(tilesmile_display PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(tilesmile_display jnigraphics)

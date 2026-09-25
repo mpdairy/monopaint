@@ -1,0 +1,38 @@
+name: Publish release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Verify distribution
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          test "$REF_TYPE" = tag
+          test "$RELEASE_TAG" = "v$(cat dist/VERSION)"
+          cd dist
+          sha256sum --check SHA256SUMS
+      - name: Publish signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/Mattelier.apk dist/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/Mattelier.apk dist/SHA256SUMS \
+              --verify-tag --title "Mattelier $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md --latest
+          fi

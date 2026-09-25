@@ -1,0 +1,14 @@
+.gradle/
+**/build/
+**/.cxx/
+local.properties
+artifacts/
+core
+core.*
+*.keystore
+*.jks
+*.apk
+!dist/Mattelier.apk
+.agents/
+.codex/
+VERIFICATION.md
