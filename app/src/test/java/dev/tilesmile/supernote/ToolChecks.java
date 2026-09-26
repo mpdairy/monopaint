@@ -5,7 +5,7 @@ import java.util.Arrays;
 
 public final class ToolChecks {
     public static void main(String[] args) throws Exception {
-        presets(); customEdits(); presetDragOrder(); legacyPresets(); pressureResponse(); sizeRanges(); fills(); tolerantFills(); softErase(); soften(); directionalBlend(); stumpStrength(); pencil();
+        presets(); customEdits(); presetDragOrder(); legacyPresets(); pressureResponse(); brushHeads(); tiltDirection(); sizeRanges(); fills(); tolerantFills(); softErase(); soften(); directionalBlend(); stumpStrength(); pencil();
         System.out.println("PASS: preset CRUD/order/recall/persistence, bounded four-connected fill/cancel, soft eraser falloff, unbiased soften/edges, logical pencil texture/cap");
     }
     private static void presetDragOrder() throws Exception {
@@ -137,10 +137,13 @@ public final class ToolChecks {
             try { original.pressureResponse(invalid);throw new AssertionError("Invalid response accepted"); }
             catch(IllegalArgumentException expected) {}
         }
-        for(ToolSettings.Tool tool:ToolSettings.Tool.values()) if(tool!=ToolSettings.Tool.BRUSH) {
+        for(ToolSettings.Tool tool:ToolSettings.Tool.values()) if(!ToolSettings.defaults(tool).isBrush()) {
             ToolSettings settings=ToolSettings.defaults(tool);
             check(settings.diameter(.2f)==settings.pressureResponse(100).diameter(.2f),"Brush response leaves other tools unchanged");
         }
+        for(int response:new int[]{0,50,100})for(float pressure:new float[]{0,.1f,.2f,.3f,.45f,1})
+            check(ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).pressureResponse(response).diameter(pressure)
+                    ==original.pressureResponse(response).diameter(pressure),"Watercolor shares brush pressure response");
         ToolLibrary library=new ToolLibrary();library.edit(firm);
         ToolLibrary.Preset preset=library.add();library.edit(library.current().pressureResponse(83));
         library.select(ToolSettings.Tool.BRUSH);library.edit(light);library.recall(preset.id);
@@ -150,7 +153,7 @@ public final class ToolChecks {
         restored.select(ToolSettings.Tool.BRUSH);
         check(restored.current().pressureResponse==83,"Remembered built-in response survives restart");
         // Independently construct each old format with an active brush preset.
-        for(int version=1;version<=5;version++) {
+        for(int version=1;version<=6;version++) {
             java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
             out.writeInt(0x54535030+version);
             for(int record=0;record<7;record++) {
@@ -163,13 +166,137 @@ public final class ToolChecks {
                 if(version>=3)out.writeInt(2);
                 if(version>=4)out.writeInt(0);
                 if(version>=5)out.writeInt(35);
+                if(version>=6)out.writeInt(83);
             }
             out.flush();ToolLibrary migrated=ToolLibrary.decode(bytes.toByteArray());
-            check(migrated.current().pressureResponse==50 && migrated.current().diameter(.2f)==original.diameter(.2f)
+            ToolSettings expected=original.pressureResponse(version>=6?83:50);
+            check(migrated.current().pressureResponse==expected.pressureResponse && migrated.current().diameter(.2f)==expected.diameter(.2f)
                     && migrated.activeId().equals(preset.id) && migrated.presets().get(0).name.equals("Sketch"),"TSP"+version+" retains brush feel and preset identity");
             check(ToolLibrary.decode(migrated.encode()).current().equals(migrated.current()),"Migrated response round trips");
+            migrated.select(ToolSettings.Tool.WATERCOLOR);
+            check(migrated.current().equals(ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR)),"Old libraries gain default watercolor settings");
         }
-        System.out.println("PASS: pressure response direction, bounds, legacy feel, preset edits/restart and TSP1–5 migration");
+        System.out.println("PASS: brush/watercolor pressure response, bounds, legacy feel, preset edits/restart and TSP1–6 migration");
+    }
+    private static void brushHeads() throws Exception {
+        ToolLibrary library=new ToolLibrary();
+        ToolSettings[][] expected=new ToolSettings[2][3];int index=0;
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR}) {
+            library.select(tool);
+            for(ToolSettings.Head head:ToolSettings.Head.values()) {
+                library.selectHead(head);
+                ToolSettings settings=library.current().size(70+head.ordinal()*10+index).minimum(5+index)
+                        .pressureResponse(20+head.ordinal()*30).angle(head.ordinal()*45).headThickness(5+head.ordinal()*20+index);
+                library.edit(settings);expected[index][head.ordinal()]=settings.automaticHead();
+            }
+            index++;
+        }
+        library=ToolLibrary.decode(library.encode());index=0;
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR}) {
+            library.select(tool);
+            check(library.current().head==ToolSettings.Head.FILBERT,"Each brush mode remembers its selected head");
+            for(ToolSettings.Head head:ToolSettings.Head.values()) {
+                library.selectHead(head);
+                check(library.current().equals(expected[index][head.ordinal()]),"Each head retains its own settings across switching and restart");
+            }
+            index++;
+        }
+        library.selectHead(ToolSettings.Head.FLAT);ToolLibrary.Preset flat=library.add();
+        check(flat.name.equals("Flat Watercolor"),"Custom tools identify head and paint mode");
+        library.edit(library.current().size(111).angle(127));
+        ToolSettings custom=library.current();library.select(ToolSettings.Tool.BRUSH);library.recall(flat.id);
+        check(library.current().equals(custom),"Custom tool recalls head, angle and edited size");
+        library.selectHead(ToolSettings.Head.FILBERT);
+        check(library.activeId().equals(flat.id)&&library.presets().get(0).settings.head==ToolSettings.Head.FILBERT,"Changing a custom head edits the same preset");
+        ToolLibrary restored=ToolLibrary.decode(library.encode());
+        check(restored.current().equals(library.current())&&restored.activeId().equals(flat.id),"Custom head changes survive restart");
+        ToolSettings original=custom;
+        ToolSettings edited=custom.size(60).minimum(4).options(8,true,true).hardness(20).softness(30).tolerance(40).strength(50).pressureResponse(60);
+        check(edited.head==original.head&&edited.angle==original.angle&&edited.headThickness==original.headThickness&&original.maximum==111,"All setting edits preserve immutable head, angle and thickness");
+        for(int thickness:new int[]{-1,101})try{custom.headThickness(thickness);throw new AssertionError("Invalid thickness accepted");}catch(IllegalArgumentException expectedError){}
+        check(!custom.equals(custom.headThickness(99)),"Thickness participates in settings identity");
+        for(int angle:new int[]{-1,181})try{custom.angle(angle);throw new AssertionError("Invalid angle accepted");}catch(IllegalArgumentException expectedError){}
+        try{ToolSettings.defaults(ToolSettings.Tool.PENCIL).head(ToolSettings.Head.FLAT);throw new AssertionError("Pencil accepted a brush head");}catch(IllegalArgumentException expectedError){}
+        // The prior watercolor format stored six built-ins, without head memories.
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
+        out.writeInt(0x54535037);
+        for(int tool:new int[]{0,1,2,3,4,5,5}) {
+            writeTsp4(out,tool);out.writeInt(35);out.writeInt(83);
+        }
+        out.writeUTF("");out.writeInt(0);out.flush();
+        ToolLibrary old=ToolLibrary.decode(bytes.toByteArray());ToolSettings round=old.current();
+        check(round.head==ToolSettings.Head.ROUND&&round.angle==0&&round.pressureResponse==83,"TSP7 watercolor gains round head without losing settings");
+        old.selectHead(ToolSettings.Head.FLAT);old.edit(old.current().size(120));old.selectHead(ToolSettings.Head.ROUND);
+        check(old.current().equals(round),"Migrated round settings survive trying another head");
+        // TSP11 had all current heads/tools but no thickness field. Strip only
+        // that new field from each record to exercise the previous wire format.
+        ToolLibrary previous=new ToolLibrary();previous.selectHead(ToolSettings.Head.FLAT);
+        previous.edit(previous.current().angle(37).tilt(true).bristles(61).headThickness(80));
+        ToolLibrary.Preset legacyPreset=previous.add("Legacy flat");
+        byte[] legacy=previous.encode();
+        java.nio.ByteBuffer records=java.nio.ByteBuffer.wrap(legacy);
+        // Simulate old saved options in built-ins, head memories, current tool,
+        // and the custom preset, including values the UI no longer exposes.
+        for(int offset=4;offset<4+21*47;offset+=47) {
+            if(legacy[offset+34]!=0) {
+                records.put(offset+13,(byte)0);records.putInt(offset+35,73);records.putInt(offset+43,80);
+            }
+        }
+        int presetOffset=legacy.length-47;
+        records.put(presetOffset+13,(byte)0);records.putInt(presetOffset+35,73);records.putInt(presetOffset+43,80);
+        ToolLibrary automatic=ToolLibrary.decode(legacy);
+        check(automatic.current().tilt&&automatic.current().angle==0&&automatic.current().headThickness==10,
+                "Legacy hidden controls become automatic tilt, zero offset and fixed thickness");
+        check(automatic.activeId().equals(legacyPreset.id)&&automatic.presets().get(0).name.equals("Legacy flat"),
+                "Migration preserves custom identity and name");
+        automatic.select(ToolSettings.Tool.BRUSH);automatic.selectHead(ToolSettings.Head.FILBERT);automatic.recall(legacyPreset.id);
+        check(automatic.current().equals(previous.current()),"Recalling a legacy custom brush retains size and pressure with automatic geometry");
+        previous.remove(legacyPreset.id);
+        byte[] modern=previous.encode();bytes.reset();out=new java.io.DataOutputStream(bytes);
+        out.writeInt(0x5453503b);
+        int cursor=4;
+        for(int record=0;record<21;record++){out.write(modern,cursor,43);cursor+=47;}
+        out.write(modern,cursor,modern.length-cursor);out.flush();
+        ToolLibrary migrated=ToolLibrary.decode(bytes.toByteArray());
+        check(migrated.current().equals(previous.current().headThickness(10)),"Old flat brush gains thinner default while preserving tilt, angle, texture and size");
+        for(ToolSettings.Tool tool:ToolSettings.Tool.values())if(ToolSettings.defaults(tool).isBrush()) {
+            migrated.select(tool);
+            for(ToolSettings.Head head:ToolSettings.Head.values()) {
+                migrated.selectHead(head);check(migrated.current().headThickness==(head==ToolSettings.Head.FILBERT?55:10),"Migrated filberts gain a full rounded footprint while Flat stays thin");
+            }
+        }
+        System.out.println("PASS: independent brush-head memories, angle validation, custom head editing/recall/restart and TSP7 migration");
+    }
+    private static void tiltDirection() throws Exception {
+        for(float[] point:new float[][]{{60,0,0},{0,60,90},{-60,0,0},{0,-60,90},{45,45,45},{-45,45,135},{45,-45,135},{-45,-45,45}})
+            check(Math.abs(BrushDirection.delta(point[2]+90,BrushDirection.resolve(point[0],point[1],0,17)))<.001f,"Broad edge is perpendicular to all signed X/Y lean quadrants");
+        check(Math.abs(BrushDirection.resolve(45,30,0,17)-120)<.001f,"Direction projects tangent components rather than raw degree ratios");
+        check(BrushDirection.resolve(0,60,45,17)==45,"Angle acts as an offset from the perpendicular head");
+        for(float[] point:new float[][]{{0,0},{1,-1},{3,3},{Float.NaN,30},{60,Float.POSITIVE_INFINITY},{91,0},{0,-91}})
+            check(BrushDirection.resolve(point[0],point[1],0,73)==73,"Upright and invalid input preserve last direction");
+        check(Float.isFinite(BrushDirection.resolve(90,-90,0,0)),"Extreme valid tilt stays finite");
+        check(BrushDirection.contactLean(0,0,0,1)==0,"Upright pen has no crescent or forward extension");
+        check(BrushDirection.contactLean(0,60,0,0)==1&&BrushDirection.contactLean(0,-60,0,0)==-1,"Signed lean points contact toward either side of the tip");
+        check(Math.abs(BrushDirection.contactLean(0,30,0,0))<Math.abs(BrushDirection.contactLean(0,60,0,0)),"Contact increases with inclination");
+        check(BrushDirection.contactLean(Float.NaN,30,0,.7f)==.7f,"Invalid tilt preserves contact as well as heading");
+        check(BrushDirection.delta(179,1)==2&&BrushDirection.delta(1,179)==-2&&BrushDirection.delta(0,180)==0,"Symmetric heads turn through shortest angle");
+        for(int a=-360;a<=360;a++)for(int b=-180;b<=180;b+=15) {
+            float delta=BrushDirection.delta(a,b);
+            check(delta>=-90&&delta<90&&Math.abs(BrushDirection.delta(a+delta,b))<.001f,"Angle interpolation never takes the long route");
+        }
+        ToolLibrary library=new ToolLibrary();
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR}) {
+            library.select(tool);library.selectHead(ToolSettings.Head.FLAT);
+            check(library.current().tilt&&library.current().angle==0,"Flat automatically follows tilt without an offset");
+            library.edit(library.current().tilt(true).angle(37));ToolSettings saved=library.current();
+            ToolLibrary.Preset preset=library.add();
+            library.select(tool);library.selectHead(ToolSettings.Head.FILBERT);
+            check(library.current().tilt&&library.current().angle==0,"Filbert automatically follows tilt without an offset");
+            library.selectHead(ToolSettings.Head.FLAT);check(library.current().equals(saved),"Head recalls tilt and offset");
+            library.recall(preset.id);library=ToolLibrary.decode(library.encode());
+            check(library.current().equals(saved)&&library.activeId().equals(preset.id),"Custom tool persists tilt and offset across restart");
+        }
+        System.out.println("PASS: signed tilt projection, upright/invalid fallback, symmetric turn interpolation and saved per-head tilt/offset");
     }
     private static void sizeRanges() throws Exception {
         for(ToolSettings.Tool tool:ToolSettings.Tool.values()) {

@@ -8,7 +8,7 @@ import java.util.Arrays;
 /** Dependency-free host checks: run with scripts/test_document.sh. */
 public final class DocumentChecks {
     public static void main(String[] args) throws Exception {
-        calibration(); transactions(); maskAndClipping(); clearCanvas(); persistence();
+        calibration(); transactions(); maskAndClipping(); watercolor(); clearCanvas(); persistence();
         System.out.println("PASS: calibration, coordinate anchoring, opaque logical tones, gesture undo/redo, clipping, codec and damaged-file rejection");
     }
     private static void calibration() {
@@ -71,6 +71,43 @@ public final class DocumentChecks {
         check(doc.tone(0,0) == 80 && doc.tone(1,0) == 255, "Opaque mask");
         doc.begin(); doc.setTone(0,0,255); doc.finish();
         check(doc.tone(0,0) == 255 && doc.tone(0,1) == 80, "White overpainting retains neighbors");
+    }
+    private static void watercolor() throws Exception {
+        int width=19,height=17,stride=25;
+        byte[] original=new byte[width*height];
+        for(int i=0;i<original.length;i++)original[i]=(byte)(i%256);
+        int[] mask=new int[stride*21];
+        for(int i=0;i<mask.length;i++)mask[i]=i%5==0?0:0xff000000;
+        for(int gray=0;gray<256;gray++) {
+            ToneDocument doc=new ToneDocument(width,height,original);
+            doc.begin();doc.washMask(mask,stride,-3,-2,23,21,gray);doc.finish();
+            byte[] painted=doc.snapshot();
+            int[] rendered=new int[width*height];doc.render(rendered,0,0,width,height);
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++) {
+                int base=original[y*width+x]&255;
+                boolean deposit=mask[(y+2)*stride+x+3]!=0&&DotPattern.pixel(gray,x,y)==0xff000000;
+                check(doc.tone(x,y)==(deposit?0:base),"Wash writes only black dots; gaps retain exact underlying tones");
+                check(rendered[y*width+x]==(deposit?0xff000000:DotPattern.pixel(base,x,y)),"Wash render preserves existing dots and coordinate phase");
+            }
+            doc.begin();doc.washMask(mask,stride,-3,-2,23,21,gray);
+            check(!doc.finish()&&Arrays.equals(painted,doc.snapshot()),"Repeated wash keeps stable density");
+            if(DotPattern.whiteCount(gray)==64)check(!doc.canUndo()&&Arrays.equals(original,painted),"White wash adds no ink or history");
+            else {
+                check(doc.undo()&&Arrays.equals(original,doc.snapshot()),"Wash undo restores all underlying tones");
+                check(doc.redo()&&Arrays.equals(painted,doc.snapshot()),"Wash redo is exact");
+            }
+            doc.begin();doc.washMask(mask,stride,-3,-2,23,21,0);doc.cancel();
+            check(Arrays.equals(painted,doc.snapshot()),"Canceled wash restores underlying tones");
+            ByteArrayOutputStream saved=new ByteArrayOutputStream();DocumentCodec.write(saved,width,height,painted);
+            check(Arrays.equals(painted,DocumentCodec.read(new ByteArrayInputStream(saved.toByteArray())).snapshot()),"Wash survives save and reload");
+        }
+        int[] full=new int[64];Arrays.fill(full,0xff000000);
+        for(int gray=0;gray<256;gray++) {
+            ToneDocument paper=new ToneDocument(8,8);paper.begin();paper.washMask(full,8,0,0,8,8,gray);paper.finish();
+            int[] rendered=new int[64];paper.render(rendered,0,0,8,8);
+            for(int i=0;i<64;i++)check(rendered[i]==DotPattern.pixel(gray,i%8,i/8),"Wash on paper matches shade picker density exactly");
+        }
+        System.out.println("PASS: watercolor black-only deposit, untouched gaps, every shade, clipped masks, repeat density, cancel, undo/redo and persistence");
     }
     private static void clearCanvas() {
         ToneDocument doc=new ToneDocument(137,95);

@@ -6,7 +6,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Authoritative 8-bit tones. Dots never enter this model. Confined to its owner thread. */
+/** Authoritative 8-bit tones, including black stipples deposited by watercolor.
+ * Display dithering is derived from these tones. Confined to its owner thread. */
 final class ToneDocument {
     static final int MAX_PIXELS = 1920 * 2560;
     private static final int TILE = 64;
@@ -67,7 +68,38 @@ final class ToneDocument {
             if ((mask[row * stride + col] >>> 24) != 0) setTone(x + col, y + row, gray);
         }
     }
-    boolean finish() {
+    /** Half-strength multiply keeps even black translucent; white is clear water. */
+    static int transparentTone(int base, int gray) { return (base * (255 + gray) + 255) / 510; }
+    /** One glaze per gesture, independent of overlapping interpolation stamps. */
+    void transparentMask(int[] mask, int stride, int x, int y, int w, int h, int gray) {
+        for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
+            int px = x + col, py = y + row;
+            if ((mask[row * stride + col] >>> 24) != 0
+                    && px >= 0 && py >= 0 && px < width && py < height)
+                setTone(px, py, transparentTone(strokeBaseTone(px, py), gray));
+        }
+    }
+    /** Darken to the selected logical gray; repeated passes retain the same shade. */
+    void flatWashMask(int[] mask, int stride, int x, int y, int w, int h, int gray) {
+        for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
+            int px = x + col, py = y + row;
+            if ((mask[row * stride + col] >>> 24) != 0
+                    && px >= 0 && py >= 0 && px < width && py < height)
+                setTone(px, py, Math.min(gray, tone(px, py)));
+        }
+    }
+    /** Deposit only the shade's black dots; gaps leave the underlying tones intact. */
+    void washMask(int[] mask, int stride, int x, int y, int w, int h, int gray) {
+        for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
+            if ((mask[row * stride + col] >>> 24) != 0
+                    && DotPattern.pixel(gray, x + col, y + row) == 0xff000000)
+                setTone(x + col, y + row, 0);
+        }
+    }
+    boolean finish() { return finish(false); }
+    /** Animation belongs to the preceding wet stroke, not a separate Undo step. */
+    boolean finishContinuation() { return finish(true); }
+    private boolean finish(boolean continuation) {
         if (!editing) return false;
         editing = false;
         ArrayList<TileEdit> tiles = new ArrayList<>();
@@ -79,9 +111,20 @@ final class ToneDocument {
         }
         before.clear();
         if (tiles.isEmpty()) return false;
+        if (continuation && !undo.isEmpty() && redo.isEmpty()) {
+            Edit previous = undo.removeLast(); historyBytes -= previous.bytes;
+            LinkedHashMap<Integer, TileEdit> merged = new LinkedHashMap<>();
+            for (TileEdit tile : previous.tiles) merged.put(tile.key, tile);
+            for (TileEdit tile : tiles) {
+                TileEdit old = merged.get(tile.key);
+                merged.put(tile.key, new TileEdit(tile.key, old == null ? tile.before : old.before, tile.after));
+            }
+            tiles = new ArrayList<>();
+            for (TileEdit tile : merged.values()) if (!Arrays.equals(tile.before, tile.after)) tiles.add(tile);
+        }
         for (Edit edit : redo) historyBytes -= edit.bytes;
         redo.clear();
-        Edit edit = new Edit(tiles); undo.addLast(edit); historyBytes += edit.bytes;
+        if (!tiles.isEmpty()) { Edit edit = new Edit(tiles); undo.addLast(edit); historyBytes += edit.bytes; }
         while (historyBytes > HISTORY_BYTES && undo.size() > 1) historyBytes -= undo.removeFirst().bytes;
         return true;
     }

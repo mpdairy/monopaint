@@ -6,7 +6,7 @@ Mattelier's first public release for Supernote Manta.
 - Instant tool/shade selection without the extra delayed Android repaint.
 - Visible dashed separator between standard and custom tools.
 
-Download **Mattelier.apk** below and follow the [sideload instructions](https://github.com/mpdairy/supernote_mattalier#sideload-onto-a-manta).
+Download **Mattelier.apk** below and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
 Use `adb install -r` to update an existing installation; don't uninstall first.
 The app name is now Mattelier; the application ID and signing identity are preserved.
 

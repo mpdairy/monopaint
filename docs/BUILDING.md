@@ -19,6 +19,12 @@ adb shell am instrument -w -e paintOnly true dev.tilesmile.supernote.paint.test/
 
 These checks use a temporary drawing and restore the original drawing and tool
 settings. They exercise the Manta-specific display path and require a Manta.
+For brush raster, tilt input, head settings/presets and wet-brush checks, replace
+`-e paintOnly true` with `-e brushOnly true`. This focused run also restores the
+original drawing and settings and writes `filbert-contact.png` to the app cache.
+It also checks live adaptive wet blending and replays small and large wet strokes,
+reporting pen-event CPU time and seep calculation, raster, and display submission
+times. These timings do not measure physical panel latency.
 A locally built debug APK has your machine's signing key, so it may not update
 an installed official release. Never uninstall a release merely to resolve a
 signature mismatch without preserving your drawings first.
@@ -63,3 +69,14 @@ bash scripts/export_png.sh drawing.tsm 2 output.png
 
 This exports page two. Add `raw` or `dots` to choose logical tones or the tablet's
 dot pattern. This utility does not retrieve private files from the tablet.
+
+For an isolated brush CPU benchmark (no changes to the user's document), run:
+
+```sh
+adb -s SN100D20046977 shell am instrument -w -e brushPerfOnly true dev.tilesmile.supernote.paint.test/dev.tilesmile.supernote.WidthInstrumentation
+```
+
+It reports warmup-adjusted median replay time and raster fingerprints. The
+`texture` number in benchmark case metadata is the saved setting; bristle
+texture is currently disabled, so that case must match the solid footprint.
+Timings measure rendering work, not panel latency.

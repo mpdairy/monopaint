@@ -274,16 +274,17 @@ final class NativePen {
                     }
                     if (method.getName().equals("onPwTouchEvent") && args[0] instanceof MotionEvent) {
                         MotionEvent e = (MotionEvent)args[0];
-                        observeTilt(e.getActionMasked(), e.getAxisValue(MotionEvent.AXIS_TILT), e.getOrientation());
+                        observeTilt(e.getActionMasked(), e.getOrientation(), e.getAxisValue(MotionEvent.AXIS_TILT));
                     }
                     return null;
                 });
         call("setPWTouchEventListener", new Class<?>[]{listenerType}, touchCallback);
     }
 
-    // This Supernote firmware supplies signed tilt-X/tilt-Y DEGREES in
-    // AXIS_TILT/ORIENTATION, including in native PWInputPoint. It does not
-    // follow stock Android's radians + azimuth encoding (physical log 0.3).
+    // Supernote supplies signed X/Y DEGREES: X in ORIENTATION, Y in AXIS_TILT.
+    // Confirmed in the tablet's libinputreader cookPointerData implementation.
+    // PWInputPoint exposes named getTiltX/getTiltY accessors. This is not stock
+    // Android's radians + azimuth encoding.
     static float inclination(float tx, float ty) {
         if (!Float.isFinite(tx) || !Float.isFinite(ty) || Math.abs(tx) > 90 || Math.abs(ty) > 90) return 0;
         double x = Math.tan(Math.toRadians(Math.min(89.9, Math.abs(tx))));
@@ -464,11 +465,11 @@ final class NativePen {
         if (action==MotionEvent.ACTION_MOVE || action==MotionEvent.ACTION_UP) {
             for (int h=0;h<event.getHistorySize();h++)
                 drawCanvasPoint(MotionEvent.ACTION_MOVE,event.getHistoricalX(p,h),event.getHistoricalY(p,h),
-                        event.getHistoricalPressure(p,h),event.getHistoricalAxisValue(MotionEvent.AXIS_TILT,p,h),
-                        event.getHistoricalOrientation(p,h),false,directMaximum,directTilt);
+                        event.getHistoricalPressure(p,h),event.getHistoricalOrientation(p,h),
+                        event.getHistoricalAxisValue(MotionEvent.AXIS_TILT,p,h),false,directMaximum,directTilt);
         }
         drawCanvasPoint(action,event.getX(p),event.getY(p),event.getPressure(p),
-                event.getAxisValue(MotionEvent.AXIS_TILT,p),event.getOrientation(p),false,directMaximum,directTilt);
+                event.getOrientation(p),event.getAxisValue(MotionEvent.AXIS_TILT,p),false,directMaximum,directTilt);
         if (action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL) directPointer=-1;
     }
     boolean isWriting() {

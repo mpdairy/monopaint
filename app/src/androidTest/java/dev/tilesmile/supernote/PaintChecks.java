@@ -20,8 +20,67 @@ import java.util.concurrent.TimeUnit;
 
 /** App-local replay on an isolated temporary document; restores the user's document afterward. */
 final class PaintChecks {
-    static void run(Instrumentation test, StringBuilder report) throws Exception {
+    private static void canvasPaintRaster() {
+        for (ToolSettings.Head head : ToolSettings.Head.values())
+            for (ToolSettings.Tool tool : new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH, ToolSettings.Tool.WATERCOLOR,
+                    ToolSettings.Tool.WET_WATERCOLOR, ToolSettings.Tool.FLAT_WASH}) {
+                byte[] base = new byte[180*140]; Arrays.fill(base, (byte)180);
+                ToneDocument doc = new ToneDocument(180,140,base), footprint = new ToneDocument(180,140);
+                ToolSettings settings = ToolSettings.defaults(tool).head(head).size(48);
+                PressureStroke paint = new PressureStroke(doc,settings,128,null,true);
+                PressureStroke shape = new PressureStroke(footprint,settings.asBrush(),0);
+                for (int x=10;x<170;x+=4) {
+                    paint.sample(x,70,.45f); shape.sample(x,70,.45f);
+                    paint.sample(x,70,.45f);
+                }
+                paint.finish(); shape.finish();
+                for (int y=0;y<140;y++) for (int x=0;x<180;x++)
+                    check(doc.tone(x,y)==(footprint.tone(x,y)==0?135:180),"All heads and legacy presets use one translucent glaze per stroke");
+                check(doc.undo()&&Arrays.equals(base,doc.snapshot()),"Transparent raster undoes exactly");
+                WetWatercolor wet = new WetWatercolor(doc,0);
+                paint = new PressureStroke(doc,settings,255,wet,false);
+                paint.sample(80,70,.45f);paint.finish();
+                while(wet.isAnimating())wet.advance(false);
+                check(doc.tone(80,70)==255,"Opaque white on a zero-wetness canvas covers the old tone");
+            }
+    }
+    private static void wetWatercolorRaster() {
+        for (ToolSettings.Head head : ToolSettings.Head.values()) {
+            ToneDocument document = new ToneDocument(180, 140), footprint = new ToneDocument(180, 140);
+            ToolSettings settings = ToolSettings.defaults(ToolSettings.Tool.WET_WATERCOLOR).head(head).size(48).angle(35);
+            WetWatercolor wet = new WetWatercolor(document);
+            PressureStroke wash = new PressureStroke(document, settings, 170, wet);
+            PressureStroke brush = new PressureStroke(footprint, ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(48).angle(35), 170);
+            for (int x=20;x<=150;x+=10) {
+                wash.sample(x,70,.45f); brush.sample(x,70,.45f);
+            }
+            wash.finish(); brush.finish();
+            check(Arrays.equals(document.snapshot(), footprint.snapshot()), "Wet brush shares the pressure raster for " + head);
+            byte[] first = document.snapshot();
+            wash = new PressureStroke(document, settings, 30, wet); wash.sample(80,70,.45f);
+            wet.advance(true);
+            check(document.tone(80,70)>30, "Small strokes mix while the pen remains down");
+            wash.finish();
+            while(wet.isAnimating()) wet.advance(false);
+            byte[] mixed = document.snapshot();
+            check(document.undo() && Arrays.equals(document.snapshot(), first), "Wet raster and animation undo together");
+            check(document.redo() && Arrays.equals(document.snapshot(), mixed), "Wet raster redoes exactly");
+        }
+    }
+    static void run(Instrumentation test, StringBuilder report, boolean brushOnly) throws Exception {
         rasterBaseline(); report.append("Logical brush matches 0.12 circle rasterization for all 16 shades.\n");
+        canvasPaintRaster(); report.append("Canvas paint modes share every brush head and legacy preset footprint, with one glaze per stroke and exact undo.\n");
+        watercolorRaster(); report.append("Watercolor follows brush footprints and deposits only black dots over existing tones.\n");
+        flatWashRaster(); report.append("Flat wash shares brush heads, pressure, tilt and clipping while retaining darker marks and exact gray tones.\n");
+        wetWatercolorRaster(); report.append("Wet watercolor shares pressure/head footprints and keeps its animation in one undo step.\n");
+        brushHeadRaster();report.append("Flat/filbert raster, rotated bounds, thin marks and gap-free interpolated strokes pass.\n");
+        headThicknessRaster();report.append("Adjustable head thickness preserves broad width, produces fine sideways strokes and keeps hairlines continuous.\n");
+        roundedFilbertRaster(test);
+        filbertContactRaster(test);report.append("Flat/Filbert taps respond to tilt and pressure; upright contact spreads into a filled blot and Filbert stays filled with rounded ends.\n");
+        flatLeanPressureRaster();report.append("Flat and Filbert retain thin contact through the pressure range; leaned Flat width stays steady.\n");
+        pressureSquishRaster(test);report.append("Stationary pressure spreads Flat/Filbert contact along every lean direction, preserves tip paint and undo, and keeps Filbert solid and thin.\n");
+        brushTiltRaster();report.append("Brush tilt follows signed lean direction with angle offset, upright fallback, shortest turns and exact undo.\n");
+        solidBrushRaster();report.append("All brush heads stay solid with legacy bristle settings, light/firm pressure, push/pull, fixed/tilted heads and exact undo.\n");
         rubbingChecks(report);
         stumpStrengthChecks(report);
         sizeRangeChecks(report);
@@ -35,16 +94,27 @@ final class PaintChecks {
         boolean originalSide=((android.content.SharedPreferences)field(current,"preferences")).getBoolean("toolbox_right",false);
         int originalGray = (Integer)field(current, "gray"), originalMaximum = (Integer)field(current, "maximum");
         ToolLibrary originalLibrary = (ToolLibrary)field(current,"library");
+        boolean originalWet = (Boolean)field(current,"wetCanvas"), originalTransparent = (Boolean)field(current,"transparentPaint");
+        int originalWetness = (Integer)field(current,"wetness");
         try {
             Object firstPad = pad;
             PaintActivity firstActivity = current;
             test.runOnMainSync(() -> {
                 call(firstPad, "replace", new Class<?>[]{ToneDocument.class}, new ToneDocument(original.width, original.height));
                 set(firstActivity, "gray", 128); set(firstActivity, "maximum", 64);
+                set(firstActivity,"wetCanvas",false); set(firstActivity,"transparentPaint",false);
+                call(firstActivity,"refreshPaintModes",new Class<?>[0]);
                 set(firstActivity,"library",new ToolLibrary());
                 call(firstActivity,"rebuildTools",new Class<?>[0]);
             });
             test.waitForIdleSync(); SystemClock.sleep(300);
+            if (brushOnly) {
+                brushTiltInput(test,current,report);
+                brushHeadUi(test,current,report);
+                adaptiveWetReplay(test,current,report);
+                wetWatercolorUi(test,current,report);
+                return;
+            }
             check(field(pad, "direct") != null, "Direct mode 7 display active");
             checkFirmwareArea(pad);
             report.append("Firmware default drawing area is replaced by an empty region.\n");
@@ -149,8 +219,12 @@ final class PaintChecks {
             check(restarted.presets().size()==1&&restarted.presets().get(0).name.equals("Renamed check preset")
                     &&restarted.presets().get(0).settings.soft&&restarted.presets().get(0).settings.maximum==9,"Edited custom settings survive Activity restart");
             report.append("Atomic recovery and Activity restart preserve exact logical tones.\n");
-            presetDragChecks(test, current, report);
             customToolbarChecks(test, current, report);
+            brushTiltInput(test, current, report);
+            brushHeadUi(test,current,report);
+            presetDragChecks(test, current, report);
+            adaptiveWetReplay(test,current,report);
+            wetWatercolorUi(test, current, report);
         } finally {
             Object restorePad = field(current, "pad"); PaintActivity restoreActivity = current;
             test.runOnMainSync(() -> {
@@ -159,10 +233,13 @@ final class PaintChecks {
                 catch(Exception error){throw new IllegalStateException(error);}
                 call(restoreActivity,"applyToolboxSide",new Class<?>[0]);
                 set(restoreActivity, "gray", originalGray); set(restoreActivity, "maximum", originalMaximum);
+                set(restoreActivity,"wetCanvas",originalWet); set(restoreActivity,"transparentPaint",originalTransparent);
+                set(restoreActivity,"wetness",originalWetness);
+                call(restoreActivity,"refreshPaintModes",new Class<?>[0]);
                 set(restoreActivity,"library",originalLibrary);
                 call(restoreActivity,"rebuildTools",new Class<?>[0]);
                 call(restoreActivity, "preferences", new Class<?>[0]);
-                try { call(field(restoreActivity, "shadePreview"), "update", new Class<?>[0]); }
+                try { ((View)field(restoreActivity, "shadePicker")).invalidate(); ((View)field(restoreActivity, "wetnessBar")).invalidate(); }
                 catch (Exception error) { throw new IllegalStateException(error); }
                 call(restoreActivity, "recovery", new Class<?>[0]);
             });
@@ -170,6 +247,342 @@ final class PaintChecks {
             ((DocumentStore)field(current,"store")).open("_recovery", (d,e) -> restored.countDown());
             check(restored.await(10, TimeUnit.SECONDS), "Original document restoration completed");
         }
+    }
+    // Propagate UI assertions to the test thread so its finally block can restore
+    // the original drawing instead of terminating the app's main thread.
+    private static void onMain(Instrumentation test, Runnable action) {
+        final Throwable[] failure = new Throwable[1];
+        test.runOnMainSync(() -> {
+            try { action.run(); } catch (Throwable error) { failure[0] = error; }
+        });
+        if (failure[0] instanceof Error) throw (Error)failure[0];
+        if (failure[0] instanceof RuntimeException) throw (RuntimeException)failure[0];
+        if (failure[0] != null) throw new IllegalStateException(failure[0]);
+    }
+    private static void wetWatercolorUi(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
+        Object pad = field(activity, "pad"); View view = (View)pad;
+        ToneDocument blank = new ToneDocument(view.getWidth(), view.getHeight());
+        ToolLibrary library = new ToolLibrary();
+        SelectionFeedback feedback = (SelectionFeedback)field(activity,"selectionFeedback");
+        boolean originalFast = feedback.enabled;
+        long start = SystemClock.uptimeMillis();
+        onMain(test, () -> {
+            call(pad, "replace", new Class<?>[]{ToneDocument.class}, blank);
+            set(activity,"library",library); set(activity,"maximum",64); set(activity,"gray",180);
+            set(activity,"wetCanvas",false); set(activity,"transparentPaint",false);
+            call(activity,"refreshPaintModes",new Class<?>[0]); call(activity,"rebuildTools",new Class<?>[0]);
+        });
+        test.waitForIdleSync();
+        View bar = (View)field(activity,"wetnessBar");
+        byte[] beforeControls = blank.snapshot();
+        try {
+            for (boolean fast : new boolean[]{false,true}) {
+                onMain(test, () -> {
+                    feedback.enabled = fast;
+                    check(findButton(activity,"Wet watercolor (experimental)")==null && findButton(activity,"Watercolor")==null
+                            && findButton(activity,"Flat wash")==null && findButton(activity,"Dry watercolor")==null,"Redundant tools and dryer removed");
+                    Button droplet=findButton(activity,"Wet canvas"); droplet.performClick();
+                    check(droplet.isSelected(),"Droplet is selected in both feedback modes");
+                    Bitmap selected=controlBitmap(droplet);
+                    int inset=Math.round(12*activity.getResources().getDisplayMetrics().density);
+                    check(selected.getPixel(inset,inset)==Color.BLACK,"Wet selection shows its dot clear of the outline");
+                    int iconCenter=selected.getWidth()/2+Math.round(8*activity.getResources().getDisplayMetrics().density);
+                    check(selected.getPixel(iconCenter,selected.getHeight()/2)==Color.WHITE,"Water droplet has a clear interior"); selected.recycle();
+                    findButton(activity,"Transparent paint").performClick();
+                    check(findButton(activity,"Transparent paint").isSelected()&&!findButton(activity,"Opaque paint").isSelected(),"Paint modes are mutually exclusive");
+                    event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight(),.3f,MotionEvent.TOOL_TYPE_FINGER);
+                    check(!droplet.isSelected(),"Dragging to zero switches wet mode off");
+                    event(bar,start,MotionEvent.ACTION_MOVE,bar.getWidth()/2f,0,.3f,MotionEvent.TOOL_TYPE_FINGER);
+                    event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,0,0,MotionEvent.TOOL_TYPE_FINGER);
+                    try {check((Integer)field(activity,"wetness")==100,"Wetness drag reaches full strength");}
+                    catch(Exception error){throw new IllegalStateException(error);}
+                    droplet.performClick();
+                    event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight()/2f,.3f,MotionEvent.TOOL_TYPE_FINGER);
+                    event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,bar.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
+                    check(droplet.isSelected(),"Changing the bar enables wet mode without a droplet tap");
+                    try {
+                        int preferred=(Integer)field(activity,"wetness");
+                        droplet.performClick();
+                        check(!droplet.isSelected()&&(Integer)field(activity,"wetness")==preferred,"Droplet off retains preferred strength");
+                        // A tap at exactly the retained value must still enable wet mode.
+                        event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight()/2f,.3f,MotionEvent.TOOL_TYPE_FINGER);
+                        event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,bar.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
+                        check(droplet.isSelected()&&(Integer)field(activity,"wetness")==preferred,"Same-value slider tap enables wet mode");
+                        droplet.performClick();
+                        android.content.SharedPreferences prefs=(android.content.SharedPreferences)field(activity,"preferences");
+                        check(!prefs.getBoolean("wet_canvas",true)&&prefs.getInt("canvas_wetness",0)==preferred,"Droplet off preserves saved wetness");
+                    } catch(Exception error){throw new IllegalStateException(error);}
+                    findButton(activity,"Opaque paint").performClick();
+                });
+            }
+            check(Arrays.equals(beforeControls,blank.snapshot())&&!blank.canUndo(),"Canvas controls never enter pixels or history");
+            onMain(test, () -> {
+                findButton(activity,"Wet canvas").performClick();
+                event(view,start,MotionEvent.ACTION_DOWN,100,100,.45f);
+                event(view,start,MotionEvent.ACTION_MOVE,300,100,.45f);
+                event(view,start,MotionEvent.ACTION_UP,300,100,0);
+            });
+            byte[] first = blank.snapshot();
+            onMain(test, () -> {
+                set(activity,"gray",30);event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);
+                check(blank.tone(200,100)==30,"Normal brush puts fresh wet paint down immediately");
+                try { check((Boolean)field(pad,"wetScheduled"),"Small strokes allow scheduled live blending"); }
+                catch(Exception error){throw new IllegalStateException(error);}
+            });
+            SystemClock.sleep(550);
+            onMain(test, () -> {
+                try {
+                    check(blank.tone(200,100)>30,"Small strokes visibly blend while pen is down; slices="
+                            +field(pad,"wetSliceCount")+", compute_ns="+field(pad,"lastWetComputeNanos")
+                            +", render_ns="+field(pad,"lastWetRenderNanos")+", submit_ns="+field(pad,"lastWetPresentNanos")
+                            +", pending="+field(pad,"pending"));
+                } catch(Exception error){throw new IllegalStateException(error);}
+                event(view,start,MotionEvent.ACTION_MOVE,260,100,.45f);
+                check(blank.tone(260,100)==30,"Fresh tip stays crisp");
+                event(view,start,MotionEvent.ACTION_UP,260,100,0);
+                try { check((Boolean)field(pad,"wetScheduled"),"Pen-up resumes queued blending"); }
+                catch(Exception error){throw new IllegalStateException(error);}
+            });
+            SystemClock.sleep(2300);
+            onMain(test, () -> {
+                check(blank.tone(260,100)>30,"Blending continues after pen-up");
+                check(DotPattern.whiteCount(blank.tone(260,100))>DotPattern.whiteCount(30),"Settled mid-strength blending changes the visible dot density");
+                event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight(),.3f,MotionEvent.TOOL_TYPE_FINGER);
+                event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,bar.getHeight(),0,MotionEvent.TOOL_TYPE_FINGER);
+                check(!findButton(activity,"Wet canvas").isSelected(),"Zero slider clears the wet-mode dot");
+            });
+            byte[] dried = blank.snapshot(); SystemClock.sleep(450);
+            check(field(pad,"wet")==null&&Arrays.equals(dried,blank.snapshot()),"Zero wetness stops all queued animation");
+            onMain(test, () -> {
+                findButton(activity,"Undo").performClick();check(Arrays.equals(first,blank.snapshot()),"One undo removes wet stroke and its frames");
+                findButton(activity,"Redo").performClick();check(Arrays.equals(dried,blank.snapshot()),"Redo restores exact result");
+                findButton(activity,"Transparent paint").performClick(); set(activity,"gray",255);
+                event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);event(view,start,MotionEvent.ACTION_UP,200,100,0);
+                check(Arrays.equals(dried,blank.snapshot()),"Dry transparent white is clear");
+                findButton(activity,"Opaque paint").performClick();
+                event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);event(view,start,MotionEvent.ACTION_UP,200,100,0);
+                check(blank.tone(200,100)==255,"Dry opaque white covers paint");
+            });
+            report.append("Outline droplet, slider activation, zero/off, remembered strength, fast selection, live adaptive blending, transparent/opaque white, drying and exact undo/redo pass.\n");
+        } finally {
+            onMain(test, () -> {
+                feedback.enabled=originalFast;set(activity,"wetCanvas",false);set(activity,"transparentPaint",false);
+                call(activity,"refreshPaintModes",new Class<?>[0]);
+                call(pad,"replace",new Class<?>[]{ToneDocument.class},new ToneDocument(blank.width,blank.height));
+            });
+        }
+    }
+    private static void adaptiveWetReplay(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
+        Object pad = field(activity,"pad"); View view = (View)pad;
+        for (boolean large : new boolean[]{false, true}) {
+            byte[] base = new byte[768*512]; Arrays.fill(base,(byte)180);
+            ToneDocument doc = new ToneDocument(768,512,base);
+            WetWatercolor wet = new WetWatercolor(doc,100);
+            int width = large ? 720 : 160, height = large ? 384 : 128;
+            int[] mask = new int[width*height]; Arrays.fill(mask,0xff000000);
+            doc.begin(); wet.beginStroke(); wet.paintMask(mask,width,16,32,width,height,120); wet.finishStroke();
+            onMain(test, () -> {
+                call(pad,"replace",new Class<?>[]{ToneDocument.class},doc);
+                set(activity,"library",new ToolLibrary()); set(activity,"maximum",large?128:24);
+                set(activity,"gray",30); set(activity,"wetCanvas",true); set(activity,"wetness",100);
+                set(activity,"transparentPaint",false); set(pad,"wet",wet);
+                call(pad,"renderDirty",new Class<?>[0]); call(pad,"present",new Class<?>[0]);
+                set(pad,"wetSliceCount",0); set(pad,"wetMaxSliceNanos",0L);
+            });
+            test.waitForIdleSync();
+            long start = SystemClock.uptimeMillis(); long[] pen = new long[36];
+            long[] stageMax = new long[3];
+            onMain(test, () -> event(view,start,MotionEvent.ACTION_DOWN,80,160,.45f));
+            for (int i=0;i<pen.length;i++) {
+                final int sample = i;
+                onMain(test, () -> {
+                    long begin = System.nanoTime();
+                    event(view,start,MotionEvent.ACTION_MOVE,80+sample*(large?16:2),160+(float)Math.sin(sample*.15)*36,.45f);
+                    pen[sample] = System.nanoTime()-begin;
+                    try {
+                        stageMax[0] = Math.max(stageMax[0],(Long)field(pad,"lastWetComputeNanos"));
+                        stageMax[1] = Math.max(stageMax[1],(Long)field(pad,"lastWetRenderNanos"));
+                        stageMax[2] = Math.max(stageMax[2],(Long)field(pad,"lastWetPresentNanos"));
+                    } catch(Exception error){throw new IllegalStateException(error);}
+                });
+                SystemClock.sleep(12);
+            }
+            // A stationary pen should regain live blending after a costly event.
+            SystemClock.sleep(250);
+            onMain(test, () -> {
+                check(wet.strokePixels() > (large ? 32768 : 0),"Replay grows the active stroke");
+                try {
+                    check((Integer)field(pad,"wetSliceCount")>0,"Live seeping uses available time during a held stroke");
+                    Arrays.sort(pen);
+                    report.append(String.format(java.util.Locale.US,
+                            "Adaptive wet %s: stroke_pixels=%d wet_tiles=%d pen_p95_ms=%.2f pen_max_ms=%.2f seep_slices=%d seep_max_ms=%.2f sampled_compute_max_ms=%.2f raster_max_ms=%.2f submit_max_ms=%.2f (CPU, not panel latency).%n",
+                            large?"large":"small",wet.strokePixels(),wet.activeTiles(),pen[34]/1e6,pen[35]/1e6,
+                            (Integer)field(pad,"wetSliceCount"),(Long)field(pad,"wetMaxSliceNanos")/1e6,
+                            stageMax[0]/1e6,stageMax[1]/1e6,stageMax[2]/1e6));
+                } catch(Exception error){throw new IllegalStateException(error);}
+                event(view,start,MotionEvent.ACTION_CANCEL,80,160,0);
+                try { check((Boolean)field(pad,"wetScheduled"),"Ending a gesture keeps remaining blending scheduled"); }
+                catch(Exception error){throw new IllegalStateException(error);}
+                call(pad,"dryWet",new Class<?>[0]);
+            });
+        }
+    }
+    private static void saveScreenshot(Instrumentation test, String name) throws Exception {
+        Bitmap screen=test.getUiAutomation().takeScreenshot();check(screen!=null,"Can capture brush UI");
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(test.getTargetContext().getCacheDir(),name))) {
+            screen.compress(Bitmap.CompressFormat.PNG,100,out);
+        } finally {screen.recycle();}
+    }
+    private static void brushHeadUi(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
+        ToolLibrary library=new ToolLibrary();
+        android.content.SharedPreferences prefs=(android.content.SharedPreferences)field(activity,"preferences");
+        Object pad=field(activity,"pad");ToneDocument doc=(ToneDocument)field(pad,"document");byte[] before=doc.snapshot();
+        test.runOnMainSync(() -> {set(activity,"library",library);call(activity,"rebuildTools",new Class<?>[0]);});
+        for(boolean right:new boolean[]{false,true}) {
+            test.runOnMainSync(() -> {
+                prefs.edit().putBoolean("toolbox_right",right).apply();call(activity,"applyToolboxSide",new Class<?>[0]);
+                try {((android.widget.ScrollView)field(activity,"toolScroll")).scrollTo(0,0);}catch(Exception error){throw new IllegalStateException(error);}
+            });test.waitForIdleSync();
+            for(String name:new String[]{"Brush"}) {
+                Button anchor=findButton(activity,name);check(anchor!=null&&anchor.isShown(),name+" is present in the toolbar");
+                test.runOnMainSync(() -> {
+                    anchor.performClick();
+                    try {if (field(activity,"brushPicker")==null) anchor.performClick();}
+                    catch(Exception error){throw new IllegalStateException(error);}
+                });test.waitForIdleSync();
+                android.widget.PopupWindow popup=(android.widget.PopupWindow)field(activity,"brushPicker");
+                check(popup!=null&&popup.isShowing(),"Selected brush opens the centered editor");
+                View panel=popup.getContentView();int[] p=new int[2];panel.getLocationOnScreen(p);
+                check(Math.abs(p[0]+panel.getWidth()/2-activity.getResources().getDisplayMetrics().widthPixels/2)<4,
+                        "Brush editor stays centered with either toolbar position");
+                for(String head:new String[]{"Round","Flat","Filbert"})check(findButton(panel,head)!=null,"Picker includes "+head);
+                check(findDescription(panel,"Brush settings")==null,"Head controls need no separate settings button");
+                test.runOnMainSync(() -> findButton(panel,"Flat").performClick());test.waitForIdleSync();
+                check(popup.isShowing()&&library.current().head==ToolSettings.Head.FLAT&&library.activeId().isEmpty(),
+                        "Selecting Flat keeps the editor open with controls underneath");
+                int[] tipAt=new int[2],controlAt=new int[2];findButton(panel,"Flat").getLocationOnScreen(tipAt);
+                findDescription(panel,"Maximum width").getLocationOnScreen(controlAt);
+                check(controlAt[1]>tipAt[1]+findButton(panel,"Flat").getHeight(),"Selected tip controls appear below the tip row");
+                int expected=R.drawable.ic_brush_flat;
+                check((Integer)field(findButton(activity,name),"iconResource")==expected,"Toolbar updates its enlarged tip icon immediately");
+                test.runOnMainSync(() -> {
+                    check(findDescription(panel,"Brush angle")==null&&findDescription(panel,"Head thickness")==null
+                            &&findDescription(panel,"Follow pen tilt")==null,"Removed controls stay absent");
+                    ((android.widget.SeekBar)findDescription(panel,"Maximum width")).setProgress(87);
+                    ((android.widget.SeekBar)findDescription(panel,"Pressure response")).setProgress(81);
+                });test.waitForIdleSync();
+                if(!right&&name.equals("Brush"))saveScreenshot(test,"flat-brush-settings.png");
+                ToolSettings flat=library.current();
+                check(flat.maximum==89&&flat.pressureResponse==81&&flat.tilt&&flat.headThickness==10,"Flat retains compact width/pressure controls");
+                test.runOnMainSync(() -> findButton(panel,"Filbert").performClick());test.waitForIdleSync();
+                check(popup.isShowing()&&library.current().head==ToolSettings.Head.FILBERT&&library.current().headThickness==55,
+                        "Filbert selection stays open and uses the visibly fuller shape");
+                check(findButton(panel,"Filbert").isSelected()&&!findButton(panel,"Flat").isSelected(),"Selected tip highlight follows the controls");
+                if(!right&&name.equals("Brush"))saveScreenshot(test,"filbert-brush-settings.png");
+                test.runOnMainSync(() -> findButton(panel,"Round").performClick());test.waitForIdleSync();
+                check(findDescription(panel,"Maximum diameter")!=null&&findDescription(panel,"Maximum width")==null,
+                        "Round switches the controls from width to diameter in place");
+                if(!right&&name.equals("Brush"))saveScreenshot(test,"brush-menu.png");
+                test.runOnMainSync(() -> findButton(panel,"Flat").performClick());test.waitForIdleSync();
+                check(library.current().equals(flat),"Switching tips restores each tip's own controls");
+                test.runOnMainSync(() -> findButton(panel,"Add to Toolbar").performClick());test.waitForIdleSync();
+                String id=library.activeId();check(!popup.isShowing()&&!id.isEmpty(),"Head setup can be saved directly from the editor");
+                java.util.Map<?,?> buttons=(java.util.Map<?,?>)field(activity,"selectionButtons");
+                check((Integer)field(buttons.get(id),"iconResource")==expected,"Custom tool gets the matching enlarged tip icon");
+                ToolLibrary restored=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
+                check(restored.current().equals(flat)&&restored.activeId().equals(id),"Tip controls and custom selection persist");
+                android.app.AlertDialog[] dialog=new android.app.AlertDialog[1];
+                test.runOnMainSync(() -> {
+                    dialog[0]=(android.app.AlertDialog)call(activity,"settings",new Class<?>[0]);
+                    findButton(dialog[0].getWindow().getDecorView(),"Filbert").performClick();
+                });test.waitForIdleSync();
+                check(dialog[0].isShowing()&&library.activeId().equals(id)&&library.current().head==ToolSettings.Head.FILBERT,
+                        "Custom tip controls also switch in place without losing preset identity");
+                test.runOnMainSync(() -> dialog[0].dismiss());test.waitForIdleSync();
+            }
+        }
+        check(Arrays.equals(before,doc.snapshot()),"Brush editors never paint on the document");
+        report.append("Large brush tips, in-place controls below selection, both toolbar sides, independent tip recall and custom presets pass.\n");
+    }
+    private static void brushTiltInput(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
+        ToolLibrary library=new ToolLibrary();
+        Object pad=field(activity,"pad");ToneDocument doc=(ToneDocument)field(pad,"document");byte[] before=doc.snapshot();
+        test.runOnMainSync(() -> {set(activity,"library",library);call(activity,"rebuildTools",new Class<?>[0]);});
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR,ToolSettings.Tool.FLAT_WASH}) {
+            ToolSettings live=ToolSettings.defaults(tool).head(ToolSettings.Head.FLAT).size(72).tilt(true);
+            ToneDocument expected=new ToneDocument(doc.width,doc.height,doc.snapshot());
+            PressureStroke reference=new PressureStroke(expected,live,182,null,false);
+            reference.sample(300,1500,.45f,0,60);
+            reference.sample(300,1600,.45f,0,60);
+            reference.sample(400,1600,.45f,45,30);
+            reference.sample(500,1600,.45f,60,0);reference.finish();
+            test.runOnMainSync(() -> {
+                library.edit(live);set(activity,"maximum",72);set(activity,"gray",182);call(activity,"rebuildTools",new Class<?>[0]);
+                long start=SystemClock.uptimeMillis();
+                tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,300,1500,.45f,0,60);
+                // Two historical samples and one current sample exercise every
+                // input path. Unequal diagonal components also catch swapped axes.
+                MotionEvent.PointerProperties prop=new MotionEvent.PointerProperties();
+                prop.id=0;prop.toolType=MotionEvent.TOOL_TYPE_STYLUS;
+                MotionEvent.PointerCoords point=new MotionEvent.PointerCoords();
+                point.x=300;point.y=1600;point.pressure=.45f;
+                point.orientation=0;point.setAxisValue(MotionEvent.AXIS_TILT,60);
+                MotionEvent move=MotionEvent.obtain(start,start+10,MotionEvent.ACTION_MOVE,1,
+                        new MotionEvent.PointerProperties[]{prop},new MotionEvent.PointerCoords[]{point},
+                        0,0,1,1,0,0,InputDevice.SOURCE_STYLUS,0);
+                try {
+                    point.x=400;point.orientation=45;point.setAxisValue(MotionEvent.AXIS_TILT,30);
+                    move.addBatch(start+20,new MotionEvent.PointerCoords[]{point},0);
+                    point.x=500;point.orientation=60;point.setAxisValue(MotionEvent.AXIS_TILT,0);
+                    move.addBatch(start+30,new MotionEvent.PointerCoords[]{point},0);
+                    ((View)pad).dispatchTouchEvent(move);
+                } finally {move.recycle();}
+                tiltEvent((View)pad,start,MotionEvent.ACTION_UP,500,1600,0,60,0);
+            });test.waitForIdleSync();
+            check(Arrays.equals(expected.snapshot(),doc.snapshot()),"Firmware X=ORIENTATION/Y=TILT reaches brush down, historical and current movement samples");
+            test.runOnMainSync(() -> findButton(activity,"Undo").performClick());
+            check(Arrays.equals(before,doc.snapshot()),"Live tilt stroke restores the exact drawing on undo");
+        }
+        report.append("Firmware tilt mapping passes for Brush/Watercolor/Flat wash pen-down, current and historical moves, with exact undo.\n");
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT})
+            for(float tilt:new float[]{0,30,60}) {
+                ToolSettings live=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(64).minimum(64).automaticHead();
+                ToneDocument light=contactDab(live,.05f,0,tilt),firm=contactDab(live,.9f,0,tilt);
+                int[] grown=null;
+                for(int y=0;y<200&&grown==null;y++)for(int x=0;x<160;x++)
+                    if(light.tone(x,y)==255&&firm.tone(x,y)==0){grown=new int[]{x-80,y-70};break;}
+                check(grown!=null,"Pressure exposes new contact for the actual default head");
+                int dx=grown[0],dy=grown[1];
+                android.graphics.Rect pending=(android.graphics.Rect)field(pad,"pending");
+                DirectEink direct=(DirectEink)field(pad,"direct");
+                long start=SystemClock.uptimeMillis();
+                test.runOnMainSync(() -> {
+                    library.edit(live);set(activity,"maximum",64);set(activity,"gray",0);call(activity,"rebuildTools",new Class<?>[0]);
+                    tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,700,1500,.05f,0,tilt);
+                    check(doc.tone(700+dx,1500+dy)==255,"Light contact leaves room for compression");
+                    // Hold the coalescing window open deterministically. No new
+                    // pen event follows: the scheduled presentation must flush it.
+                    set(pad,"lastPresent",SystemClock.uptimeMillis()+100);
+                    tiltEvent((View)pad,start,MotionEvent.ACTION_MOVE,700,1500,.9f,0,tilt);
+                    check(doc.tone(700+dx,1500+dy)==0,"Pressure-only move spreads contact before pen-up");
+                    check(!pending.isEmpty(),"Test exercises deferred display pixels");
+                });
+                SystemClock.sleep(250);
+                check(field(pad,"stroke")!=null,"Pen remains down while waiting for presentation");
+                try {
+                    test.runOnMainSync(() -> {
+                        check(pending.isEmpty(),"Deferred pressure pixels flush with no further pen events");
+                        check(direct!=null&&direct.readGray(700+dx,1500+dy)==0,"Stationary pressure reaches the actual display buffer before pen-up");
+                    });
+                } finally {
+                    test.runOnMainSync(() -> {
+                        tiltEvent((View)pad,start,MotionEvent.ACTION_UP,700,1500,0,0,tilt);
+                        findButton(activity,"Undo").performClick();
+                    });
+                }
+                check(Arrays.equals(before,doc.snapshot()),"Live stationary squish undoes exactly");
+            }
+        report.append("Flat/Filbert upright, moderate and strong tilt pressure reaches the direct display after input stops, before pen-up; undo is exact.\n");
     }
     private static void customToolbarChecks(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
         ToolLibrary tools=new ToolLibrary();
@@ -193,7 +606,7 @@ final class PaintChecks {
                     String slider=tool==ToolSettings.Tool.FILL?"Tolerance":"Maximum diameter";
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(41);
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(53);
-                    if(tool==ToolSettings.Tool.BRUSH) {
+                    if(ToolSettings.defaults(tool).isBrush()) {
                         android.widget.SeekBar response=(android.widget.SeekBar)findDescription(root,"Pressure response");
                         check(response!=null && response.getProgress()==50,"Brush dialog exposes the original pressure response");
                         response.setProgress(85);
@@ -226,7 +639,7 @@ final class PaintChecks {
             });
             test.waitForIdleSync();
         }
-        report.append("All five tool dialogs add without naming, save repeated slider edits, recall saved values, and delete with an accessible trash icon. No management button remains.\n");
+        report.append("All tool dialogs add without naming, save repeated slider edits, recall saved values, and delete with an accessible trash icon. No management button remains.\n");
     }
     private static View findDescription(View view,String description) {
         if(description.contentEquals(view.getContentDescription()==null?"":view.getContentDescription())) return view;
@@ -247,13 +660,14 @@ final class PaintChecks {
         test.waitForIdleSync();
         for (boolean right : new boolean[]{false,true}) {
             test.runOnMainSync(() -> {prefs.edit().putBoolean("toolbox_right",right).apply();call(activity,"applyToolboxSide",new Class<?>[0]);});
-            test.waitForIdleSync();
+            test.waitForIdleSync();SystemClock.sleep(300);
+            check(activity.hasWindowFocus(),"Activity has input focus before native drag");
             checkHeader(activity);
             Button first = findButton(activity,"Drag A"), last = findButton(activity,"Drag C");
             int[] start = new int[2], end = new int[2]; first.getLocationOnScreen(start);last.getLocationOnScreen(end);
             drag(test, start[0]+first.getWidth()/2f, start[1]+first.getHeight()/2f,
                     end[0]+last.getWidth()/2f, end[1]+last.getHeight()-2);
-            check(tools.presets().get(2).id.equals(a.id), "Native drag moves preset to end on either toolbox side");
+            check(tools.presets().get(2).id.equals(a.id), "Native drag moves preset to end: right="+right+", source="+Arrays.toString(start)+", target="+Arrays.toString(end)+", order="+tools.presets().get(0).name+","+tools.presets().get(1).name+","+tools.presets().get(2).name);
             first = findButton(activity,"Drag A");last = findButton(activity,"Drag B");
             first.getLocationOnScreen(start);last.getLocationOnScreen(end);
             drag(test, start[0]+first.getWidth()/2f, start[1]+first.getHeight()/2f,
@@ -267,7 +681,9 @@ final class PaintChecks {
         }
         ToolLibrary saved = ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
         check(saved.presets().get(0).id.equals(a.id) && saved.presets().get(2).id.equals(c.id)
-                && saved.activeId().equals(b.id), "Native drops persist order without changing selected preset");
+                && saved.activeId().equals(b.id), "Native drops persist order without changing selected preset: saved order="
+                +saved.presets().get(0).name+","+saved.presets().get(1).name+","+saved.presets().get(2).name
+                +", active="+saved.activeId()+", live="+tools.activeId()+", expected="+b.id);
         test.runOnMainSync(() -> {
             for (int i=0;i<25;i++) tools.add("Drag scroll " + i);
             tools.recall(b.id);call(activity,"rebuildTools",new Class<?>[0]);scroll.scrollTo(0,0);
@@ -402,7 +818,7 @@ final class PaintChecks {
             test.waitForIdleSync();
             View rail=(View)field(activity,"toolRail");
             test.runOnMainSync(() -> {
-                View divider=((ViewGroup)rail).getChildAt(ToolSettings.Tool.values().length);
+                View divider=((ViewGroup)rail).getChildAt(5);
                 Bitmap separator=controlBitmap(divider);
                 int runs=0;boolean inDash=false,hasGap=false;
                 for(int x=0;x<separator.getWidth();x++) {
@@ -445,7 +861,7 @@ final class PaintChecks {
     private static void checkFeedbackRepaint(Instrumentation test, PaintActivity activity, SelectionFeedback feedback, StringBuilder report) throws Exception {
         View root=activity.getWindow().getDecorView();
         Button pencil=findButton(activity,"Pencil"),brush=findButton(activity,"Brush");
-        View picker=(View)field(activity,"shadePicker"),preview=(View)field(activity,"shadePreview");
+        View picker=(View)field(activity,"shadePicker");
         java.util.concurrent.atomic.AtomicInteger frames=new java.util.concurrent.atomic.AtomicInteger();
         android.view.ViewTreeObserver.OnDrawListener listener=() -> frames.incrementAndGet();
         test.waitForIdleSync();SystemClock.sleep(600);
@@ -473,21 +889,35 @@ final class PaintChecks {
                 event(picker,now,MotionEvent.ACTION_UP,x,picker.getHeight()/2f,0);
             });
             test.waitForIdleSync();SystemClock.sleep(800);
-            check(feedback.submitted>=before+2,"Shade marker and preview both reach direct display");
-            check(frames.get()==0,"Direct shade selection and preview must not queue a later Android frame: "+frames.get());
+            check(feedback.submitted>before,"Shade marker reaches direct display");
+            check(frames.get()==0,"Direct shade selection must not queue a later Android frame: "+frames.get());
+            View wetness=(View)field(activity,"wetnessBar");
+            before=feedback.submitted;
+            test.runOnMainSync(() -> {
+                findButton(activity,"Wet canvas").performClick();
+                findButton(activity,"Transparent paint").performClick();
+                long now=SystemClock.uptimeMillis();
+                event(wetness,now,MotionEvent.ACTION_DOWN,wetness.getWidth()/2f,wetness.getHeight(),.2f);
+                event(wetness,now,MotionEvent.ACTION_MOVE,wetness.getWidth()/2f,0,.2f);
+                event(wetness,now,MotionEvent.ACTION_UP,wetness.getWidth()/2f,0,0);
+            });
+            test.waitForIdleSync();SystemClock.sleep(800);
+            check(feedback.submitted>=before+4,"Wetness fill and paint-mode dots reach direct display");
+            check(frames.get()==0,"Wet controls must not queue a later Android frame: "+frames.get());
+            test.runOnMainSync(() -> {
+                findButton(activity,"Wet canvas").performClick();findButton(activity,"Opaque paint").performClick();
+            });
             // An unrelated redraw must refresh the retained Android commands too.
             test.runOnMainSync(root::invalidate);test.waitForIdleSync();SystemClock.sleep(300);
             Bitmap screen=test.getUiAutomation().takeScreenshot();
             check(screen!=null,"Capture compositor after unrelated redraw");
             try {
-                int[] location=new int[2];preview.getLocationOnScreen(location);
-                int expected=(Integer)field(activity,"gray");
-                check(Color.red(screen.getPixel(location[0]+preview.getWidth()/2,location[1]+preview.getHeight()/2))==expected,"Next normal frame retains the latest shade preview");
+                int[] location=new int[2];
                 brush.getLocationOnScreen(location);
                 int inset=Math.round(12*activity.getResources().getDisplayMetrics().density);
                 check(Color.red(screen.getPixel(location[0]+brush.getWidth()-inset,location[1]+inset))==0,"Next normal frame retains the latest tool dot");
             } finally {screen.recycle();}
-            report.append("Direct tool clicks, stylus press/release and shade taps produce no Android frame for 800 ms; next unrelated redraw retains current marker and shade preview.\n");
+            report.append("Direct tool clicks, stylus press/release and shade taps produce no Android frame for 800 ms; next unrelated redraw retains current tool marker.\n");
         } finally {
             test.runOnMainSync(() -> root.getViewTreeObserver().removeOnDrawListener(listener));
         }
@@ -688,7 +1118,8 @@ final class PaintChecks {
     private static void tiltEvent(View view,long start,int action,float x,float y,float pressure,float tx,float ty) {
         MotionEvent.PointerProperties properties=new MotionEvent.PointerProperties();properties.id=0;properties.toolType=MotionEvent.TOOL_TYPE_STYLUS;
         MotionEvent.PointerCoords coords=new MotionEvent.PointerCoords();coords.x=x;coords.y=y;coords.pressure=pressure;
-        coords.setAxisValue(MotionEvent.AXIS_TILT,tx);coords.orientation=ty;
+        // Match the firmware wire format, independently of the stroke API.
+        coords.orientation=tx;coords.setAxisValue(MotionEvent.AXIS_TILT,ty);
         MotionEvent event=MotionEvent.obtain(start,SystemClock.uptimeMillis(),action,1,new MotionEvent.PointerProperties[]{properties},new MotionEvent.PointerCoords[]{coords},0,0,1,1,0,0,InputDevice.SOURCE_STYLUS,0);
         view.dispatchTouchEvent(event);event.recycle();
     }
@@ -765,13 +1196,328 @@ final class PaintChecks {
         int gray = (Integer)field(activity,"gray");
         check(DotPattern.whiteCount(gray)>50 && DotPattern.whiteCount(gray)<64, "New lighter shades selectable");
         check(Arrays.equals(original,((ToneDocument)field(pad,"document")).snapshot()), "Picker touches never paint");
-        View preview = (View)field(activity,"shadePreview");
-        Bitmap bitmap = Bitmap.createBitmap(preview.getWidth(),preview.getHeight(),Bitmap.Config.ARGB_8888);
-        test.runOnMainSync(() -> preview.draw(new Canvas(bitmap)));
-        int white=0, left=bitmap.getWidth()/2-4, top=bitmap.getHeight()/2-4;
-        for (int y=top;y<top+8;y++) for (int x=left;x<left+8;x++) if (bitmap.getPixel(x,y)==Color.WHITE) white++;
-        check(white==DotPattern.whiteCount(gray), "Selected shade preview matches canvas density"); bitmap.recycle();
         report.append("Shortened dotted picker exposes all 65 densities; wide black/white ends and intermediate shades select without painting.\n");
+    }
+    private static int marks(ToneDocument doc) {
+        int count=0;for(byte pixel:doc.snapshot())if((pixel&255)!=255)count++;return count;
+    }
+    private static void solidBrushRaster() {
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR,ToolSettings.Tool.FLAT_WASH,ToolSettings.Tool.WET_WATERCOLOR})
+            for(ToolSettings.Head head:ToolSettings.Head.values())for(boolean tilt:new boolean[]{false,true})
+                for(float pressure:new float[]{.1f,.45f})for(boolean push:new boolean[]{false,true}) {
+                    ToolSettings settings=ToolSettings.defaults(tool).head(head).size(32).minimum(32).tilt(tilt);
+                    ToneDocument solid=new ToneDocument(128,160),legacy=new ToneDocument(128,160);
+                    PressureStroke a=new PressureStroke(solid,settings.bristles(0),0,123);
+                    PressureStroke b=new PressureStroke(legacy,settings.bristles(100),0,987);
+                    for(int i=0;i<=4;i++) {
+                        float y=push?120-i*20:40+i*20;
+                        a.sample(64,y,pressure,0,60);b.sample(64,y,pressure,0,60);
+                    }
+                    a.finish();b.finish();
+                    check(Arrays.equals(solid.snapshot(),legacy.snapshot()),"Saved bristle settings cannot create gaps in "+tool+" "+head);
+                    check(legacy.tone(64,80)==0,"Solid brush paints the interior of its stroke");
+                    byte[] painted=legacy.snapshot();
+                    check(legacy.undo()&&marks(legacy)==0&&legacy.redo()&&Arrays.equals(painted,legacy.snapshot()),"Solid brush undo/redo is exact");
+                }
+    }
+    private static void brushTiltRaster() {
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR})
+            for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT}) {
+                ToolSettings follow=ToolSettings.defaults(tool).head(head).size(72).tilt(true);
+                ToneDocument stable=new ToneDocument(128,128);
+                PressureStroke stroke=new PressureStroke(stable,follow,0);
+                stroke.sample(64,64,.45f,0,60);byte[] first=stable.snapshot();
+                for(float[] invalid:new float[][]{{Float.NaN,30},{91,0},{0,Float.POSITIVE_INFINITY}}) {
+                    stroke.sample(64,64,.45f,invalid[0],invalid[1]);
+                    check(Arrays.equals(first,stable.snapshot()),"Invalid tilt holds the last contact shape and angle");
+                }
+                stroke.finish();check(stable.undo()&&stable.redo()&&Arrays.equals(first,stable.snapshot()),"Tilted blot undo/redo is exact");
+                ToneDocument fixedA=new ToneDocument(128,128),fixedB=new ToneDocument(128,128);
+                PressureStroke a=new PressureStroke(fixedA,follow.tilt(false).angle(37),0);
+                PressureStroke b=new PressureStroke(fixedB,follow.tilt(false).angle(37),0);
+                a.sample(64,64,.45f,0,0);a.finish();b.sample(64,64,.45f,60,-45);b.finish();
+                check(Arrays.equals(fixedA.snapshot(),fixedB.snapshot()),"Fixed-angle contact ignores tilt direction and magnitude");
+                ToneDocument wrap=new ToneDocument(128,128);
+                stroke=new PressureStroke(wrap,follow,0);stroke.sample(64,64,.45f,60,-1);stroke.sample(64,64,.45f,60,1);stroke.finish();
+                check(wrap.tone(34,64)==255,"Direction wrap never spins a head the long way around");
+                ToneDocument turning=new ToneDocument(128,128);
+                stroke=new PressureStroke(turning,follow,0);stroke.sample(64,64,.45f,60,0);int firstMarks=marks(turning);
+                stroke.sample(64,64,.45f,0,-60);stroke.finish();
+                check(marks(turning)>firstMarks,"Turning in place paints intermediate contact instead of skipping it");
+            }
+    }
+    private static ToneDocument contactDab(ToolSettings settings,float pressure,float tx,float ty) {
+        ToneDocument doc=new ToneDocument(160,200);
+        PressureStroke stroke=new PressureStroke(doc,settings,0);
+        stroke.sample(80,70,pressure,tx,ty);stroke.finish();return doc;
+    }
+    private static void roundedFilbertRaster(Instrumentation test) throws Exception {
+        Bitmap sheet=Bitmap.createBitmap(480,260,Bitmap.Config.ARGB_8888);sheet.eraseColor(Color.WHITE);
+        Canvas canvas=new Canvas(sheet);Paint ink=new Paint();ink.setColor(Color.BLACK);ink.setTextSize(14);
+        ToolSettings previous=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(ToolSettings.Head.FILBERT).size(64).minimum(64).tilt(true);
+        ToolSettings rounded=previous.automaticHead();
+        ToolSettings flat=previous.head(ToolSettings.Head.FLAT).automaticHead();
+        ToneDocument[] samples={contactDab(previous,.45f,0,60),contactDab(rounded,.45f,0,60),contactDab(flat,.45f,0,60)};
+        String[] labels={"Previous Filbert","Fuller Filbert","Flat"};
+        int[] oldBounds=bounds(samples[0],80,95,75),newBounds=bounds(samples[1],80,95,75);
+        check(newBounds[1]>=oldBounds[1]*4,"Actual default Filbert is at least four times deeper than the old thin oval");
+        check(newBounds[1]>newBounds[0]*.55f&&newBounds[1]<newBounds[0]*.8f,"Filbert has a full oval silhouette, distinct from Flat and Round");
+        for(int i=0;i<samples.length;i++) {
+            int[] pixels=new int[160*200];samples[i].render(pixels,0,0,160,200);
+            Bitmap stamp=Bitmap.createBitmap(pixels,160,200,Bitmap.Config.ARGB_8888);
+            canvas.drawBitmap(stamp,i*160,25,null);stamp.recycle();canvas.drawText(labels[i],i*160+8,22,ink);
+        }
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR,ToolSettings.Tool.FLAT_WASH,ToolSettings.Tool.WET_WATERCOLOR}) {
+            ToolLibrary library=new ToolLibrary();library.select(tool);library.selectHead(ToolSettings.Head.FILBERT);
+            check(library.current().headThickness==55&&library.current().tilt,"Every paint mode gets the fuller automatic Filbert");
+            ToneDocument document=contactDab(library.current().size(64).minimum(64),.45f,0,60);
+            check(Arrays.equals(document.snapshot(),samples[1].snapshot()),"Paint modes share the fuller Filbert footprint");
+            byte[] painted=document.snapshot();check(document.undo()&&marks(document)==0&&document.redo()&&Arrays.equals(painted,document.snapshot()),"Fuller Filbert retains exact undo/redo");
+        }
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(test.getTargetContext().getCacheDir(),"filbert-rounding-comparison.png"))) {
+            sheet.compress(Bitmap.CompressFormat.PNG,100,out);
+        }finally{sheet.recycle();}
+    }
+    private static void filbertContactRaster(Instrumentation test) throws Exception {
+        ToolSettings rounded=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(ToolSettings.Head.FILBERT)
+                .size(64).minimum(64).headThickness(40).tilt(true);
+        ToneDocument capsule=contactDab(rounded,1,0,60);
+        check(capsule.tone(80,71)==0&&capsule.tone(80,99)==0,"Filbert fills both ends of its center line");
+        check(capsule.tone(49,71)==255&&capsule.tone(49,99)==255,"Filbert rounds the corners of its filled footprint");
+        for(int y=80;y<90;y++)for(int x=65;x<95;x++)
+            check(capsule.tone(x,y)==0,"Filbert contact has a filled oval interior");
+        check(capsule.tone(65,71)==255&&capsule.tone(65,85)==0,
+                "Filbert curves along its broad edge instead of only rounding tiny corners");
+        Bitmap sheet=Bitmap.createBitmap(800,400,Bitmap.Config.ARGB_8888);sheet.eraseColor(Color.WHITE);
+        Canvas preview=new Canvas(sheet);Paint label=new Paint();label.setColor(Color.BLACK);label.setTextSize(14);
+        int row=0;
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT}) {
+            ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(80).headThickness(40).tilt(true);
+            ToneDocument upright=contactDab(settings,.45f,0,0),half=contactDab(settings,.45f,0,30);
+            ToneDocument leaned=contactDab(settings,.45f,0,60),light=contactDab(settings,.2f,0,60);
+            int[] u=bounds(upright,80,70,60),h=bounds(half,80,70,60),l=bounds(leaned,80,95,75),p=bounds(light,80,95,75);
+            check(u[0]>u[1]&&upright.tone(80,70)==0,"Pressed upright contact is a broad filled blot for "+head);
+            check(l[0]>h[0]&&h[0]>u[0],"Tilt exposes more brush width");
+            check(l[1]>=p[1]&&l[0]>=p[0],"Pressure preserves or increases thin contact coverage");
+            for(int y=0;y<69;y++)for(int x=0;x<160;x++)check(leaned.tone(x,y)==255,"Leaning down lays contact forward of the tip");
+            if(head==ToolSettings.Head.FILBERT) {
+                check(leaned.tone(80,72)==0&&leaned.tone(80,92)==0,"Tilted Filbert fills the entire contact instead of leaving a crescent");
+                check(half.tone(80,75)==0,"Moderately tilted Filbert stays filled");
+            } else check(leaned.tone(80,86)==0,"Flat contact remains filled through its forward length");
+            ToneDocument away=contactDab(settings,.45f,0,-60);
+            check(away.tone(80,67)==0,"Tilting away extends contact toward the opposite side of the tip");
+            ToneDocument pull=new ToneDocument(160,200);PressureStroke stroke=new PressureStroke(pull,settings,0);
+            stroke.sample(80,70,.45f,0,60);byte[] first=pull.snapshot();
+            for(int repeat=0;repeat<10;repeat++)stroke.sample(80,70,.45f,0,60);
+            check(Arrays.equals(first,pull.snapshot()),"A blot depends on tilt and pressure, not dwell time or sample count");
+            stroke.sample(80,150,.45f,0,60);stroke.finish();
+            int width=0;for(int x=0;x<160;x++)if(pull.tone(x,130)==0)width++;
+            check(width>=70,"Pulling completes the curved contact across the full brush width");
+            byte[] painted=pull.snapshot();check(pull.undo()&&marks(pull)==0&&pull.redo()&&Arrays.equals(painted,pull.snapshot()),"Contact stroke is one exact undo step");
+            ToneDocument[] examples={upright,half,leaned,light,pull};
+            String[] titles={head.label+" upright","Tilt 30°","Tilt 60°","Light pressure","Pull"};
+            for(int col=0;col<examples.length;col++) {
+                int[] pixels=new int[160*200];examples[col].render(pixels,0,0,160,200);
+                Bitmap sample=Bitmap.createBitmap(pixels,160,200,Bitmap.Config.ARGB_8888);
+                preview.drawBitmap(sample,col*160,row*200,null);sample.recycle();
+                preview.drawText(titles[col],col*160+8,row*200+20,label);
+            }
+            row++;
+        }
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(test.getTargetContext().getCacheDir(),"filbert-contact.png"))) {
+            sheet.compress(Bitmap.CompressFormat.PNG,100,out);
+        }finally{sheet.recycle();}
+    }
+    private static void flatLeanPressureRaster() {
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT})
+            for(int minimum:new int[]{2,64}) {
+                ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head)
+                        .size(64).minimum(minimum).headThickness(10).tilt(true);
+                int smallest=1000,largest=0;
+                for(float pressure:new float[]{.05f,.1f,.2f,.45f,.9f}) {
+                    ToneDocument dab=contactDab(settings,pressure,0,60);
+                    int[] shape=bounds(dab,80,100,75);
+                    if(head==ToolSettings.Head.FLAT) {
+                        check(shape[0]>=64&&shape[1]<=8,"Tilted Flat stays broad and thin at every pressure");
+                        smallest=Math.min(smallest,shape[0]);largest=Math.max(largest,shape[0]);
+                    } else {
+                        int band=0;for(int y=0;y<200;y++)if(dab.tone(80,y)==0)band++;
+                        check(band<=8,"Filbert retains thin filled contact under firm pressure");
+                    }
+                }
+                if(head==ToolSettings.Head.FLAT)check(largest-smallest<=3,"Only slight tip splay changes Flat width");
+            }
+    }
+    private static void pressureSquishRaster(Instrumentation test) throws Exception {
+        Bitmap sheet=Bitmap.createBitmap(640,1200,Bitmap.Config.ARGB_8888);sheet.eraseColor(Color.WHITE);
+        Canvas preview=new Canvas(sheet);Paint label=new Paint();label.setColor(Color.BLACK);label.setTextSize(13);
+        int row=0;
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT}) {
+            ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(64).minimum(64).headThickness(10).tilt(true);
+            for(float tilt:new float[]{0,30,60}) {
+                ToneDocument doc=new ToneDocument(160,200);PressureStroke stroke=new PressureStroke(doc,settings,0);
+                int previousMarks=0,previousWidth=0,col=0;byte[] initial=null;
+                for(float pressure:new float[]{.05f,.2f,.45f,.9f}) {
+                    stroke.sample(80,70,pressure,0,tilt);
+                    int count=marks(doc),width=bounds(doc,80,100,75)[0];
+                    boolean earlyFull=tilt>0&&col>0;
+                    boolean steadyWidth=tilt>=60;
+                    check(earlyFull?count>=previousMarks:count>previousMarks+(col==0?0:5),"Stationary contact keeps growing through the full pressure range: "+head+" tilt="+tilt+" pressure="+pressure);
+                    if(col>0)check(earlyFull||steadyWidth?width>=previousWidth:width>previousWidth,"Pressure exposes more width until full contact");
+                    byte[] current=doc.snapshot();
+                    if(initial!=null)for(int i=0;i<initial.length;i++)if(initial[i]==0)
+                        check(current[i]==0,"Pressure preserves initial paint");
+                    initial=doc.snapshot();previousMarks=count;previousWidth=width;
+                    if(tilt==0)check(doc.tone(80,70)==0,"Upright contact has no crescent hollow");
+                    int[] pixels=new int[160*200];doc.render(pixels,0,0,160,200);
+                    Bitmap sample=Bitmap.createBitmap(pixels,160,200,Bitmap.Config.ARGB_8888);
+                    preview.drawBitmap(sample,col*160,row*200,null);sample.recycle();
+                    preview.drawText(head.label+" "+(int)tilt+"° / "+pressure,col*160+7,row*200+20,label);
+                    col++;
+                }
+                byte[] pressed=doc.snapshot();stroke.sample(80,70,.05f,0,tilt);stroke.finish();
+                byte[] released=doc.snapshot();for(int i=0;i<pressed.length;i++)if(pressed[i]==0)
+                    check(released[i]==0,"Release never removes deposited paint");
+                check(doc.undo()&&marks(doc)==0&&doc.redo()&&Arrays.equals(released,doc.snapshot()),"Stationary press and lift undoes as one gesture");
+                row++;
+            }
+            ToneDocument tip=contactDab(settings,.05f,0,60);
+            if(head==ToolSettings.Head.FILBERT)check(tip.tone(80,72)==0&&tip.tone(80,78)==255,"Light tilted Filbert has a filled thin contact");
+            for(float[] lean:new float[][]{{0,60},{0,-60},{60,0},{-60,0},{60,60},{-60,-60}}) {
+                ToneDocument doc=new ToneDocument(160,200);PressureStroke stroke=new PressureStroke(doc,settings,0);
+                stroke.sample(80,70,.05f,lean[0],lean[1]);byte[] initial=doc.snapshot();
+                stroke.sample(80,70,.9f,lean[0],lean[1]);int extra=0;
+                for(int y=0;y<200;y++)for(int x=0;x<160;x++) {
+                    if(initial[y*160+x]==0)check(doc.tone(x,y)==0,"Squishing preserves the original tip paint");
+                    if(initial[y*160+x]!=0&&doc.tone(x,y)==0) {
+                        extra++;
+                        check((x+.5f-80)*lean[0]+(y+.5f-70)*lean[1]>=-1,"Squishing lays paint toward the signed lean");
+                    }
+                }
+                check(extra>40,"Stationary pressure adds modest contact while retaining a thin head");stroke.finish();
+            }
+        }
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(test.getTargetContext().getCacheDir(),"brush-pressure.png"))) {
+            sheet.compress(Bitmap.CompressFormat.PNG,100,out);
+        }finally{sheet.recycle();}
+    }
+    private static void headThicknessRaster() {
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT}) {
+            int previous=0;
+            for(int thickness:new int[]{0,10,35,70,100}) {
+                ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(64).minimum(64).tilt(true).headThickness(thickness);
+                ToneDocument sideways=new ToneDocument(256,256),downward=new ToneDocument(256,256);
+                PressureStroke side=new PressureStroke(sideways,settings,0),down=new PressureStroke(downward,settings,0);
+                side.sample(40,128,.05f,0,60);side.sample(216,128,.05f,0,60);side.finish();
+                down.sample(128,40,.05f,0,60);down.sample(128,216,.05f,0,60);down.finish();
+                int thin=0,wide=0;
+                for(int i=0;i<256;i++){if(sideways.tone(128,i)==0)thin++;if(downward.tone(i,128)==0)wide++;}
+                if(head==ToolSettings.Head.FLAT)check(Math.abs(thin-Math.max(1.5f,64*thickness/100f))<=1,"Thickness controls the actual sideways stroke width");
+                else check(thin>0&&thin<=Math.max(1.5f,64*thickness/100f)+1,"Rounded Filbert retains the selected thin edge");
+                // Measure the bristle band at its center. A swept arc's bounds
+                // also depend on curvature and subpixel sampling at its ends.
+                ToneDocument dab=contactDab(settings,.05f,0,60);int band=0;
+                for(int y=0;y<200;y++)if(dab.tone(80,y)==0)band++;
+                check(band>=previous,"Increasing thickness broadens the bristle band");previous=band;
+                if(head==ToolSettings.Head.FLAT)check(wide>=41&&wide<=64,"Light contact exposes part of the flat head width");
+                if(thickness==10)check(wide>thin*(head==ToolSettings.Head.FLAT?6:3),"Thin default preserves a broad edge and a fine sideways stroke");
+                if(thickness==0) {
+                    ToneDocument diagonal=new ToneDocument(256,256);
+                    PressureStroke hairline=new PressureStroke(diagonal,settings.tilt(false).angle(45),0);
+                    hairline.sample(30,220,.45f);hairline.sample(220,30,.45f);hairline.finish();
+                    for(int i=65;i<215;i++)check(diagonal.tone(i,250-i)==0,"Hairline interpolation leaves no holes across sparse diagonal input");
+                }
+            }
+        }
+    }
+    private static void brushHeadRaster() {
+        for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT})
+            for(int size:new int[]{2,3,72,128})for(int angle:new int[]{0,45,90,137,180})for(int center:new int[]{2,96}) {
+                ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(size).angle(angle).headThickness(head==ToolSettings.Head.FLAT?35:50);
+                ToneDocument doc=new ToneDocument(192,192);
+                // Verify fixed-angle geometry separately from the tilt-dependent
+                // contact shape, which has its own regression above.
+                Bitmap stamp=Bitmap.createBitmap(192,192,Bitmap.Config.ARGB_8888);
+                Paint ink=new Paint();ink.setColor(Color.BLACK);
+                BrushStamp.draw(new Canvas(stamp),ink,center,96,size/2f,settings);
+                int[] mask=new int[192*192];stamp.getPixels(mask,0,192,0,0,192,192);stamp.recycle();
+                doc.begin();doc.paintMask(mask,192,0,0,192,192,0);doc.finish();
+                Bitmap bitmap=Bitmap.createBitmap(192,192,Bitmap.Config.ARGB_8888);bitmap.eraseColor(Color.WHITE);
+                Canvas canvas=new Canvas(bitmap);Paint paint=new Paint();paint.setColor(Color.BLACK);
+                float radius=size/2f,minor=Math.max(.75f,radius*(head==ToolSettings.Head.FLAT?.35f:.5f));
+                canvas.rotate(angle,center,96);
+                if(head==ToolSettings.Head.FLAT)canvas.drawRect(center-radius,96-minor,center+radius,96+minor,paint);
+                else canvas.drawOval(center-radius,96-minor,center+radius,96+minor,paint);
+                int marks=0,mismatch=0;
+                for(int y=0;y<192;y++)for(int x=0;x<192;x++) {
+                    if(doc.tone(x,y)==0)marks++;
+                    if(doc.tone(x,y)!=Color.red(bitmap.getPixel(x,y)))mismatch++;
+                }
+                // Transform rounding can choose an adjacent edge pixel at oblique angles.
+                check(mismatch<=4,"Rotated stamp is complete: "+head+" "+size+" "+angle+" mismatch="+mismatch);
+                check(marks>0,"Small and clipped brush heads remain visible: "+head+" "+size+" "+angle);bitmap.recycle();
+                if(center==96&&size==72&&angle==0) {
+                    check(doc.tone(96,96)==0,"Head center paints");
+                    check((doc.tone(129,106)==0)==(head==ToolSettings.Head.FLAT),"Flat has square corners; filbert has rounded corners");
+                }
+                byte[] painted=doc.snapshot();check(doc.undo(),"Head stroke undoes");
+                check(doc.redo()&&Arrays.equals(painted,doc.snapshot()),"Head stroke redoes exactly");
+            }
+        for(ToolSettings.Head head:ToolSettings.Head.values()) {
+            ToneDocument opaque=new ToneDocument(256,256),wash=new ToneDocument(256,256);
+            ToolSettings dry=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(32).angle(45);
+            ToolSettings wet=ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).head(head).size(32).angle(45);
+            PressureStroke a=new PressureStroke(opaque,dry,0),b=new PressureStroke(wash,wet,182);
+            a.sample(20,20,.45f);a.sample(235,235,.45f);a.finish();
+            b.sample(20,20,.45f);b.sample(235,235,.45f);b.finish();
+            for(int i=20;i<235;i++)check(opaque.tone(i,i)==0,"Sparse input produces a continuous stroke for "+head);
+            for(int y=0;y<256;y++)for(int x=0;x<256;x++)
+                check(wash.tone(x,y)==(opaque.tone(x,y)==0&&DotPattern.pixel(182,x,y)==Color.BLACK?0:255),"All heads support transparent watercolor");
+        }
+    }
+    private static void flatWashRaster() {
+        byte[] base=new byte[256*128];
+        for(int i=0;i<base.length;i++)base[i]=(byte)(i%256);
+        for(ToolSettings.Head head:ToolSettings.Head.values()) for(int gray:new int[]{0,80,170,255}) for(int texture:new int[]{0,75}) {
+            ToneDocument wash=new ToneDocument(256,128,base),footprint=new ToneDocument(256,128);
+            ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.FLAT_WASH).head(head).size(72).minimum(5).pressureResponse(83).tilt(true).angle(35).bristles(texture);
+            ToolSettings opaque=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(head).size(72).minimum(5).pressureResponse(83).tilt(true).angle(35).bristles(texture);
+            PressureStroke stroke=new PressureStroke(wash,settings,gray,42),brush=new PressureStroke(footprint,opaque,0,42);
+            float[][] points={{-.5f,3,.3f},{40,30,.1f},{130,64,.45f},{230,100,.25f},{255.5f,127,.4f}};
+            for(float[] point:points) {
+                stroke.sample(point[0],point[1],point[2],45,25);brush.sample(point[0],point[1],point[2],45,25);
+            }
+            boolean changed=stroke.finish();brush.finish();byte[] painted=wash.snapshot();
+            for(int y=0;y<128;y++)for(int x=0;x<256;x++) {
+                int previous=base[y*256+x]&255;
+                check(wash.tone(x,y)==(footprint.tone(x,y)==0?Math.min(gray,previous):previous),"Flat wash matches shaped/textured footprint and keeps darker tones");
+            }
+            stroke=new PressureStroke(wash,settings,gray,42);
+            for(float[] point:points)stroke.sample(point[0],point[1],point[2],45,25);
+            check(!stroke.finish()&&Arrays.equals(painted,wash.snapshot()),"Repeating the same flat wash footprint does not darken it");
+            if(changed) {
+                check(wash.undo()&&Arrays.equals(base,wash.snapshot()),"Flat wash raster undoes in one step");
+                check(wash.redo()&&Arrays.equals(painted,wash.snapshot()),"Flat wash raster redoes exactly");
+            }
+        }
+    }
+    private static void watercolorRaster() {
+        byte[] base=new byte[256*128];
+        for(int i=0;i<base.length;i++)base[i]=(byte)(i%256);
+        for(int gray:GrayPalette.VALUES) {
+            ToneDocument wash=new ToneDocument(256,128,base),footprint=new ToneDocument(256,128);
+            ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).size(72).minimum(5).pressureResponse(83);
+            PressureStroke wet=new PressureStroke(wash,settings,gray);
+            PressureStroke opaque=new PressureStroke(footprint,ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(72).minimum(5).pressureResponse(83),0);
+            for(float[] point:new float[][]{{-.5f,3,.3f},{40,30,.1f},{130,64,.45f},{230,100,.25f},{255.5f,127,.4f}}) {
+                wet.sample(point[0],point[1],point[2]);opaque.sample(point[0],point[1],point[2]);
+            }
+            wet.finish();opaque.finish();
+            for(int y=0;y<128;y++)for(int x=0;x<256;x++) {
+                boolean dot=footprint.tone(x,y)==0&&DotPattern.pixel(gray,x,y)==Color.BLACK;
+                check(wash.tone(x,y)==(dot?0:base[y*256+x]&255),"Watercolor honors brush footprint, pressure, clipping and transparent gaps");
+            }
+        }
     }
     private static void rasterBaseline() {
         for (int gray : GrayPalette.VALUES) {

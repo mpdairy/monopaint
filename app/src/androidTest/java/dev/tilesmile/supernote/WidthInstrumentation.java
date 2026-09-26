@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 public final class WidthInstrumentation extends Instrumentation {
     private boolean displayProbeOnly;
     private boolean paintOnly;
+    private boolean brushOnly;
+    private boolean brushPerfOnly;
     private NativePen pen;
     private volatile CountDownLatch complete;
     private volatile double measured;
@@ -43,14 +45,17 @@ public final class WidthInstrumentation extends Instrumentation {
         super.onCreate(args);
         displayProbeOnly = args != null && "true".equals(args.getString("displayProbeOnly"));
         paintOnly = args != null && "true".equals(args.getString("paintOnly"));
+        brushOnly = args != null && "true".equals(args.getString("brushOnly"));
+        brushPerfOnly = args != null && "true".equals(args.getString("brushPerfOnly"));
         start();
     }
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (paintOnly) {
+        if (paintOnly || brushOnly || brushPerfOnly) {
             try {
-                PaintChecks.run(this, report);
+                if (brushPerfOnly) BrushPerformanceChecks.run(report);
+                else PaintChecks.run(this, report, brushOnly);
                 result.putString("stream", report.toString());
                 finish(Activity.RESULT_OK, result);
             } catch (Throwable error) {
@@ -491,8 +496,8 @@ public final class WidthInstrumentation extends Instrumentation {
                 point.x = 300 + Math.min(step,80)*10; point.y = 500;
                 point.pressure = gradient ? (step >= 27 && step < 54 ? .4f : .1f) : pressure; point.size = 1;
                 point.setAxisValue(MotionEvent.AXIS_TILT,
-                        tiltGradient && step >= 27 && step < 54 ? leanX : 0);
-                point.orientation = tiltGradient && step >= 27 && step < 54 ? leanY : 0;
+                        tiltGradient && step >= 27 && step < 54 ? leanY : 0);
+                point.orientation = tiltGradient && step >= 27 && step < 54 ? leanX : 0;
                 int action = step == 0 ? MotionEvent.ACTION_DOWN : step == 81 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
                 MotionEvent event = MotionEvent.obtain(down, down + step*10, action, 1,
                         new MotionEvent.PointerProperties[]{prop}, new MotionEvent.PointerCoords[]{point},
