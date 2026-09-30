@@ -9,6 +9,10 @@ core.*
 *.jks
 *.apk
 !dist/Mattelier.apk
+!dist/monopaint.apk
+.env
+.env.*
+!.env.example
 .agents/
 .codex/
 VERIFICATION.md

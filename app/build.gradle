@@ -1,19 +1,26 @@
 plugins { id 'com.android.application' }
 android {
-    namespace 'dev.tilesmile.supernote'
+    namespace 'io.github.mpdairy.monopaint'
     compileSdk 34
     ndkVersion '27.0.12077973'
     externalNativeBuild {
         cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.22.1' }
     }
     defaultConfig {
+        // Keep the installed identity so updates retain existing private drawings.
         applicationId 'dev.tilesmile.supernote.paint'
         minSdk 27
         targetSdk 34
         versionCode 38
         versionName '0.38'
-        testInstrumentationRunner 'dev.tilesmile.supernote.WidthInstrumentation'
+        testInstrumentationRunner 'io.github.mpdairy.monopaint.WidthInstrumentation'
         ndk { abiFilters 'arm64-v8a' }
+    }
+    buildTypes {
+        debug {
+            // Device checks can run beside the user's app with an empty private library.
+            if (project.hasProperty('isolatedChecks')) applicationIdSuffix '.checks'
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8

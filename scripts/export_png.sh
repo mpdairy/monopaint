@@ -8,6 +8,6 @@ export_repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 export_classes=$(mktemp -d)
 trap 'rm -rf "$export_classes"' EXIT
 javac -d "$export_classes" \
-  "$export_repo_root"/app/src/main/java/dev/tilesmile/supernote/{GrayPalette,DotPattern,ToneDocument,DocumentCodec,DrawingBook,BookCodec}.java \
+  "$export_repo_root"/app/src/main/java/io/github/mpdairy/monopaint/{GrayPalette,DotPattern,ToneDocument,DocumentCodec,DrawingBook,BookCodec}.java \
   "$export_repo_root/scripts/java/ExportPng.java"
-java -Djava.awt.headless=true -cp "$export_classes" dev.tilesmile.supernote.ExportPng "$1" "$2" "$3" "${4:-calibrated}"
+java -Djava.awt.headless=true -cp "$export_classes" io.github.mpdairy.monopaint.ExportPng "$1" "$2" "$3" "${4:-calibrated}"

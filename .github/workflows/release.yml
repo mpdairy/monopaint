@@ -23,6 +23,8 @@ jobs:
           test "$REF_TYPE" = tag
           test "$RELEASE_TAG" = "v$(cat dist/VERSION)"
           cd dist
+          test -f monopaint.apk
+          test "$(awk '{print $2}' SHA256SUMS)" = monopaint.apk
           sha256sum --check SHA256SUMS
       - name: Publish signed APK
         env:
@@ -31,8 +33,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/Mattelier.apk dist/SHA256SUMS --clobber
+            gh release upload "$RELEASE_TAG" dist/monopaint.apk dist/SHA256SUMS --clobber
           else
-            gh release create "$RELEASE_TAG" dist/Mattelier.apk dist/SHA256SUMS \
-              --verify-tag --title "Mattelier $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md --latest
+            gh release create "$RELEASE_TAG" dist/monopaint.apk dist/SHA256SUMS \
+              --verify-tag --title "MonoPaint $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md --latest
           fi

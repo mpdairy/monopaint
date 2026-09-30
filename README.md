@@ -1,9 +1,11 @@
 # MonoPaint
 
+<img src="app/src/main/res/mipmap-nodpi/ic_launcher.png" alt="MonoPaint brush logo" width="96" height="96">
+
 A small drawing app for **Supernote Manta**. Pressure-sensitive brushes, textured
 pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 
-[Download the latest APK](https://github.com/mpdairy/monopaint/releases/latest/download/Mattelier.apk)
+[Download the latest APK](https://github.com/mpdairy/monopaint/releases/latest/download/monopaint.apk)
 · [Release notes](https://github.com/mpdairy/monopaint/releases)
 
 ## What it does
@@ -12,17 +14,73 @@ pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 - Canvas wetness and opaque/transparent paint work with the normal brush.
 - Wet strokes blend into existing paint; transparent strokes build up darkness.
 - Tilt pencil, gradual eraser, flood fill, and directional blending stump.
+- Eraser color for removing paint with your current brush, pencil, or airbrush.
+- Soft airbrush with pressure-controlled strength, fixed size, and timed buildup.
 - 65 grayscale dot densities, including pure black and white.
+- Eyedropper for visible shades and a configurable toolbar.
+- Gradient fill with live color selection; lift the pen to finish.
 - Custom tools, drag-to-reorder toolbar, undo/redo, and multi-page drawings.
+- Up to eight layers per page, with names, visibility, ordering, and undoable deletion.
 - Local saves and automatic recovery. No account or network permissions.
+- Tap-to-rotate suggestions, with a landscape layout for either drawing hand.
+
+Tap **Layers** (the stacked sheets in the toolbar) to open the
+layer panel beside the tools. **Add layer** makes a transparent layer above the
+selected one. Tap a layer name to select it and return to drawing. The top row
+is the topmost layer; **Show** toggles visibility, and **Move up / Move down**
+changes which marks cover others. You can rename or delete the selected layer.
+Undo also reverses layer changes and restores deleted artwork.
+
+All tools, including flood fill, wet blending, and **Clear layer**, affect only
+the selected layer. The eraser reveals layers underneath; opaque white paint
+covers them. Show a hidden layer before drawing on it. A simple starting point
+is a sky on the bottom layer, scenery above, and details on top.
+
+Layers, visibility, and the selected layer save separately for every page.
+Existing drawings open unchanged as **Layer 1**. New saves use a layered page
+format that older app versions cannot read. PNG exports combine visible layers.
+
+Tap the selected **Fill** tool again to choose **Linear** or **Circular** in
+its settings. The choice is remembered for each tool or preset.
+
+With **Fill** selected:
+
+- Tap for solid fill.
+- Drag a line for gradient, then choose a second color. For Circular, drag from
+  the center to the outer edge.
+
+The direction line stays visible until you begin choosing the second color.
+Hold and slide on the color bar, or use the eyedropper, to preview it. Lift to finish. Undo reverses the whole fill. Fill uses the selected
+layer and its tolerance.
+
+Select **Airbrush** for a smooth spray of the current shade. Press harder for
+stronger spray; hold still or move slowly to build color. Tap it again to set
+**Diameter** (fixed size) and **Flow** (buildup rate). Fast strokes paint immediately with
+smooth, continuous spray. Airbrush lays translucent
+paint on the selected layer, including white. Select the eraser color for soft
+erasing with the same diameter and flow. Airbrush uses its own flow and does not use brush wetness or the
+opaque/transparent brush modes. Each spray stroke is one undo action.
 
 Tap a tool to select it. Tap a selected brush again (or hold it) to open the
 centered panel of large Round / Flat / Filbert tips. Choose a tip to show its
 controls directly underneath; the menu stays open while you switch and adjust
 tips. Other tools and custom tools open settings on a second tap.
 **Add to Toolbar** saves a custom tool, and its settings save automatically when
-edited. Hold and drag custom tools to reorder them. For thinner light strokes,
+edited. Favorites keep their settings separate from the regular tools. Matching
+favorite icons have one dot, two dots, and so on in toolbar order. Hold and drag
+custom tools to reorder them. For thinner light strokes,
 move **Pressure response** toward **Firm touch**; 50% keeps the original response.
+
+**Menu → Settings → Toolbar** shows each tool's icon with a visibility checkbox
+and up/down arrows. Show, hide, or reorder Brush, Pencil, Airbrush, Fill, Eraser, Blending
+stump, Layers, and Zoom. All start visible; keep at least one painting tool enabled.
+Hidden tools keep their settings and position, and custom tools remain in their
+own section. Hiding the selected regular tool switches to another visible tool.
+Your choices persist in every orientation and drawing-hand layout.
+
+**Settings → Side toolbar icon size** offers **Medium** and **Large** (the default).
+This also sizes Layers, Zoom, and custom tool icons. Both sizes fit the same
+buttons, keeping the canvas area and top controls unchanged.
 
 Each brush head remembers its own width and pressure response. Flat has a square
 edge; Filbert has a full, rounded oval footprint. Flat and Filbert always
@@ -31,12 +89,16 @@ gives a wide downstroke, with a fine sideways stroke for Flat and a fuller
 rounded mark for Filbert. Near upright, the brush keeps
 its last direction. This reads lean direction, not barrel twist.
 
-Flat keeps a thin bristle band; Filbert has a much fuller rounded contact.
-A light upright touch is compact;
-pressure spreads it wider, and leaning exposes the broad edge. Their compact
-settings contain minimum width, maximum width, and pressure response. Older
-presets use this automatic tilt behavior too, with no angle offset or adjustable
-head thickness. The toolbar and saved custom tools show the selected head icon.
+Flat has a maximum width of 256px and a **Height** slider. Its lowest setting is
+a fixed 1px edge; higher settings use 1–20% of the current pressure-sized width,
+never less than 1px. Choose 10% for the old proportion or 20% for twice that.
+Existing tools start at 1px; regular Flat and each favorite remember height
+independently. Filbert keeps its fuller rounded contact.
+Pressure controls width between the configured minimum and maximum.
+Pen tilt only rotates the head; leaning farther does not enlarge or shift it.
+Their compact settings contain minimum width, maximum width, and pressure response,
+plus height for Flat. Older presets use this automatic tilt behavior too, with no
+angle offset. The toolbar and saved custom tools show the selected head icon.
 
 Brush footprints are solid: bristle streaks and their control are disabled for
 now, including in existing presets. Raise **Minimum width** for broad strokes
@@ -53,7 +115,7 @@ Touching or dragging the bar above zero enables wet mode; zero switches it off.
 The droplet can also turn blending off while remembering the bar's strength.
 Tapping it again uses that strength, or restores medium wetness if the bar is zero.
 
-The two icons **right of the color bar** choose **Transparent** (overlapping
+The two overlapping-square icons **beyond the eraser color** choose **Transparent** (overlapping
 outlines) or **Opaque** (solid square). Opaque is the default and covers with the
 selected shade, including white. Transparent adds a half-strength multiply glaze:
 white adds no pigment, even black stays translucent, and separate strokes
@@ -61,7 +123,23 @@ build density. Overlapping stamps within one stroke do not repeatedly darken it.
 On a wet canvas, transparent white acts as clear water and blends existing paint.
 The color bar's marker indicates the selected shade; there is no extra preview square.
 
-The left rail now contains Brush, Pencil, Fill, Eraser, and Soften plus your custom
+Tap the **eraser beside the white end of the color bar** to erase with the current
+brush head, pencil, or airbrush. The color marker moves under the eraser icon.
+Erasing reveals the layers underneath and keeps your tool's shape, size, pressure,
+and other settings. Tap a shade, even the one previously selected, or accept an
+eyedropper sample to paint again. Wet paint settles before erasing; wetness and
+transparency settings are retained for painting. The mode follows supported tools
+and favorites and survives reopening the app. Fill, Blending stump, and the
+standalone Eraser return to their usual behavior and disable the eraser color.
+The standalone **Eraser** and saved eraser favorites remain available.
+
+The **eyedropper left of the color bar** samples the visible artwork. Tap it,
+then hold and drag the pen across the canvas: the color marker follows what you
+sample. Lift to keep that color and return to your previous tool. Sampling
+leaves no marks. During a gradient fill, it previews the second color and
+finishes the fill on release, sampling the artwork underneath the preview.
+
+The left rail now contains Brush, Pencil, Fill, Eraser, and Blending stump plus your custom
 tools. Older watercolor and wash presets keep their brush shape and settings and
 use the canvas wetness and paint mode controls. Wetness and transparency are global
 brush controls, independent of the selected head or preset.
@@ -72,13 +150,50 @@ ongoing animation. Your wetness and paint mode choices persist; the next brush
 stroke can mix with existing paint again when the droplet is on. Animation work
 is bounded to keep the pen responsive; this is grayscale blending, not fluid physics.
 
-**Menu → Settings → Instant selection dots** enables direct e-ink feedback for
-tool, shade, wetness, and paint mode selection. It is experimental and defaults off.
-The new mode dots and wetness bar also work with ordinary display feedback.
+Tool, shade, wetness, and paint mode selections always use instant e-ink feedback.
+Controls fall back to ordinary display refresh when direct feedback is unavailable.
+
+Turn the tablet and hold it at the new angle briefly: a **rotation-arrows button
+beside the file menu** appears. Tap it to accept the suggested orientation.
+Turning alone never rotates the page. Turn back toward portrait to get a return
+suggestion. A flat tablet has no reliable gravity direction; **Menu → Settings →
+Turn to landscape / Turn to portrait** also works without a sensor suggestion.
+
+**Settings → Drawing hand** places the controls opposite your hand. Right-handed
+mode uses a left tool rail in portrait; in landscape the former top toolbar goes
+on the left, with the menu and undo controls at the top and page controls at the
+bottom. In right-handed mode, the tools keep their original tablet edge with
+upright icons: turning the right edge down puts them along the top; turning the
+left edge down puts them along the bottom. Left-handed mode puts the side toolbar
+on the right and keeps the tools at the top in either landscape direction.
+The file menu stays in the outer top corner, with the rotation suggestion beside
+it toward the other controls. Its menu opens directly below the hamburger in
+every orientation. Existing Toolbox side preferences carry over.
+The artwork stays fixed relative to the tablet, like a sheet of paper; only the
+controls turn upright. Changing your drawing hand also leaves the artwork's
+orientation unchanged. Rotation keeps the page, tools, and undo history, fitting
+the whole page into the available canvas. Android itself stays locked to portrait:
+the app draws its controls and settings sideways. All four app orientations use
+the same fast Manta e-ink drawing path. Normal-size pages submit their original
+bitmap directly, without rotating a full image for each pen update. Instant
+selection dots also work with rotated controls, and the landscape shade strip
+keeps white at the top and black at the bottom, with its black selection marker
+on the inner edge facing the canvas for either drawing hand.
+
+Pinch with **two fingers** to zoom, or drag both fingers together to pan. The pen
+continues to paint at the same size in the drawing; one finger leaves the canvas
+alone. Lift the pen away from the screen before navigating, since pen contact
+and nearby hover suppress touch navigation.
+
+The **Zoom** button in the tool rail shows the current percentage. Tap it for
+**Zoom in**, **Zoom out**, or **Fit page**; hold it to fit the page immediately.
+100% means one drawing pixel per screen pixel, with a maximum of 800%. The view
+stays within the page edges. Opening/changing pages or rotating returns to the
+whole page. Zoom changes only the view, preserving drawing pixels and undo.
 
 ## Sideload onto a Manta
 
-1. Download **Mattelier.apk** from the latest release (not the source ZIP).
+1. Download **monopaint.apk** from the latest release (not the source ZIP).
 2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
    on your computer and open a terminal in the folder containing `adb`.
 3. On the Manta, turn on **Settings → Security & Privacy → Sideloading**.
@@ -87,8 +202,8 @@ The new mode dots and wetness bar also work with ordinary display feedback.
 
    ```sh
    adb devices
-   adb install -r /path/to/Mattelier.apk
-   adb shell am start -n dev.tilesmile.supernote.paint/dev.tilesmile.supernote.PaintActivity
+   adb install -r /path/to/monopaint.apk
+   adb shell am start -n dev.tilesmile.supernote.paint/io.github.mpdairy.monopaint.PaintActivity
    ```
 
    On Windows PowerShell, use `./adb.exe`; on macOS/Linux, use `./adb` if it
@@ -96,14 +211,39 @@ The new mode dots and wetness bar also work with ordinary display feedback.
    If a device is `unauthorized`, approve the prompt on the tablet and retry.
 
 For updates, repeat `adb install -r` with the new APK. The app ID remains
-`dev.tilesmile.supernote.paint`, so this also updates the earlier TileSmile app.
+`dev.tilesmile.supernote.paint`, so releases signed with the existing key also
+update the earlier TileSmile and Mattelier apps.
 Do not uninstall first: uninstalling deletes the app's private drawings.
+
+## Saving and organizing drawings
+
+**Menu → Save drawing** asks for a name and folder the first time. Later saves
+update that same drawing directly. **Save drawing as…** saves to a chosen name or
+folder and makes it the current save destination. Replacing an existing drawing
+through Save As requires confirmation; ordinary Save does not.
+
+**Open drawing** and **Save drawing as…** browse the drawing library. Tap a folder
+to enter it, **Up** to return to its parent, or **New folder** to create a subfolder.
+Existing drawings remain at the top level. Save As can put a copy of an existing
+drawing in a folder; it keeps the original copy.
+
+Each named drawing is one `.tsm` file containing all its pages. It is a ZIP archive
+with a binary manifest (dimensions, page count and selected page) and compressed,
+checksummed grayscale pixel data per page—not XML, PNGs, or a history of pen strokes.
+The display's dot pattern is regenerated from the grayscale data. Automatic
+recovery stores the working pages and their save destination together, so Save
+continues updating the same drawing after a restart. Older recovery files still
+open, but need a name on their first save because they did not record one.
+
+Folders are inside MonoPaint's private storage, not the tablet's shared file
+browser. Uninstalling the app removes them. PNG conversion on a computer is
+documented in [the development guide](docs/BUILDING.md#png-conversion).
 
 ## Current limits
 
 This is an early, unofficial app tested on **Manta (1920 × 2560, arm64)**.
 The direct display path is Manta-specific; Nomad and other tablets are unverified.
-There are no layers, zoom/pan, or in-app image export yet. Drawings live in the
+There is no in-app image export yet. Drawings live in the
 app's private storage, and undo history does not survive a restart.
 
 ## Nomad testers wanted
@@ -116,8 +256,10 @@ Android drawing fallback. Nomad support is not yet verified.
 
 ## Development and license
 
-See [building, testing, and publishing](docs/BUILDING.md). Technical research notes
-are in [docs](docs/). Earlier notes use the working name TileSmile.
+See [building, testing, and publishing](docs/BUILDING.md) and
+[contributing](CONTRIBUTING.md). Technical research notes are in [docs](docs/).
+Earlier notes use the working names TileSmile and Mattelier; compatibility details
+are in the [development guide](docs/BUILDING.md#project-names-and-compatibility).
 
 [MIT licensed](LICENSE). The pen bridge includes MIT-licensed work from
 [AnimInk](https://github.com/YoramDevGH/AnimInk); its attribution is retained in

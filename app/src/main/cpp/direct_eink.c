@@ -35,7 +35,7 @@ static void fail(JNIEnv *env, const char *message) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_dev_tilesmile_supernote_DirectEink_nativeOpen(JNIEnv *env, jclass clazz,
+Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz,
         jobject background,jint x,jint y,jint request_flags,jint display_mode) {
     (void)clazz;
     // Compare only the two settings observed in installed display clients.
@@ -97,7 +97,7 @@ Java_dev_tilesmile_supernote_DirectEink_nativeOpen(JNIEnv *env, jclass clazz,
 }
 
 JNIEXPORT jint JNICALL
-Java_dev_tilesmile_supernote_DirectEink_nativePresent(JNIEnv *env, jclass clazz,
+Java_io_github_mpdairy_monopaint_DirectEink_nativePresent(JNIEnv *env, jclass clazz,
         jlong handle,jobject bitmap,jint left,jint top,jint right,jint bottom,jint ox,jint oy) {
     (void)clazz;
     Display *d=(Display *)(intptr_t)handle;
@@ -157,7 +157,7 @@ Java_dev_tilesmile_supernote_DirectEink_nativePresent(JNIEnv *env, jclass clazz,
 }
 
 JNIEXPORT void JNICALL
-Java_dev_tilesmile_supernote_DirectEink_nativeClose(JNIEnv *env,jclass clazz,jlong handle) {
+Java_io_github_mpdairy_monopaint_DirectEink_nativeClose(JNIEnv *env,jclass clazz,jlong handle) {
     (void)env; (void)clazz;
     Display *d=(Display *)(intptr_t)handle;
     if (!d) return;
@@ -165,7 +165,7 @@ Java_dev_tilesmile_supernote_DirectEink_nativeClose(JNIEnv *env,jclass clazz,jlo
 }
 
 JNIEXPORT jint JNICALL
-Java_dev_tilesmile_supernote_DirectEink_nativeReadGray(JNIEnv *env,jclass clazz,jlong handle,jint x,jint y) {
+Java_io_github_mpdairy_monopaint_DirectEink_nativeReadGray(JNIEnv *env,jclass clazz,jlong handle,jint x,jint y) {
     (void)clazz;
     Display *d=(Display *)(intptr_t)handle;
     if (!d || x<0 || y<0 || x>=d->width || y>=d->height) {
@@ -177,7 +177,7 @@ Java_dev_tilesmile_supernote_DirectEink_nativeReadGray(JNIEnv *env,jclass clazz,
 // Device-info query used by the installed Atelier's repaintC constructor.
 // This capability probe makes no display writes and changes no permissions.
 JNIEXPORT jstring JNICALL
-Java_dev_tilesmile_supernote_DirectEink_probe(JNIEnv *env, jclass clazz) {
+Java_io_github_mpdairy_monopaint_DirectEink_probe(JNIEnv *env, jclass clazz) {
     (void)clazz;
     char result[512];
     int fd = open("/dev/ebc", O_RDWR | O_CLOEXEC);

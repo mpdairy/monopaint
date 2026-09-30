@@ -19,7 +19,7 @@ wide vertical stroke and a thin horizontal stroke when Angle offset is zero.
 
 ## Evidence from the device, 2026-09-25
 
-Inspected `/system/lib64/libinputreader.so` from Supernote SN100D20046977.
+Inspected `/system/lib64/libinputreader.so` from a Supernote Manta.
 Firmware build: `Chauvet.E103.2606141001.2389_release`.
 SHA-256: `83db75245da1cf51b78a9744a31266bef7b389e3e1c85d3aaa567a1f764ba6bd`.
 The firmware binary is not included in this repository.
@@ -202,3 +202,46 @@ The old crescent subtraction and minimum arc-depth floor are removed.
 The fast bounded stamp-processing path is retained. Regression coverage checks
 a filled interior, rounded empty corners, no crescent cutout, rotated/clipped
 capsules, thin contact, stationary pressure display, settings, wash and undo.
+
+## Direction-only brush tilt
+
+Flat and Filbert now use tilt only to rotate the head. Pressure selects width
+through the configured minimum, maximum and response curve. Inclination no
+longer inflates width, compresses the head, shifts contact forward or splays the
+tips. The stamp stays centered on the pen: a thin rectangle for Flat, a fuller
+oval for the automatic Filbert. Settings previews
+use the same geometry. This replaces the contact behavior described above.
+
+Raster regressions cover identical footprints at different inclinations,
+rotation without resizing, exact 1px light-pressure dabs and continuous
+hairlines, pressure growth at a stationary point, fixed-width strokes, rounded
+Filbert ends and exact undo/redo.
+
+## Fixed 1px Flat experiment
+
+Flat's width limit is now 256px and its short dimension stays 1px at every
+pressure and width, including legacy presets. Filbert and other tools retain
+their existing geometry and 128px size limit. Flat stamp spacing is capped at
+0.5px so sparse input and rotation do not leave holes in the thin stroke.
+
+The initial Manta CPU comparison used the same 120-sample replay, one warmup
+and three measured runs per case. Light-pressure 128px replay was essentially
+unchanged (65.19ms before, 64.41ms after). Full-pressure replay increased from
+51.68ms to 80.44ms at 64px and from 75.59ms to 148.84ms at 128px: maintaining
+continuous 1px coverage requires more stamps. This is a brush-shape experiment,
+not a speed improvement. These measurements exclude physical panel latency.
+
+## Adjustable Flat height
+
+The Flat editor now exposes Height: 0 selects a fixed 1px edge, while 1–20
+select the height as a percentage of the pressure-sized width, with a 1px
+floor. The UI labels zero as "1 px". Ten percent restores the old proportion;
+20% doubles it. Tilt still controls only heading. Preview geometry, stroke
+bounds and interpolation spacing all use the selected height.
+
+Preset format TSP13 reuses the existing thickness field. TSP12 and older Flat
+settings migrate to zero so the last build's 1px appearance remains unchanged.
+Each regular head and favorite retains its own setting. Filbert keeps its
+automatic 55% aspect ratio. Checks cover migration, independent memories,
+slider persistence, raster dimensions through 256px width, rotated/clipped
+continuous strokes and exact undo/redo.

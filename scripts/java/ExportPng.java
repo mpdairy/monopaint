@@ -1,4 +1,4 @@
-package dev.tilesmile.supernote;
+package io.github.mpdairy.monopaint;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
@@ -16,7 +16,7 @@ public final class ExportPng {
         ToneDocument page=book.current();int[] pixels=new int[page.width*page.height];
         if(mode.equals("dots"))page.render(pixels,0,0,page.width,page.height);
         else for(int y=0;y<page.height;y++)for(int x=0;x<page.width;x++) {
-            int g=page.tone(x,y);if(mode.equals("calibrated"))g=DotPattern.exportGray(g);
+            int g=page.compositeTone(x,y);if(mode.equals("calibrated"))g=DotPattern.exportGray(g);
             pixels[y*page.width+x]=(g<<16)|(g<<8)|g;
         }
         BufferedImage image=new BufferedImage(page.width,page.height,BufferedImage.TYPE_INT_RGB);

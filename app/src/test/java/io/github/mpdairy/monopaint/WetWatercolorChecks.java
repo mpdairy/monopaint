@@ -1,0 +1,186 @@
+package io.github.mpdairy.monopaint;
+
+import java.io.*;
+import java.util.Arrays;
+
+public final class WetWatercolorChecks {
+    public static void main(String[] args) throws Exception {
+        blendingAndHistory(); dryPaperAndLinework(); dryGaps(); drying(); pausedStrokes(false); pausedStrokes(true);
+        liveStroke(); boundedSlices(); adaptiveBudget(); presets();
+        System.out.println("PASS: live wet blending, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
+    }
+    private static void check(boolean pass, String message) { if (!pass) throw new AssertionError(message); }
+    private static void dab(ToneDocument doc, WetWatercolor wet, int x, int y, int w, int h, int gray) {
+        doc.begin(); wet.beginStroke(); mask(wet, x, y, w, h, gray); wet.finishStroke();
+    }
+    private static void mask(WetWatercolor wet, int x, int y, int w, int h, int gray) {
+        int[] mask = new int[w * h]; Arrays.fill(mask, 0xff000000);
+        wet.paintMask(mask, w, x, y, w, h, gray);
+    }
+    private static void settle(WetWatercolor wet) {
+        int frames = 0;
+        while (wet.isAnimating()) { wet.advance(false); check(++frames < 1000, "Animation terminates"); }
+    }
+    private static void blendingAndHistory() throws Exception {
+        ToneDocument doc = new ToneDocument(160, 96);
+        WetWatercolor wet = new WetWatercolor(doc);
+        byte[] blank = doc.snapshot();
+        dab(doc, wet, 10, 10, 120, 70, 180); settle(wet);
+        byte[] first = doc.snapshot();
+        check(doc.tone(60, 40) == 180, "A uniform wash retains its shade after settling");
+        dab(doc, wet, 55, 10, 45, 70, 20);
+        check(doc.tone(75, 40) == 20, "New stroke appears immediately at its selected shade");
+        wet.advance(false);
+        int initialBlend = doc.tone(75, 40);
+        check(initialBlend > 20 && initialBlend < 90, "Overlap begins fading gradually");
+        settle(wet);
+        check(doc.tone(75, 40) > initialBlend && doc.tone(75, 40) < 180, "Previously settled paint stays wet for later mixing");
+        check(doc.tone(53, 40) < 180, "Pigment spreads into adjacent wet paint");
+        byte[] mixed = doc.snapshot();
+        check(doc.undo() && Arrays.equals(doc.snapshot(), first), "One Undo removes the stroke and all its animation across tiles");
+        check(doc.undo() && Arrays.equals(doc.snapshot(), blank) && !doc.canUndo(), "No animation frames leak into history");
+        check(doc.redo() && Arrays.equals(doc.snapshot(), first), "First wash redoes exactly");
+        check(doc.redo() && Arrays.equals(doc.snapshot(), mixed) && !doc.canRedo(), "Animated stroke redoes to its final appearance");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DocumentCodec.write(bytes, doc.width, doc.height, doc.snapshot());
+        check(Arrays.equals(DocumentCodec.read(new ByteArrayInputStream(bytes.toByteArray())).snapshot(), mixed), "Save/load retains blended tones without transient water");
+    }
+    private static void dryPaperAndLinework() {
+        ToneDocument doc = new ToneDocument(67, 53);
+        doc.begin(); for (int x=0; x<67; x++) doc.setTone(x, 25, 0); doc.finish();
+        WetWatercolor wet = new WetWatercolor(doc);
+        dab(doc, wet, -5, -5, 50, 50, 160);
+        dab(doc, wet, 20, 10, 60, 30, 50); settle(wet);
+        for (int x=0; x<67; x++) check(doc.tone(x,25)==0, "Dry linework stays black beneath blending");
+        check(doc.tone(60,45)==255 && doc.tone(0,50)==255, "Blending stays inside the painted wet footprint");
+    }
+    private static void dryGaps() {
+        ToneDocument doc = new ToneDocument(48, 32);
+        WetWatercolor wet = new WetWatercolor(doc);
+        dab(doc, wet, 0, 0, 23, 32, 40);
+        dab(doc, wet, 24, 0, 24, 32, 200); settle(wet);
+        check(doc.tone(22,16)==40 && doc.tone(24,16)==200 && doc.tone(23,16)==255, "Water does not jump a one-pixel dry gap");
+    }
+    private static void drying() {
+        ToneDocument doc = new ToneDocument(64, 64);
+        WetWatercolor wet = new WetWatercolor(doc);
+        dab(doc, wet, 5, 5, 50, 50, 60); settle(wet);
+        // The dryer discards the transient engine; the next wash has a new dry base.
+        wet = new WetWatercolor(doc);
+        byte[] dried = doc.snapshot();
+        dab(doc, wet, 5, 5, 50, 50, 255); settle(wet);
+        check(Arrays.equals(dried, doc.snapshot()), "Water cannot lift pigment after drying");
+        dab(doc, wet, 5, 5, 50, 50, 128); settle(wet);
+        check(doc.tone(30,30)<60, "New paint glazes over the fixed dry wash");
+        check(doc.undo() && Arrays.equals(doc.snapshot(), dried), "No-op water stroke does not merge a new wash into older history");
+    }
+    private static void pausedStrokes(boolean canvas) {
+        ToneDocument doc = new ToneDocument(96, 64);
+        WetWatercolor wet = canvas ? new WetWatercolor(doc, 100) : new WetWatercolor(doc);
+        byte[] blank = doc.snapshot();
+        dab(doc, wet, 5, 5, 85, 50, 180);
+        wet.advance(false);
+        check(wet.isAnimating(), "Start a second stroke while old paint is still seeping");
+        byte[] before = doc.snapshot();
+        doc.begin(); wet.beginStroke(); mask(wet, 10, 10, 30, 40, 20);
+        byte[] held = doc.snapshot(); doc.clearDirty();
+        for(int i=0;i<40;i++) check(!wet.advance(true, 0, 0, 96), "Busy drawing leaves no animation budget");
+        check(Arrays.equals(held, doc.snapshot()) && doc.dirty() == null,
+                "Holding the pen freezes all paint, including older strokes, without dirtying the display");
+        check(wet.isAnimating(), "Holding longer than the animation duration preserves pending frames");
+        mask(wet, 50, 10, 30, 40, 20);
+        check(doc.tone(25,30)==20 && doc.tone(65,30)==20, "The whole active stroke stays crisp");
+        mask(wet, 10, 10, 30, 40, 20);
+        wet.finishStroke();
+        check(wet.advance(false) && doc.tone(25,30)>20, "Blending resumes after pen-up");
+        settle(wet); byte[] mixed = doc.snapshot();
+        check(doc.undo() && Arrays.equals(doc.snapshot(), before), "Resumed animation shares the new stroke's undo step");
+        check(doc.undo() && Arrays.equals(doc.snapshot(), blank) && !doc.canUndo(), "Paused frames add no undo steps");
+        check(doc.redo() && Arrays.equals(doc.snapshot(), before), "Interrupted old stroke redoes exactly");
+        check(doc.redo() && Arrays.equals(doc.snapshot(), mixed) && !doc.canRedo(), "Resumed blending redoes exactly");
+    }
+    private static void liveStroke() {
+        ToneDocument doc = new ToneDocument(96, 64);
+        WetWatercolor wet = new WetWatercolor(doc, 100);
+        dab(doc, wet, 5, 5, 85, 50, 180); settle(wet);
+        byte[] before = doc.snapshot();
+        doc.begin(); wet.beginStroke(); mask(wet, 10, 10, 30, 40, 20);
+        check(wet.strokePixels() == 1200, "Measure unique active stroke area");
+        mask(wet, 10, 10, 30, 40, 20);
+        check(wet.strokePixels() == 1200, "Overlapping stamps do not inflate stroke area");
+        for (int i=0;i<12;i++) wet.advance(true, 2, Long.MAX_VALUE, 96);
+        int trailing = doc.tone(25,30);
+        check(trailing > 20, "Small strokes blend while the pen is down");
+        mask(wet, 50, 10, 30, 40, 20);
+        check(doc.tone(65,30) == 20, "Fresh tip appears immediately beside a blended tail");
+        mask(wet, 10, 10, 30, 40, 20);
+        check(doc.tone(25,30) == trailing, "Repeated stamps preserve live blending");
+        wet.finishStroke(); settle(wet); byte[] after = doc.snapshot();
+        check(doc.undo() && Arrays.equals(before, doc.snapshot()), "Live and idle slices share stroke undo");
+        check(doc.redo() && Arrays.equals(after, doc.snapshot()), "Sliced animation redoes exactly");
+    }
+    private static void boundedSlices() {
+        ToneDocument doc = new ToneDocument(512, 320);
+        WetWatercolor wet = new WetWatercolor(doc, 100);
+        byte[] before = doc.snapshot();
+        dab(doc, wet, 0, 0, 512, 320, 30);
+        int count = wet.activeTiles();
+        check(count > 96, "Exercise more wet tiles than the old frame cap");
+        wet.advance(false, 16, 1, 96);
+        check(wet.advancedTiles() == 1, "Elapsed time stops calculation at the first tile boundary");
+        int processed = 1;
+        while (wet.framePending()) {
+            doc.clearDirty();
+            wet.advance(false, 4, Long.MAX_VALUE, 96);
+            check(wet.advancedTiles() > 0 && wet.advancedTiles() <= 4, "Bounded slices continue to make progress");
+            int[] bounds = doc.dirty();
+            check(bounds == null || (bounds[2]-bounds[0] <= 96 && bounds[3]-bounds[1] <= 96), "Dirty render bounds stay local");
+            processed += wet.advancedTiles();
+            check(processed <= count, "Each tile gets at most one turn per frame");
+        }
+        check(processed == count, "Busy wet canvas updates every queued tile fairly");
+        settle(wet); byte[] after = doc.snapshot();
+        check(doc.undo() && Arrays.equals(before, doc.snapshot()), "Large sliced wash undoes as one stroke");
+        check(doc.redo() && Arrays.equals(after, doc.snapshot()), "Large sliced wash redoes exactly");
+    }
+    private static void adaptiveBudget() {
+        WetWorkBudget budget = new WetWorkBudget();
+        long small = budget.nanos(true, 500, 4096, 0);
+        check(small > 0 && budget.nanos(true, 100000, 4096, 0) < small, "Larger active strokes leave less seep time");
+        check(budget.nanos(true, 500, 307200, 0) < small, "More wet paint reduces live seep work");
+        budget.input(9_000_000, 0, 100);
+        check(budget.nanos(true, 500, 4, 101) == 0, "Expensive pen work pauses seeping");
+        check(budget.nanos(false, 500, 4, 101) > small, "Pen-up permits more work immediately");
+        check(budget.nanos(true, 500, 4, 201) > 0, "A held still pen can resume blending");
+        budget.input(1, 30, 300);
+        check(budget.nanos(true, 500, 4, 301) == 0, "Delayed input takes priority over seeping");
+        check(budget.tiles(0, true) == 0, "No budget means no tiles");
+        int initial = budget.tiles(5_000_000, false);
+        budget.completed(10_000_000, 1, true, 500);
+        check(budget.tiles(5_000_000, false) < initial && budget.nanos(true, 500, 4, 501) == 0,
+                "Measured calculation plus presentation cost throttles the next slice");
+    }
+    private static void presets() throws Exception {
+        ToolLibrary library = new ToolLibrary(); library.select(ToolSettings.Tool.WET_WATERCOLOR);
+        library.selectHead(ToolSettings.Head.FLAT); library.edit(library.current().size(91).bristles(43).pressureResponse(75));
+        ToolLibrary.Preset preset = library.add();
+        ToolLibrary restored = ToolLibrary.decode(library.encode());
+        check(restored.current().equals(library.current()) && restored.activeId().equals(preset.id), "Wet brush and custom head settings round trip");
+        check(restored.builtin(ToolSettings.Tool.WATERCOLOR).equals(ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR)), "Glazing watercolor settings remain independent");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
+        out.writeInt(0x54535039);
+        for(int i=0;i<6;i++) oldSetting(out, ToolSettings.defaults(ToolSettings.Tool.values()[i]));
+        for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH, ToolSettings.Tool.WATERCOLOR})
+            for(ToolSettings.Head head:ToolSettings.Head.values()) oldSetting(out, ToolSettings.defaults(tool).head(head));
+        ToolSettings custom = ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).head(ToolSettings.Head.FILBERT).bristles(82);
+        oldSetting(out, custom); out.writeUTF(preset.id); out.writeInt(1);
+        out.writeUTF(preset.id); out.writeUTF("Existing wash"); oldSetting(out, custom); out.flush();
+        restored = ToolLibrary.decode(bytes.toByteArray());
+        check(restored.current().equals(custom.automaticHead()) && restored.activeId().equals(preset.id), "TSP9 preserves existing watercolor presets");
+        check(restored.builtin(ToolSettings.Tool.WET_WATERCOLOR).equals(ToolSettings.defaults(ToolSettings.Tool.WET_WATERCOLOR)), "Older libraries receive the new brush defaults");
+    }
+    private static void oldSetting(DataOutputStream out, ToolSettings s) throws IOException {
+        out.writeByte(s.tool.ordinal()); out.writeInt(s.maximum); out.writeInt(s.tip); out.writeInt(s.softness); out.writeBoolean(s.tilt);
+        out.writeInt(s.hardness); out.writeInt(s.minimum); out.writeInt(s.tolerance); out.writeInt(s.strength); out.writeInt(s.pressureResponse);
+        out.writeByte(s.head.ordinal()); out.writeInt(s.angle); out.writeInt(s.bristles);
+    }
+}
