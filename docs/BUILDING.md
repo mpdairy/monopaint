@@ -76,11 +76,20 @@ immediate movement without a timer wait, batched fast sweeps with interleaved
 hold timers, the final pen-up segment,
 pen-up/focus interruption, and single-stroke undo. It restores the original
 book and settings afterward.
-Use `-e paletteOnly true` for sidebar swatch taps and palette settings in all four
-orientations and both hands, exact shade selection, eraser exit, retained tools
-and presets, no marks or undo entries, adding/editing/removing saved swatches,
-growing layout, visibility, and malformed preferences. The suite restores the
-original drawing and settings and saves `palette-<rotation>-<hand>.png` screenshots.
+Use `-e paletteOnly true` for pen/finger input in the sidebar and grid editor in all four orientations
+and both hands: icon-anchored placement without covering the color bar, direct
+pen-up swatch feedback without rebuilding the toolbar, no swatch repaint/save
+while the pen is down, main color bar editing without
+closing the panel, the delayed
+empty-cell hint, adding colors, drag insertion and append, drag-only trash
+deletion, outside-drop cancellation, deleting the last shade, same-shade addition,
+retained brushes/presets, persistence, visibility, and no marks or undo entries.
+The suite restores the original drawing/settings and saves
+`palette-editor-<rotation>-<hand>.png` and `palette-<rotation>-<hand>.png` screenshots.
+Use `-e palettePerfOnly true` for a focused color-handler timing comparison,
+including main-window layout counts and retention of existing toolbar views.
+It restores the original session. These measurements do not establish physical
+panel latency.
 Use `-e toolbarOnly true` for icon rows, layer visibility, saved toolbar ordering,
 rotated move-up/down touch targets, always-on instant selection, retained hidden-tool
 settings and favorites, and eyedropper sampling through actual pen input in all

@@ -41,7 +41,12 @@ final class SelectionFeedback {
     }
 
     void update(View owner, Rect area, Runnable change) {
-        boolean direct = enabled && owner.hasWindowFocus() && owner.isShown()
+        update(owner,area,change,owner.hasWindowFocus());
+    }
+    // Non-focusable palettes share the activity's active window while keeping
+    // their own feedback session and redraw observer for their popup surface.
+    void update(View owner, Rect area, Runnable change, boolean windowFocused) {
+        boolean direct = enabled && windowFocused && owner.isShown()
                 && owner.getDisplay() != null
                 && PanelCoordinates.fullyVisible(owner,area);
         Bitmap before = direct ? capture(owner, area) : null;

@@ -73,10 +73,20 @@ move **Pressure response** toward **Firm touch**; 50% keeps the original respons
 
 **Menu → Settings → Toolbar** shows each tool's icon with a visibility checkbox
 and up/down arrows. Show, hide, or reorder Brush, Pencil, Airbrush, Fill, Eraser, Blending
-stump, Layers, and Zoom. All start visible; keep at least one painting tool enabled.
+stump, Layers, Zoom, and Palette. All start visible; keep at least one painting tool enabled.
 Hidden tools keep their settings and position, and custom tools remain in their
 own section. Hiding the selected regular tool switches to another visible tool.
 Your choices persist in every orientation and drawing-hand layout.
+
+Tap the **Palette** icon to arrange a small set of grayscale swatches. Its grid
+opens beside the icon and stays open while you use the main color bar: tap an existing swatch to edit it,
+or select the dashed empty box and choose a color to add one. The color selector
+moves normally while you hold the pen; lifting updates and saves the swatch. An empty selection
+shows “Select a color” after three seconds. Drag a swatch onto another to insert
+before it, onto the empty box to move it to the end, or into the trash to delete.
+Deletion closes gaps; tapping the trash does nothing. Close with **×** or tap
+outside. Up to 16 swatches save automatically. Tap a sidebar swatch to choose
+its shade while keeping the current brush or preset.
 
 **Settings → Side toolbar icon size** offers **Medium** and **Large** (the default).
 This also sizes Layers, Zoom, and custom tool icons. Both sizes fit the same

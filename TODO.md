@@ -22,14 +22,21 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   options: **Clear current layer** and **Clear all layers**. Backlog idea only;
   do not implement yet.
 
-- [x] **Palette tool in the sidebar.** A classic rounded painter's palette icon
-  opens settings for 1–16 saved grayscale swatches. Start with four shades;
-  edit with sliders, add the current picker/eyedropper color, or remove swatches.
-  Tapping a swatch selects its exact shade without changing the brush or preset,
-  and returns brush erasing to paint. Two-column squares grow down the sidebar
-  (across the toolbar in landscape). Settings → Toolbar can hide or reorder it.
-  Tablet verification covers rotations, both hands, persistence, and no added
-  marks or undo actions. Hands-on palette evaluation remains.
+- [x] **Palette tool in the sidebar — complete and user-accepted.** The rounded
+  painter's palette icon opens a two-column swatch editor beside its icon,
+  while leaving the main color selector usable.
+  Tap a swatch to select and edit its shade with the main color bar. Tap the
+  dashed empty box, then choose a color to add one; after three seconds the
+  selected empty box shows “Select a color.” Drag onto a swatch to insert before
+  it, or onto the empty box to move to the end. Drag into the trash to delete;
+  tapping the trash does nothing. Deletion closes gaps, and an empty palette is
+  supported. Up to 16 swatches persist across restarts. The sidebar grows with
+  the set and supports toolbar visibility/order in all rotations and both hands.
+  Swatch selection retains the brush/preset and exits brush erasing. Live color
+  selection leaves the swatches unchanged while the pen is down; release updates
+  the selected cell and sidebar and saves without rebuilding the toolbar.
+  User tested and accepted the palette on 2026-09-29, including popup placement
+  and the responsive color selector with swatch updates on pen-up.
 
 - [x] **Gradient flood fill — complete and user-tested.** Linear and Circular
   are selectable in Fill settings and remembered per tool/preset.

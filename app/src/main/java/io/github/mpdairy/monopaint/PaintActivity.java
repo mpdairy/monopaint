@@ -49,6 +49,9 @@ public final class PaintActivity extends Activity {
     private Button layersButton;
     private ToolButton zoomButton;
     private LinearLayout sidebarPalette;
+    private final java.util.ArrayList<PaletteSwatch> sidebarSwatches=new java.util.ArrayList<>();
+    private PaletteEditor paletteEditor;
+    private boolean dismissingPaletteTouch;
     private ToolRail toolRail;
     private PresetDragHandler presetDrag;
     private TextView operationStatus, gradientHint;
@@ -255,6 +258,7 @@ public final class PaintActivity extends Activity {
         catch(java.io.IOException error){message("Could not add page: "+error.getMessage());}
     }
     private void applyToolboxSide() {
+        closePaletteEditor();
         if (filePopup != null) filePopup.dismiss();
         if (layersPopup != null) layersPopup.dismiss();
         boolean right=preferences.getBoolean("toolbox_right",false);
@@ -360,6 +364,18 @@ public final class PaintActivity extends Activity {
     }
     private int appTurn() { return appRotation == Surface.ROTATION_270 ? -90 : appRotation*90; }
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        if(dismissingPaletteTouch) {
+            if(event.getActionMasked()==MotionEvent.ACTION_UP || event.getActionMasked()==MotionEvent.ACTION_CANCEL)
+                dismissingPaletteTouch=false;
+            return true;
+        }
+        if(paletteEditor!=null && event.getActionMasked()==MotionEvent.ACTION_DOWN) {
+            float[] point={event.getRawX(),event.getRawY()};Matrix inverse=new Matrix();
+            PanelCoordinates.fromView(shadePicker).invert(inverse);inverse.mapPoints(point);
+            if(point[0]<0 || point[1]<0 || point[0]>=shadePicker.getWidth() || point[1]>=shadePicker.getHeight()) {
+                closePaletteEditor();dismissingPaletteTouch=true;return true;
+            }
+        }
         // Android treats ORIENTATION as radians when it transforms a View's events.
         // Retain the firmware's original signed-degree tilt axes before that happens.
         MotionEvent previous=physicalPenEvent; physicalPenEvent=event;
@@ -902,7 +918,9 @@ public final class PaintActivity extends Activity {
     }
     private java.util.ArrayList<Integer> paletteShades() {
         java.util.ArrayList<Integer> shades=new java.util.ArrayList<>();
-        for(String item:preferences.getString("palette_shades","0,128,192,255").split(",")) {
+        String saved=preferences.getString("palette_shades","0,128,192,255");
+        if(saved.isEmpty())return shades;
+        for(String item:saved.split(",")) {
             try {
                 int value=Integer.parseInt(item);
                 if(value>=0 && value<=255 && shades.size()<16)shades.add(value);
@@ -915,7 +933,17 @@ public final class PaintActivity extends Activity {
         StringBuilder value=new StringBuilder();
         for(int shade:shades) { if(value.length()>0)value.append(',');value.append(shade); }
         preferences.edit().putString("palette_shades",value.toString()).apply();
-        rebuildTools();
+        if(sidebarPalette==null)return;
+        if(sidebarSwatches.size()!=shades.size()) {
+            while(sidebarPalette.getChildCount()>1)sidebarPalette.removeViewAt(1);
+            addSidebarSwatches(shades);
+        } else for(int i=0;i<shades.size();i++) {
+            PaletteSwatch swatch=sidebarSwatches.get(i);swatch.presentTone(shades.get(i),selectionFeedback,hasWindowFocus());
+            describePaletteSwatch(swatch,i);
+        }
+    }
+    private void describePaletteSwatch(PaletteSwatch swatch,int index) {
+        swatch.setContentDescription("Palette shade "+(index+1)+": "+Math.round(swatch.tone*100f/255)+"% brightness");
     }
     private void addSidebarPalette() {
         sidebarPalette=new LinearLayout(this);
@@ -928,7 +956,10 @@ public final class PaintActivity extends Activity {
         settings.iconOnly(R.drawable.ic_palette);settings.settingsArrow=getDrawable(R.drawable.ic_chevron);
         markActive(settings,false);
         settings.setLayoutParams(new LinearLayout.LayoutParams(dp(landscape ? 44 : 60),dp(landscape ? 60 : 44)));
-        java.util.ArrayList<Integer> shades=paletteShades();
+        addSidebarSwatches(paletteShades());
+    }
+    private void addSidebarSwatches(java.util.List<Integer> shades) {
+        sidebarSwatches.clear();
         for(int i=0;i<shades.size();i+=2) {
             LinearLayout pair=new LinearLayout(this);
             pair.setOrientation(landscape ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
@@ -936,71 +967,249 @@ public final class PaintActivity extends Activity {
             for(int j=i;j<Math.min(i+2,shades.size());j++) {
                 int tone=shades.get(j);
                 PaletteSwatch swatch=new PaletteSwatch(tone);
-                swatch.setContentDescription("Palette shade "+(j+1)+": "+Math.round(tone*100f/255)+"% brightness");
+                sidebarSwatches.add(swatch);describePaletteSwatch(swatch,j);
                 swatch.setOnClickListener(v -> {
                     if(busy())return;
-                    hideGradientHint();selectShade(tone);pad.applyGradient();preferences();
+                    hideGradientHint();selectShade(swatch.tone);pad.applyGradient();preferences();
                 });
                 pair.addView(swatch,new LinearLayout.LayoutParams(dp(landscape ? 40 : 30),dp(landscape ? 30 : 40)));
             }
         }
     }
-    private AlertDialog paletteSettings() {
-        java.util.ArrayList<Integer> shades=paletteShades();
-        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(12),dp(8),dp(12),dp(8));
-        TextView hint=new TextView(this);hint.setText("Tap a swatch in the sidebar to paint with that shade.");content.addView(hint);
-        LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);content.addView(rows);
-        Button add=new Button(this);add.setText("Add current color");add.setAllCaps(false);content.addView(add);
-        Runnable[] render=new Runnable[1];
-        render[0]=() -> {
-            rows.removeAllViews();add.setEnabled(shades.size()<16);
-            for(int i=0;i<shades.size();i++) {
-                final int index=i;
-                LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-                rows.addView(row,new LinearLayout.LayoutParams(-1,dp(56)));
-                PaletteSwatch sample=new PaletteSwatch(shades.get(i));sample.setClickable(false);sample.setFocusable(false);
-                row.addView(sample,new LinearLayout.LayoutParams(dp(40),dp(48)));
-                SeekBar slider=new SeekBar(this);slider.setMax(64);
-                slider.setProgress(DotPattern.whiteCount(shades.get(i)));
-                slider.setContentDescription("Palette shade "+(i+1));
-                row.addView(slider,new LinearLayout.LayoutParams(0,dp(48),1));
-                slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                    @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
-                        if(!user)return;
-                        int tone=DotPattern.pickerTone(Math.round(value*255f/64));
-                        shades.set(index,tone);sample.setTone(tone);savePalette(shades);
-                    }
-                    @Override public void onStartTrackingTouch(SeekBar bar) { }
-                    @Override public void onStopTrackingTouch(SeekBar bar) { }
-                });
-                Button remove=new Button(this);remove.setText("−");remove.setTextSize(22);
-                remove.setContentDescription("Remove palette shade "+(i+1));remove.setEnabled(shades.size()>1);
-                row.addView(remove,new LinearLayout.LayoutParams(dp(48),dp(48)));
-                remove.setOnClickListener(v -> {shades.remove(index);savePalette(shades);render[0].run();});
-            }
+    private void paletteSettings() {
+        if(paletteEditor!=null) {closePaletteEditor();return;}
+        if(busy())return;
+        setPickingShade(false);pad.finishStroke();pad.dryWet();pad.disconnectDisplay();
+        if(filePopup!=null)filePopup.dismiss();
+        if(layersPopup!=null)layersPopup.dismiss();
+        if(brushPicker!=null)brushPicker.dismiss();
+        paletteEditor=new PaletteEditor();paletteEditor.show();
+    }
+    private void closePaletteEditor() {
+        if(paletteEditor!=null)paletteEditor.popup.dismiss();
+    }
+    private final class PaletteEditor {
+        final java.util.ArrayList<Integer> shades=paletteShades();
+        final java.util.ArrayList<PaletteSwatch> cells=new java.util.ArrayList<>();
+        final LinearLayout content=new LinearLayout(PaintActivity.this), grid=new LinearLayout(PaintActivity.this);
+        final TextView hint=new TextView(PaintActivity.this);
+        final android.widget.ImageButton trash=new android.widget.ImageButton(PaintActivity.this);
+        final android.widget.PopupWindow popup;
+        final ScrollView scroll=new ScrollView(PaintActivity.this);
+        final SelectionFeedback swatchFeedback=new SelectionFeedback();
+        boolean colorsDirty;
+        int pendingTone;
+        int selected=-1, dropTarget=-1;
+        PaletteDrag dragging;
+        final Runnable delayedHint=() -> {
+            if(paletteEditor==this && selected==shades.size() && selected<16 && dragging==null)
+                hint.setText("Select a color");
         };
-        add.setOnClickListener(v -> {if(shades.size()<16) {shades.add(gray);savePalette(shades);render[0].run();}});
-        render[0].run();
-        ScrollView scroll=new ScrollView(this);scroll.addView(content);
-        return showDialog(new AlertDialog.Builder(this).setTitle("Palette").setView(scroll).setPositiveButton("Done",null));
+        PaletteEditor() {
+            content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(12),dp(8),dp(12),dp(8));
+            android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
+            border.setColor(Color.WHITE);border.setStroke(dp(1),Color.BLACK);border.setCornerRadius(dp(4));content.setBackground(border);
+            LinearLayout heading=new LinearLayout(PaintActivity.this);heading.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView title=new TextView(PaintActivity.this);title.setText("Palette");title.setTextSize(18);title.setTextColor(Color.BLACK);
+            heading.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));
+            Button close=new Button(PaintActivity.this);close.setText("×");close.setTextSize(24);close.setContentDescription("Close palette");
+            close.setBackgroundColor(Color.WHITE);close.setOnClickListener(v -> closePaletteEditor());
+            heading.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));content.addView(heading);
+            LinearLayout tools=new LinearLayout(PaintActivity.this);tools.setGravity(android.view.Gravity.TOP);
+            grid.setOrientation(LinearLayout.VERTICAL);tools.addView(grid,new LinearLayout.LayoutParams(dp(112),-2));
+            trash.setImageResource(R.drawable.ic_trash);trash.setContentDescription("Drag a palette swatch here to delete");
+            trash.setBackgroundColor(Color.WHITE);trash.setPadding(dp(12),dp(12),dp(12),dp(12));
+            LinearLayout.LayoutParams bin=new LinearLayout.LayoutParams(dp(48),dp(48));bin.leftMargin=dp(16);
+            tools.addView(trash,bin);trash.setClickable(false);
+            trash.setOnDragListener((v,event) -> dragEvent(-2,event));content.addView(tools);
+            hint.setTextSize(14);hint.setTextColor(Color.BLACK);hint.setMinHeight(dp(44));hint.setPadding(0,dp(8),0,0);content.addView(hint);
+            scroll.addView(content);
+            QuarterTurnLayout rotated=new QuarterTurnLayout(PaintActivity.this);rotated.setTurn(appTurn());rotated.addView(scroll);
+            // A non-focusable panel leaves the original color strip touchable.
+            popup=new android.widget.PopupWindow(rotated,0,0,false);
+            popup.setOutsideTouchable(false);popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.WHITE));
+            popup.setElevation(0);popup.setAnimationStyle(0);popup.setInputMethodMode(android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED);
+            popup.setOnDismissListener(() -> {
+                hint.removeCallbacks(delayedHint);dragging=null;
+                commitColors();swatchFeedback.close();
+                if(paletteEditor==this)paletteEditor=null;
+                preferences();pad.invalidate();pad.post(pad::connectDisplay);
+            });
+            render();
+        }
+        void show() { position(); }
+        void position() {
+            Matrix inverse=new Matrix();PanelCoordinates.fromView(root).invert(inverse);
+            android.graphics.RectF area=new android.graphics.RectF(0,0,pad.getWidth(),pad.getHeight());
+            PanelCoordinates.fromView(pad).mapRect(area);inverse.mapRect(area);area.inset(dp(8),dp(8));
+            int width=Math.min(dp(224),Math.round(area.width()));
+            scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(Math.round(area.height()),View.MeasureSpec.AT_MOST));
+            int height=Math.min(scroll.getMeasuredHeight(),Math.round(area.height()));
+            View anchor=sidebarPalette.getChildAt(0);
+            android.graphics.RectF icon=new android.graphics.RectF(0,0,anchor.getWidth(),anchor.getHeight());
+            PanelCoordinates.fromView(anchor).mapRect(icon);inverse.mapRect(icon);
+            float left=landscape ? icon.left : icon.centerX()<area.centerX() ? icon.right+dp(8) : icon.left-width-dp(8);
+            float top=!landscape ? icon.top : icon.centerY()<area.centerY() ? icon.bottom+dp(8) : icon.top-height-dp(8);
+            left=Math.max(area.left,Math.min(left,area.right-width));
+            top=Math.max(area.top,Math.min(top,area.bottom-height));
+            android.graphics.RectF bounds=new android.graphics.RectF(left,top,left+width,top+height);
+            PanelCoordinates.fromView(root).mapRect(bounds);
+            if(popup.isShowing())popup.update(Math.round(bounds.left),Math.round(bounds.top),Math.round(bounds.width()),Math.round(bounds.height()));
+            else {
+                popup.setWidth(Math.round(bounds.width()));popup.setHeight(Math.round(bounds.height()));
+                popup.showAtLocation(root,android.view.Gravity.TOP|android.view.Gravity.LEFT,Math.round(bounds.left),Math.round(bounds.top));
+            }
+        }
+        void render() {
+            grid.removeAllViews();cells.clear();
+            int count=Math.min(16,shades.size()+1);
+            LinearLayout row=null;
+            for(int i=0;i<count;i++) {
+                final int index=i;
+                if(i%2==0) {row=new LinearLayout(PaintActivity.this);grid.addView(row);}
+                PaletteSwatch cell=new PaletteSwatch(i<shades.size()?shades.get(i):-1);cell.editorCell=true;
+                cell.setContentDescription(i<shades.size()?"Edit palette shade "+(i+1):"Add palette shade");
+                row.addView(cell,new LinearLayout.LayoutParams(dp(56),dp(56)));cells.add(cell);
+                cell.setOnClickListener(v -> select(index));
+                cell.setOnDragListener((v,event) -> dragEvent(index,event));
+                if(i<shades.size()) {
+                    float[] down=new float[2];boolean[] started={false};
+                    cell.setOnTouchListener((v,event) -> {
+                        if(event.getActionMasked()==MotionEvent.ACTION_DOWN) {
+                            down[0]=event.getX();down[1]=event.getY();started[0]=false;
+                            v.getParent().requestDisallowInterceptTouchEvent(true);
+                        } else if(event.getActionMasked()==MotionEvent.ACTION_MOVE && !started[0]) {
+                            float dx=event.getX()-down[0],dy=event.getY()-down[1];
+                            int slop=android.view.ViewConfiguration.get(PaintActivity.this).getScaledTouchSlop();
+                            if(dx*dx+dy*dy>slop*slop)started[0]=startDrag(cell,index);
+                        } else if(event.getActionMasked()==MotionEvent.ACTION_UP || event.getActionMasked()==MotionEvent.ACTION_CANCEL)
+                            v.getParent().requestDisallowInterceptTouchEvent(false);
+                        return started[0];
+                    });
+                    cell.setOnLongClickListener(v -> startDrag(cell,index));
+                }
+            }
+            refreshSelection();if(popup!=null && popup.isShowing())position();
+        }
+        void refreshSelection() {
+            for(int i=0;i<cells.size();i++) {
+                PaletteSwatch cell=cells.get(i);cell.chosen=i==selected;cell.dropHere=i==dropTarget;cell.invalidate();
+            }
+            trash.setAlpha(selected>=0 && selected<shades.size() || dragging!=null ? 1f : .35f);
+            trash.setBackgroundColor(dropTarget==-2 ? 0xffdddddd : Color.WHITE);
+        }
+        void select(int index) {
+            commitColors();
+            hint.removeCallbacks(delayedHint);hint.setText("");selected=-1;
+            if(index<shades.size())selectShade(shades.get(index));
+            selected=index;refreshSelection();preferences();
+            if(index==shades.size())hint.postDelayed(delayedHint,3000);
+        }
+        void colorChanged(int tone) {
+            if(selected<0 || selected>shades.size() || dragging!=null)return;
+            hint.removeCallbacks(delayedHint);
+            // The main strip stays on its normal path throughout the gesture.
+            // Keep the grid and sidebar unchanged until the pen/finger lifts.
+            pendingTone=tone;colorsDirty=true;
+        }
+        void commitColors() {
+            if(!colorsDirty)return;
+            colorsDirty=false;
+            if(selected<0 || selected>shades.size())return;
+            if(hint.length()>0)hint.setText("");
+            boolean added=selected==shades.size();
+            if(added) {
+                if(shades.size()==16)return;
+                shades.add(pendingTone);
+            } else {
+                if(shades.get(selected)==pendingTone)return;
+                shades.set(selected,pendingTone);
+                cells.get(selected).presentTone(pendingTone,swatchFeedback,hasWindowFocus());
+            }
+            savePalette(shades);
+            if(added)render();
+        }
+        boolean startDrag(PaletteSwatch cell,int index) {
+            commitColors();
+            if(dragging!=null || index>=shades.size())return false;
+            hint.removeCallbacks(delayedHint);hint.setText("");
+            PaletteDrag token=new PaletteDrag(this,index);
+            boolean started=cell.startDragAndDrop(null,new View.DragShadowBuilder(cell) {
+                @Override public void onDrawShadow(Canvas canvas) {
+                    canvas.save();canvas.rotate(appTurn(),cell.getWidth()/2f,cell.getHeight()/2f);
+                    super.onDrawShadow(canvas);canvas.restore();
+                }
+            },token,0);
+            if(started) {dragging=token;cell.setPressed(false);refreshSelection();}
+            return started;
+        }
+        boolean dragEvent(int target,android.view.DragEvent event) {
+            if(!(event.getLocalState() instanceof PaletteDrag) || ((PaletteDrag)event.getLocalState()).owner!=this)return false;
+            PaletteDrag token=(PaletteDrag)event.getLocalState();
+            switch(event.getAction()) {
+                case android.view.DragEvent.ACTION_DRAG_STARTED:return true;
+                case android.view.DragEvent.ACTION_DRAG_ENTERED:dropTarget=target;refreshSelection();return true;
+                case android.view.DragEvent.ACTION_DRAG_EXITED:dropTarget=-1;refreshSelection();return true;
+                case android.view.DragEvent.ACTION_DROP:
+                    dragging=null;dropTarget=-1;
+                    if(target==-2)delete(token.index);else move(token.index,target);
+                    return true;
+                case android.view.DragEvent.ACTION_DRAG_ENDED:
+                    dragging=null;dropTarget=-1;refreshSelection();
+                    if(selected==shades.size())hint.postDelayed(delayedHint,3000);
+                    return true;
+                default:return true;
+            }
+        }
+        void move(int from,int before) {
+            if(from<0 || from>=shades.size() || before<0 || before>shades.size())return;
+            int to=before-(from<before?1:0);
+            if(from==to)return;
+            int tone=shades.remove(from);shades.add(to,tone);
+            if(selected==from)selected=to;
+            else if(selected>=0 && selected<shades.size()) {
+                if(selected>from)selected--;if(selected>=to)selected++;
+            }
+            savePalette(shades);render();
+        }
+        void delete(int index) {
+            if(index<0 || index>=shades.size())return;
+            hint.removeCallbacks(delayedHint);shades.remove(index);savePalette(shades);
+            selected=-1;render();select(Math.min(index,shades.size()));
+        }
+    }
+    private final class PaletteDrag {
+        final PaletteEditor owner;final int index;
+        PaletteDrag(PaletteEditor owner,int index) {this.owner=owner;this.index=index;}
     }
     private final class PaletteSwatch extends View {
         private final Paint ink=new Paint();
         private final Paint border=new Paint();
         private Bitmap tile;
+        boolean editorCell, chosen, dropHere, empty;
+        int tone=-2;
+        private final android.graphics.DashPathEffect dashed=new android.graphics.DashPathEffect(new float[]{dp(4),dp(3)},0);
         PaletteSwatch(int tone) { super(PaintActivity.this);setFocusable(true);setTone(tone); }
-        void setTone(int tone) {
-            Bitmap previous=tile;tile=DotGray.tile(tone);
-            ink.setShader(new BitmapShader(tile,Shader.TileMode.REPEAT,Shader.TileMode.REPEAT));
-            if(previous!=null)previous.recycle();invalidate();
+        void setTone(int tone) {replaceTone(tone);invalidate();}
+        void presentTone(int value,SelectionFeedback feedback,boolean windowFocused) {
+            if(tone==value)return;
+            feedback.update(this,new Rect(0,0,getWidth(),getHeight()),() -> replaceTone(value),windowFocused);
+        }
+        private void replaceTone(int tone) {
+            this.tone=tone;
+            Bitmap previous=tile;empty=tone<0;tile=empty?null:DotGray.tile(tone);
+            ink.setShader(empty?null:new BitmapShader(tile,Shader.TileMode.REPEAT,Shader.TileMode.REPEAT));
+            if(previous!=null)previous.recycle();
         }
         @Override protected void onDraw(Canvas canvas) {
             canvas.drawColor(Color.WHITE);
-            int size=dp(22),left=(getWidth()-size)/2,top=(getHeight()-size)/2;
-            ink.setStyle(Paint.Style.FILL);canvas.drawRect(left,top,left+size,top+size,ink);
-            border.setColor(Color.BLACK);border.setStyle(Paint.Style.STROKE);border.setStrokeWidth(dp(1));
+            int size=dp(editorCell?40:22),left=(getWidth()-size)/2,top=(getHeight()-size)/2;
+            ink.setStyle(Paint.Style.FILL);if(!empty)canvas.drawRect(left,top,left+size,top+size,ink);
+            border.setColor(Color.BLACK);border.setStyle(Paint.Style.STROKE);border.setStrokeWidth(dp(chosen || dropHere?3:1));
+            border.setPathEffect(empty && !chosen && !dropHere?dashed:null);
             canvas.drawRect(left,top,left+size,top+size,border);
+            if(chosen || dropHere) {border.setPathEffect(null);canvas.drawRect(left-dp(4),top-dp(4),left+size+dp(4),top+size+dp(4),border);}
         }
     }
     private boolean toolVisible(ToolSettings.Tool tool) {
@@ -1029,7 +1238,7 @@ public final class PaintActivity extends Activity {
         brushButton = null;
         layersButton = null;
         zoomButton = null;
-        sidebarPalette = null;
+        sidebarPalette = null;sidebarSwatches.clear();
         toolRail.removeAllViews(); selectionButtons.clear();
         for (String key : toolbarOrder()) {
             if(key.equals("PALETTE")) {
@@ -1549,6 +1758,7 @@ public final class PaintActivity extends Activity {
         if (pad != null) { pad.updateViewport(); pad.post(pad::connectDisplay); }
     }
     @Override protected void onPause() {
+        closePaletteEditor();
         setPickingShade(false);
         if (filePopup != null) filePopup.dismiss();
         if (layersPopup != null) layersPopup.dismiss();
@@ -1576,6 +1786,7 @@ public final class PaintActivity extends Activity {
         super.onDestroy();
     }
     @Override public void onBackPressed() {
+        if(paletteEditor!=null) {closePaletteEditor();return;}
         if(pad!=null && (pad.hasGradient() || pad.fillGesture)) { pad.finishStroke(); return; }
         super.onBackPressed();
     }
@@ -1610,6 +1821,7 @@ public final class PaintActivity extends Activity {
         if(gray!=value)
             selectionFeedback.update(shadePicker, new Rect(0,0,shadePicker.getWidth(),shadePicker.getHeight()), () -> gray = value);
         if(pad.hasGradient()) pad.previewGradient(value);
+        if(paletteEditor!=null)paletteEditor.colorChanged(value);
     }
     private void setEraseMode(boolean value) {
         if (eraseMode != value)
@@ -1818,6 +2030,7 @@ public final class PaintActivity extends Activity {
                 selectX(event.getX(index));
             if (up || action == MotionEvent.ACTION_CANCEL) {
                 if(up) pad.applyGradient(); else pad.cancelGradient();
+                if(paletteEditor!=null)paletteEditor.commitColors();
                 activePointer = -1; preferences(); getParent().requestDisallowInterceptTouchEvent(false);
                 if (up) performClick();
             }
@@ -1833,7 +2046,7 @@ public final class PaintActivity extends Activity {
         }
         @Override public boolean onKeyUp(int keyCode, android.view.KeyEvent event) {
             if(keyCode==android.view.KeyEvent.KEYCODE_DPAD_LEFT || keyCode==android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
-                pad.applyGradient(); return true;
+                pad.applyGradient();if(paletteEditor!=null)paletteEditor.commitColors();return true;
             }
             return super.onKeyUp(keyCode,event);
         }
@@ -2038,7 +2251,7 @@ public final class PaintActivity extends Activity {
         }
         void connectDisplay() {
             scheduleWet();
-            if (!resumed || !hasWindowFocus() || loading || navigating || display == null || direct != null) return;
+            if (paletteEditor!=null || !resumed || !hasWindowFocus() || loading || navigating || display == null || direct != null) return;
             if (isLayoutRequested() || root.isLayoutRequested() || orientationFrame.isLayoutRequested()) return;
             try {
                 if (!input.prepareDocumentCanvas()) throw new IllegalStateException(input.status);
@@ -2081,7 +2294,7 @@ public final class PaintActivity extends Activity {
             }
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (loading || document == null || fill != null || gradientCommit || !resumed || !hasWindowFocus()) return true;
+            if (paletteEditor!=null || loading || document == null || fill != null || gradientCommit || !resumed || !hasWindowFocus()) return true;
             if(navigationGesture(event)) return true;
             if(pickingShade || pickPointer!=-1) { sampleShadeGesture(event); return true; }
             if(hasGradient()) return true;

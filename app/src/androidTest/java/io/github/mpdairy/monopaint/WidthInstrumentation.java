@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Controlled app-local stylus replay. Measures firmware bitmap widths, never physical latency. */
 public final class WidthInstrumentation extends Instrumentation {
-    private boolean displayProbeOnly, paletteOnly;
+    private boolean displayProbeOnly, paletteOnly, palettePerfOnly;
     private boolean paintOnly;
     private boolean brushOnly;
     private boolean brushPerfOnly;
@@ -58,14 +58,16 @@ public final class WidthInstrumentation extends Instrumentation {
         gradientOnly = args != null && "true".equals(args.getString("gradientOnly"));
         orientationOnly = args != null && "true".equals(args.getString("orientationOnly"));
         paletteOnly = args != null && "true".equals(args.getString("paletteOnly"));
+        palettePerfOnly = args != null && "true".equals(args.getString("palettePerfOnly"));
         start();
     }
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
+        if (palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
-                if (paletteOnly) PaletteUiChecks.run(this,report);
+                if (palettePerfOnly) PaletteUiChecks.run(this,report,true);
+                else if (paletteOnly) PaletteUiChecks.run(this,report);
                 else if (zoomOnly) ZoomUiChecks.run(this,report);
                 else if (eraseOnly) EraseUiChecks.run(this,report);
                 else if (airbrushOnly) AirbrushUiChecks.run(this,report);
