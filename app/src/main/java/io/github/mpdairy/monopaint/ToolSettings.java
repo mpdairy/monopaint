@@ -9,7 +9,7 @@ final class ToolSettings {
     static final int MAX_FLAT_HEIGHT = 20;
     static int sizeLimit(Head head) { return head == Head.FLAT ? MAX_FLAT_WIDTH : 128; }
     // Append new tools: ordinals are part of the saved preset format.
-    enum Tool { BRUSH, PENCIL, FILL, ERASER, SOFTEN, WATERCOLOR, WET_WATERCOLOR, FLAT_WASH, AIRBRUSH }
+    enum Tool { BRUSH, PENCIL, FILL, ERASER, SOFTEN, WATERCOLOR, WET_WATERCOLOR, FLAT_WASH, AIRBRUSH, SHAPES }
     enum Head {
         ROUND("Round"), FLAT("Flat"), FILBERT("Filbert");
         final String label;
@@ -20,6 +20,14 @@ final class ToolSettings {
         final String label;
         Gradient(String label) { this.label=label; }
     }
+    enum Shape {
+        LINE("Line"), RECTANGLE("Rectangle"), SQUARE("Square"), OVAL("Oval"), CIRCLE("Circle");
+        final String label;
+        Shape(String label) { this.label=label; }
+    }
+    final Shape shape;
+    final boolean filled;
+    final int outlineWidth;
     final Gradient gradient;
     final Tool tool;
     final Head head;
@@ -55,6 +63,12 @@ final class ToolSettings {
         this(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, Gradient.LINEAR);
     }
     ToolSettings(Tool tool, int minimum, int maximum, int tip, int softness, boolean tilt, int hardness, int tolerance, int strength, int pressureResponse, Head head, int angle, int bristles, int headThickness, Gradient gradient) {
+        this(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse,
+                head, angle, bristles, headThickness, gradient, Shape.LINE, false, 3);
+    }
+    ToolSettings(Tool tool, int minimum, int maximum, int tip, int softness, boolean tilt, int hardness, int tolerance, int strength, int pressureResponse, Head head, int angle, int bristles, int headThickness, Gradient gradient, Shape shape, boolean filled, int outlineWidth) {
+        if(shape==null || outlineWidth<1 || outlineWidth>128) throw new IllegalArgumentException("Invalid shape settings");
+        this.shape=shape; this.filled=filled; this.outlineWidth=outlineWidth;
         if (gradient == null || headThickness < 0 || headThickness > 100 || bristles < 0 || bristles > 100 || tool == null || head == null || angle < 0 || angle > 180
                 || (tool != Tool.BRUSH && tool != Tool.WATERCOLOR && tool != Tool.WET_WATERCOLOR && tool != Tool.FLAT_WASH && head != Head.ROUND) || maximum < 2 || maximum > sizeLimit(head) || minimum < 1 || minimum > maximum || tip < 1 || tip > sizeLimit(head)
                 || softness < 0 || softness > 100 || hardness < 0 || hardness > 100 || tolerance < 0 || tolerance > 100 || strength < 0 || strength > 100 || pressureResponse < 0 || pressureResponse > 100)
@@ -68,37 +82,44 @@ final class ToolSettings {
     ToolSettings asBrush() {
         if (!isBrush() || tool == Tool.BRUSH) return this;
         return new ToolSettings(Tool.BRUSH, minimum, maximum, tip, softness, tilt, hardness,
-                tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient);
+                tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth);
     }
-    ToolSettings size(int maximum) { return new ToolSettings(tool, Math.min(minimum,maximum), maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings minimum(int value) { return new ToolSettings(tool, value, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings options(int tip, boolean soft, boolean tilt) { return new ToolSettings(tool, minimum, maximum, tip, soft == this.soft ? softness : soft ? 85 : 0, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings hardness(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, value, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings softness(int value) { return new ToolSettings(tool, minimum, maximum, tip, value, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings tolerance(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, value, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings strength(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, value, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings pressureResponse(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, value, head, angle, bristles, headThickness, gradient); }
+    ToolSettings size(int maximum) { return new ToolSettings(tool, Math.min(minimum,maximum), maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings minimum(int value) { return new ToolSettings(tool, value, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings options(int tip, boolean soft, boolean tilt) { return new ToolSettings(tool, minimum, maximum, tip, soft == this.soft ? softness : soft ? 85 : 0, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings hardness(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, value, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings softness(int value) { return new ToolSettings(tool, minimum, maximum, tip, value, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings tolerance(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, value, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings strength(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, value, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings pressureResponse(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, value, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
     ToolSettings head(Head value) {
         int size = Math.min(maximum, sizeLimit(value));
         int thickness=value==Head.FLAT && head!=Head.FLAT ? 0 : headThickness;
-        return new ToolSettings(tool, Math.min(minimum,size), size, Math.min(tip,size), softness, tilt, hardness, tolerance, strength, pressureResponse, value, angle, bristles, thickness, gradient);
+        return new ToolSettings(tool, Math.min(minimum,size), size, Math.min(tip,size), softness, tilt, hardness, tolerance, strength, pressureResponse, value, angle, bristles, thickness, gradient, shape, filled, outlineWidth);
     }
-    ToolSettings angle(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, value, bristles, headThickness, gradient); }
+    ToolSettings angle(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, value, bristles, headThickness, gradient, shape, filled, outlineWidth); }
     // Pencil uses tilt for broadening; shaped brushes use it for heading.
-    ToolSettings tilt(boolean value) { return new ToolSettings(tool, minimum, maximum, tip, softness, value, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
-    ToolSettings bristles(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, value, headThickness, gradient); }
-    ToolSettings headThickness(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, value, gradient); }
+    ToolSettings tilt(boolean value) { return new ToolSettings(tool, minimum, maximum, tip, softness, value, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings bristles(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, value, headThickness, gradient, shape, filled, outlineWidth); }
+    ToolSettings headThickness(int value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, value, gradient, shape, filled, outlineWidth); }
     // Flat exposes height; the other legacy shape controls remain automatic.
     ToolSettings automaticHead() {
         int thickness=head==Head.FILBERT?55:Math.min(MAX_FLAT_HEIGHT,headThickness);
         if (!isBrush() || head == Head.ROUND || (tilt && angle == 0 && headThickness == thickness)) return this;
         return new ToolSettings(tool, minimum, maximum, tip, softness, true, hardness, tolerance, strength,
-                pressureResponse, head, 0, bristles, thickness, gradient);
+                pressureResponse, head, 0, bristles, thickness, gradient, shape, filled, outlineWidth);
     }
-    ToolSettings gradient(Gradient value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, value); }
+    ToolSettings gradient(Gradient value) { return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, value, shape, filled, outlineWidth); }
+    ToolSettings shape(Shape value) { return shapeOptions(value, filled, outlineWidth); }
+    ToolSettings filled(boolean value) { return shapeOptions(shape, value, outlineWidth); }
+    ToolSettings outlineWidth(int value) { return shapeOptions(shape, filled, value); }
+    private ToolSettings shapeOptions(Shape shape, boolean filled, int outlineWidth) {
+        return new ToolSettings(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength,
+                pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth);
+    }
     float headAspectRatio() { return head == Head.ROUND ? 1f : headThickness / 100f; }
     float flatHeight(float width) { return Math.max(1, width*Math.min(MAX_FLAT_HEIGHT,headThickness)/100f); }
-    String description() { return isBrush() ? head.label + " " + label() : tool==Tool.FILL ? gradient.label + " " + label() : label(); }
+    String description() { return tool==Tool.SHAPES ? shape.label + (shape==Shape.LINE ? "" : filled ? " filled" : " outline") : isBrush() ? head.label + " " + label() : tool==Tool.FILL ? gradient.label + " " + label() : label(); }
     float diameter(float pressure) {
         if(!Float.isFinite(pressure)) pressure=0;
         float p=Math.max(0,Math.min(1,(pressure-.05f)/.40f));
@@ -116,6 +137,7 @@ final class ToolSettings {
             case FLAT_WASH: return "Flat wash";
             case WET_WATERCOLOR: return "Wet watercolor (experimental)";
             case AIRBRUSH: return "Airbrush";
+            case SHAPES: return "Shapes";
             case PENCIL: return "Pencil";
             case FILL: return "Fill";
             case ERASER: return "Eraser";
@@ -126,7 +148,7 @@ final class ToolSettings {
     @Override public boolean equals(Object other) {
         if (!(other instanceof ToolSettings)) return false;
         ToolSettings s = (ToolSettings)other;
-        return tool == s.tool && minimum == s.minimum && maximum == s.maximum && tip == s.tip && softness == s.softness && tilt == s.tilt && hardness == s.hardness && tolerance == s.tolerance && strength == s.strength && pressureResponse == s.pressureResponse && head == s.head && angle == s.angle && bristles == s.bristles && headThickness == s.headThickness && gradient == s.gradient;
+        return tool == s.tool && minimum == s.minimum && maximum == s.maximum && tip == s.tip && softness == s.softness && tilt == s.tilt && hardness == s.hardness && tolerance == s.tolerance && strength == s.strength && pressureResponse == s.pressureResponse && head == s.head && angle == s.angle && bristles == s.bristles && headThickness == s.headThickness && gradient == s.gradient && shape == s.shape && filled == s.filled && outlineWidth == s.outlineWidth;
     }
-    @Override public int hashCode() { return java.util.Objects.hash(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient); }
+    @Override public int hashCode() { return java.util.Objects.hash(tool, minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, head, angle, bristles, headThickness, gradient, shape, filled, outlineWidth); }
 }

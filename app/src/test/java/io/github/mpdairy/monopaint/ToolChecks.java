@@ -32,10 +32,10 @@ public final class ToolChecks {
         java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
         java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
         in.readInt();out.writeInt(0x5453503d);byte[] record=new byte[47];
-        for(int i=0;i<22;i++){in.readFully(record);if(i!=8)out.write(record);in.readUnsignedByte();}
+        for(int i=0;i<23;i++){in.readFully(record);if(i!=8 && i!=9)out.write(record);in.readUnsignedByte();in.skipBytes(6);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
         for(int i=0;i<count;i++) {
-            out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.readUnsignedByte();
+            out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.readUnsignedByte();in.skipBytes(6);
         }
         check(in.read()==-1,"Legacy fixture consumes every record");return bytes.toByteArray();
     }
@@ -81,6 +81,18 @@ public final class ToolChecks {
         check(library.presetNumber(third.id)==1&&library.presetNumber(second.id)==2,"Delete, rename and restart preserve consecutive counts");
         library.recall(second.id);library.selectHead(ToolSettings.Head.FILBERT);
         check(library.presetNumber(second.id)==1&&library.presetNumber(rounded.id)==2,"Changing a head updates both matching groups");
+        library.select(ToolSettings.Tool.SHAPES);library.edit(library.current().shape(ToolSettings.Shape.RECTANGLE));
+        ToolLibrary.Preset rectangle=library.add();
+        library.select(ToolSettings.Tool.SHAPES);library.edit(library.current().shape(ToolSettings.Shape.CIRCLE));
+        ToolLibrary.Preset circle=library.add();
+        library.select(ToolSettings.Tool.SHAPES);library.edit(library.current().shape(ToolSettings.Shape.RECTANGLE).filled(true));
+        ToolLibrary.Preset rectangle2=library.add();
+        check(library.presetNumber(rectangle.id)==1&&library.presetNumber(circle.id)==1&&library.presetNumber(rectangle2.id)==2,
+                "Dots group matching shape icons regardless of fill mode");
+        library.recall(rectangle.id);library.edit(library.current().shape(ToolSettings.Shape.CIRCLE));
+        library=ToolLibrary.decode(library.encode());
+        check(library.presetNumber(rectangle.id)==1&&library.presetNumber(circle.id)==2&&library.presetNumber(rectangle2.id)==1,
+                "Changing saved shape regroups dots and survives restart");
         System.out.println("PASS: favorite dots count matching icons through reorder, removal, head changes and restart");
     }
     private static void flatHeight() throws Exception {

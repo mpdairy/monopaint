@@ -36,7 +36,7 @@ public final class PaintActivity extends Activity {
     private boolean pickingShade, pickedShade;
     private int pickOriginalShade;
     private static final ToolSettings.Tool[] TOOLBAR_TOOLS = {ToolSettings.Tool.BRUSH,
-            ToolSettings.Tool.PENCIL, ToolSettings.Tool.AIRBRUSH, ToolSettings.Tool.FILL, ToolSettings.Tool.ERASER, ToolSettings.Tool.SOFTEN};
+            ToolSettings.Tool.PENCIL, ToolSettings.Tool.AIRBRUSH, ToolSettings.Tool.FILL, ToolSettings.Tool.SHAPES, ToolSettings.Tool.ERASER, ToolSettings.Tool.SOFTEN};
     private WetnessBar wetnessBar;
     private boolean wetCanvas, transparentPaint, eraseMode;
     private int wetness = 65;
@@ -44,10 +44,11 @@ public final class PaintActivity extends Activity {
     private SharedPreferences preferences;
     private DrawingPad pad;
     private Button brushButton;
-    private android.widget.PopupWindow brushPicker;
+    private android.widget.PopupWindow toolPicker;
     private android.widget.PopupWindow filePopup, layersPopup;
     private Button layersButton;
     private ToolButton zoomButton;
+    private boolean navigationLocked = true;
     private LinearLayout sidebarPalette;
     private final java.util.ArrayList<PaletteSwatch> sidebarSwatches=new java.util.ArrayList<>();
     private PaletteEditor paletteEditor;
@@ -94,6 +95,7 @@ public final class PaintActivity extends Activity {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         preferences = getSharedPreferences("painting", MODE_PRIVATE);
+        navigationLocked = preferences.getBoolean("navigation_locked", true);
         wetCanvas = preferences.getBoolean("wet_canvas", false);
         transparentPaint = preferences.getBoolean("transparent_paint", false);
         wetness = Math.max(0, Math.min(100, preferences.getInt("canvas_wetness", 65)));
@@ -166,7 +168,7 @@ public final class PaintActivity extends Activity {
         eraseButton = paintModeButton(colors, "Erase with current tool", R.drawable.ic_eraser, () -> {
             if (busy() || !library.current().supportsEraseMode()) return;
             pad.finishStroke(); setPickingShade(false); pad.dryWet();
-            setEraseMode(true); preferences();
+            setEraseMode(!eraseMode); preferences();
         });
         eraseButton.markerBelow = true;
         transparentButton = paintModeButton(colors, "Transparent paint", R.drawable.ic_transparent, () -> setTransparentPaint(true));
@@ -349,7 +351,7 @@ public final class PaintActivity extends Activity {
     private void requestQuarter(int quarter) {
         if (busy()) return;
         pad.finishStroke(); pad.dryWet(); pad.disconnectDisplay();
-        if (brushPicker != null) brushPicker.dismiss();
+        if (toolPicker != null) toolPicker.dismiss();
         presetDrag.reset(); hideRotationSuggestion();
         appRotation = (4-quarter)%4;
         landscape = appRotation == Surface.ROTATION_90 || appRotation == Surface.ROTATION_270;
@@ -359,7 +361,7 @@ public final class PaintActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
         hideRotationSuggestion();
-        if (brushPicker != null) brushPicker.dismiss();
+        if (toolPicker != null) toolPicker.dismiss();
         applyToolboxSide();
     }
     private int appTurn() { return appRotation == Surface.ROTATION_270 ? -90 : appRotation*90; }
@@ -414,7 +416,7 @@ public final class PaintActivity extends Activity {
         sides.check(preferences.getBoolean("toolbox_right",false)?right.getId():left.getId());content.addView(sides);
         sides.setOnCheckedChangeListener((group,id) -> {preferences.edit().putBoolean("toolbox_right",id==right.getId()).apply();applyToolboxSide();});
         TextView placement = new TextView(this);
-        placement.setText("Tools sit opposite your drawing hand. Left-handed landscape tools stay at the top.");
+        placement.setTag("hint");placement.setText("Tools sit opposite your drawing hand. Left-handed landscape tools stay at the top.");
         content.addView(placement);
         Button manualRotation = new Button(this);
         manualRotation.setText(landscape ? "Turn to portrait" : "Turn to landscape");
@@ -428,12 +430,23 @@ public final class PaintActivity extends Activity {
         sizes.setOnCheckedChangeListener((group,id) -> {
             preferences.edit().putBoolean("large_toolbar_icons",id==large.getId()).apply();rebuildTools();
         });
+        TextView textLabel=new TextView(this);textLabel.setText("Settings text size");content.addView(textLabel);
+        android.widget.RadioGroup textSizes=new android.widget.RadioGroup(this);textSizes.setOrientation(LinearLayout.HORIZONTAL);
+        android.widget.RadioButton mediumText=new android.widget.RadioButton(this),largeText=new android.widget.RadioButton(this);
+        mediumText.setId(View.generateViewId());largeText.setId(View.generateViewId());mediumText.setText("Medium");largeText.setText("Large");
+        mediumText.setContentDescription("Medium settings text");largeText.setContentDescription("Large settings text");
+        textSizes.addView(mediumText,new LinearLayout.LayoutParams(0,dp(48),1));textSizes.addView(largeText,new LinearLayout.LayoutParams(0,dp(48),1));
+        textSizes.check(largeSettingsText()?largeText.getId():mediumText.getId());content.addView(textSizes);
         TextView toolsLabel=new TextView(this);toolsLabel.setText("Toolbar");content.addView(toolsLabel);
         LinearLayout toolsList=new LinearLayout(this);toolsList.setOrientation(LinearLayout.VERTICAL);
         content.addView(toolsList);renderToolbarSettings(toolsList);
         styleSettings(content);
         ScrollView scroll=new ScrollView(this);scroll.addView(content);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Settings").setView(scroll).setPositiveButton("Done",null).create();dialog.show();compactDialog(dialog);
+        textSizes.setOnCheckedChangeListener((group,id) -> {
+            preferences.edit().putBoolean("large_settings_text",id==largeText.getId()).apply();
+            stylePanelText(dialog.getWindow().getDecorView());content.requestLayout();
+        });
         manualRotation.setOnClickListener(v -> { dialog.dismiss(); requestQuarter(landscape ? 0 : 3); });
         return dialog;
     }
@@ -493,6 +506,7 @@ public final class PaintActivity extends Activity {
                 list.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
             }
         }
+        stylePanelText(list);
     }
     private void fileMenu(View anchor) {
         String[] names={"New drawing","Open drawing","Save drawing","Save drawing as…","Settings"};
@@ -515,12 +529,13 @@ public final class PaintActivity extends Activity {
             row.setOnClickListener(v -> { menu.dismiss(); fileAction(position); });
             rows.addView(row,new LinearLayout.LayoutParams(-1,-2));
         }
+        stylePanelText(rows);
         // Place the menu below the hamburger in the user's orientation, then
         // map its rectangle into Android's portrait window for the popup.
         Matrix toRoot=new Matrix();PanelCoordinates.fromView(root).invert(toRoot);
         android.graphics.RectF anchorBounds=new android.graphics.RectF(0,0,anchor.getWidth(),anchor.getHeight());
         PanelCoordinates.fromView(anchor).mapRect(anchorBounds);toRoot.mapRect(anchorBounds);
-        int width=Math.min(dp(220),root.getWidth());
+        int width=Math.min(dp(largeSettingsText()?256:240),root.getWidth());
         scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int height=Math.min(scroll.getMeasuredHeight(),Math.max(1,root.getHeight()-Math.round(anchorBounds.bottom)));
@@ -561,7 +576,7 @@ public final class PaintActivity extends Activity {
         title.setTextColor(Color.BLACK); title.setTextSize(18); title.setPadding(dp(8),dp(4),0,dp(4));
         title.setTypeface(null,android.graphics.Typeface.BOLD); rows.addView(title);
         TextView hint=new TextView(this); hint.setText("Top layers cover the ones below. Tap a name to draw on it.");
-        hint.setTextSize(13); hint.setTextColor(Color.BLACK); hint.setPadding(dp(8),0,dp(8),dp(8)); rows.addView(hint);
+        hint.setTag("hint"); hint.setTextColor(Color.BLACK); hint.setPadding(dp(8),0,dp(8),dp(8)); rows.addView(hint);
         Runnable refresh=() -> { if(layersPopup!=null) layersPopup.dismiss(); showLayers(anchor); };
         LinearLayout actions=new LinearLayout(this); rows.addView(actions);
         layerAction(actions,"Add layer",() -> {layerChange(document::addLayer);refresh.run();},document.layerCount()<ToneDocument.MAX_LAYERS);
@@ -607,13 +622,14 @@ public final class PaintActivity extends Activity {
                     .setPositiveButton("Delete",(dialog,which) -> layerChange(document::removeLayer))
                     .setNegativeButton("Cancel",null));
         },document.layerCount()>1);
+        stylePanelText(rows);
         ScrollView scroll=new ScrollView(this); scroll.addView(rows);
         QuarterTurnLayout content=new QuarterTurnLayout(this); content.setTurn(appTurn()); content.addView(scroll);
         android.widget.PopupWindow popup=new android.widget.PopupWindow(content,0,0,true);
         Matrix toRoot=new Matrix(); PanelCoordinates.fromView(root).invert(toRoot);
         android.graphics.RectF anchorBounds=new android.graphics.RectF(0,0,anchor.getWidth(),anchor.getHeight());
         PanelCoordinates.fromView(anchor).mapRect(anchorBounds); toRoot.mapRect(anchorBounds);
-        int width=Math.min(dp(320),root.getWidth());
+        int width=Math.min(dp(largeSettingsText()?400:360),root.getWidth());
         scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int height=Math.min(scroll.getMeasuredHeight(),root.getHeight());
         float left=toolboxRight&&!landscape?anchorBounds.left-width:anchorBounds.right;
@@ -666,6 +682,7 @@ public final class PaintActivity extends Activity {
             case FLAT_WASH: return R.drawable.ic_flat_wash;
             case WET_WATERCOLOR: return R.drawable.ic_wet_watercolor;
             case AIRBRUSH: return R.drawable.ic_airbrush;
+            case SHAPES: return R.drawable.ic_shapes;
             case PENCIL: return R.drawable.ic_pencil;
             case FILL: return R.drawable.ic_fill;
             case ERASER: return R.drawable.ic_eraser;
@@ -678,6 +695,7 @@ public final class PaintActivity extends Activity {
         if (settings.isBrush() && settings.head != ToolSettings.Head.ROUND) {
             return settings.head == ToolSettings.Head.FLAT ? R.drawable.ic_brush_flat : R.drawable.ic_brush_filbert;
         }
+        if(settings.tool==ToolSettings.Tool.SHAPES)return shapeIcon(settings.shape);
         return icon(settings.tool);
     }
     private void markActive(Button button, boolean selected) {
@@ -689,15 +707,27 @@ public final class PaintActivity extends Activity {
     private String selectedKey() {
         return library.activeId().isEmpty() ? "tool:" + library.current().tool : library.activeId();
     }
+    private void presentTool(ToolButton button,ToolSettings settings,ToolLibrary.Preset preset) {
+        button.iconOnly(icon(settings));
+        if(preset==null)button.setContentDescription(toolDescription(settings));
+        else {
+            int number=library.presetNumber(preset.id);
+            if(button.presetNumber!=number) {button.presetNumber=number;button.invalidate();}
+            button.setContentDescription(preset.name+", "+settings.description()+", favorite "+number
+                    +". Tap to select; tap again for settings. Hold and drag to reorder.");
+        }
+    }
     private void refreshToolSelection() {
         refreshEraseControl();
         for (ToolSettings.Tool tool : ToolSettings.Tool.values()) {
             ToolButton button = selectionButtons.get("tool:" + tool);
             if (button != null) {
-                ToolSettings settings = library.builtin(tool);
-                button.iconOnly(icon(settings));
-                button.setContentDescription(toolDescription(settings));
+                presentTool(button,library.builtin(tool),null);
             }
+        }
+        for(ToolLibrary.Preset preset:library.presets()) {
+            ToolButton button=selectionButtons.get(preset.id);
+            if(button!=null)presentTool(button,preset.settings,preset);
         }
         String selected = selectedKey();
         for (java.util.Map.Entry<String, ToolButton> entry : selectionButtons.entrySet()) {
@@ -715,6 +745,7 @@ public final class PaintActivity extends Activity {
     }
     private final class ToolButton extends Button {
         boolean marked, alwaysDot, markerLeft, markerBelow, headerIcon;
+        boolean navigationControl;
         int iconHalf = 14, iconOffset, presetNumber;
         String presetId;
         String caption;
@@ -732,10 +763,13 @@ public final class PaintActivity extends Activity {
         }
         void iconOnly(int resource) {
             if (iconResource == resource) return;
+            // Changing the selected variant only changes the drawable; keep the
+            // toolbar's measured geometry stable while its settings panel is open.
+            if(centerIcon==null) {
+                setText("");setCompoundDrawables(null,null,null,null);setMinWidth(0);setMinimumWidth(0);
+                setTextColor(Color.BLACK);setHintTextColor(Color.BLACK);setLinkTextColor(Color.BLACK);
+            }
             iconResource = resource;
-            setText("");setCompoundDrawables(null,null,null,null);setMinWidth(0);setMinimumWidth(0);
-            // Empty button text still has themed pressed colors which can invalidate it.
-            setTextColor(Color.BLACK);setHintTextColor(Color.BLACK);setLinkTextColor(Color.BLACK);
             centerIcon=getDrawable(resource);invalidate();
         }
         Rect markerArea() {
@@ -763,6 +797,26 @@ public final class PaintActivity extends Activity {
                 markerPaint.setColor(Color.BLACK); markerPaint.setTextAlign(Paint.Align.CENTER);
                 markerPaint.setTextSize(dp(12)); markerPaint.setAntiAlias(true);
                 canvas.drawText(caption,getWidth()/2f,getHeight()-dp(7),markerPaint);
+                markerPaint.setAntiAlias(false);
+            }
+            if(navigationControl) {
+                // This corner is also captured by SelectionFeedback for immediate e-ink updates.
+                int right=getWidth()-dp(4),top=dp(4);
+                markerPaint.setColor(Color.WHITE);
+                canvas.drawRect(right-dp(17),top-dp(1),right+dp(1),top+dp(19),markerPaint);
+                markerPaint.setColor(Color.BLACK);markerPaint.setStyle(Paint.Style.STROKE);
+                markerPaint.setStrokeWidth(dp(2));markerPaint.setAntiAlias(true);
+                float left=right-dp(12);
+                canvas.save();
+                if(!navigationLocked)canvas.rotate(-35,left+dp(2),top+dp(8));
+                canvas.drawArc(left+dp(2),top,right-dp(2),top+dp(12),180,180,false,markerPaint);
+                canvas.drawLine(left+dp(2),top+dp(6),left+dp(2),top+dp(9),markerPaint);
+                canvas.drawLine(right-dp(2),top+dp(6),right-dp(2),top+dp(9),markerPaint);
+                canvas.restore();
+                markerPaint.setStyle(Paint.Style.FILL);
+                canvas.drawRoundRect(left,top+dp(8),right,top+dp(17),dp(2),dp(2),markerPaint);
+                markerPaint.setColor(Color.WHITE);
+                canvas.drawCircle(left+dp(6),top+dp(12),dp(1),markerPaint);
                 markerPaint.setAntiAlias(false);
             }
             if (presetId != null) {
@@ -902,17 +956,15 @@ public final class PaintActivity extends Activity {
     }
     private Button toolRow(String key,String name,int icon,Runnable select) {
         ToolButton control=(ToolButton)button(toolRail,name,icon,() -> {
-            if(selectedKey().equals(key)) {
-                if (library.current().isBrush() && library.activeId().isEmpty())
-                    showBrushPicker(library.current().tool);
-                else settings();
-            } else select.run();
+            if(selectedKey().equals(key)) settings();
+            else select.run();
         });
         control.iconOnly(icon);control.settingsArrow=getDrawable(R.drawable.ic_chevron);
         if(largeToolbarIcons())control.iconOffset=-4;
         control.setContentDescription(name+". Tap to select; tap again for settings.");
         control.setOnLongClickListener(v -> {
-            if(!busy()){setPickingShade(false);pad.finishStroke();if(!selectedKey().equals(key))select.run();settings();}return true;
+            if(!busy()){setPickingShade(false);pad.finishStroke();if(!selectedKey().equals(key))select.run();
+                settings();}return true;
         });
         return control;
     }
@@ -982,7 +1034,7 @@ public final class PaintActivity extends Activity {
         setPickingShade(false);pad.finishStroke();pad.dryWet();pad.disconnectDisplay();
         if(filePopup!=null)filePopup.dismiss();
         if(layersPopup!=null)layersPopup.dismiss();
-        if(brushPicker!=null)brushPicker.dismiss();
+        if(toolPicker!=null)toolPicker.dismiss();
         paletteEditor=new PaletteEditor();paletteEditor.show();
     }
     private void closePaletteEditor() {
@@ -1090,7 +1142,7 @@ public final class PaintActivity extends Activity {
                     cell.setOnLongClickListener(v -> startDrag(cell,index));
                 }
             }
-            refreshSelection();if(popup!=null && popup.isShowing())position();
+            stylePanelText(content);refreshSelection();if(popup!=null && popup.isShowing())position();
         }
         void refreshSelection() {
             for(int i=0;i<cells.size();i++) {
@@ -1247,10 +1299,10 @@ public final class PaintActivity extends Activity {
             }
             if(key.equals("ZOOM")) {
                 if(preferences.getBoolean("tool_visible_ZOOM",true)) {
-                    zoomButton=(ToolButton)button(toolRail,"Zoom",R.drawable.ic_zoom,this::zoomControls);
+                    zoomButton=(ToolButton)button(toolRail,"Zoom",R.drawable.ic_zoom,this::toggleNavigationLock);
                     zoomButton.iconOnly(R.drawable.ic_zoom);zoomButton.iconHalf=largeToolbarIcons()?16:12;
+                    zoomButton.navigationControl=true;
                     markActive(zoomButton,false);refreshZoom();
-                    zoomButton.setOnLongClickListener(v -> { if(!busy()) {pad.finishStroke();pad.fitPage();} return true; });
                 }
                 continue;
             }
@@ -1267,11 +1319,7 @@ public final class PaintActivity extends Activity {
             Button b = toolRow("tool:"+tool,remembered.label(), icon(remembered), () -> {
                 library.select(tool); maximum = library.current().maximum; refreshToolSelection(); preferences();
             });
-            b.setContentDescription(toolDescription(remembered));
-            if (remembered.isBrush()) b.setOnLongClickListener(v -> {
-                if (!busy()) { setPickingShade(false);pad.finishStroke(); showBrushPicker(tool); }
-                return true;
-            });
+            presentTool((ToolButton)b,remembered,null);
             if (tool == ToolSettings.Tool.BRUSH) brushButton = b;
             selectionButtons.put("tool:"+tool,(ToolButton)b);
             ((ToolButton)b).marked = selectedKey().equals("tool:"+tool); markActive(b,((ToolButton)b).marked);
@@ -1287,8 +1335,7 @@ public final class PaintActivity extends Activity {
             });
             b.setTextSize(12); b.setMaxLines(2); b.setEllipsize(android.text.TextUtils.TruncateAt.END);
             ((ToolButton)b).presetId = preset.id;
-            ((ToolButton)b).presetNumber = library.presetNumber(preset.id);
-            b.setContentDescription(preset.name + ", " + preset.settings.description() + ", favorite " + library.presetNumber(preset.id) + ", " + preset.settings.maximum + " px. Tap to select; tap again for settings. Hold and drag to reorder.");
+            presentTool((ToolButton)b,preset.settings,preset);
             selectionButtons.put(preset.id,(ToolButton)b);
             ((ToolButton)b).marked = selectedKey().equals(preset.id); markActive(b,((ToolButton)b).marked);
             b.setOnLongClickListener(v -> {
@@ -1310,181 +1357,285 @@ public final class PaintActivity extends Activity {
     }
     private String toolDescription(ToolSettings settings) {
         settings = settings.asBrush();
-        return settings.description()+(settings.isBrush()
-                ? ". Tap to select; tap again or hold for brush heads and settings."
-                : ". Tap to select; tap again for settings.");
+        return settings.description()+". Tap to select; tap again for settings.";
     }
     private void refreshZoom() {
         if(zoomButton==null) return;
         String caption=(pad==null?100:pad.viewport.percent())+"%";
         if(caption.equals(zoomButton.caption)) return;
-        zoomButton.caption=caption;
-        zoomButton.setContentDescription("Zoom "+caption+". Tap for zoom controls; hold to fit page.");
-        zoomButton.invalidate();
+        Runnable change=() -> {zoomButton.caption=caption;describeNavigation();};
+        if(pad!=null && pad.navigating && zoomButton.getWidth()>0)
+            selectionFeedback.update(zoomButton,new Rect(0,0,zoomButton.getWidth(),zoomButton.getHeight()),change);
+        else {change.run();zoomButton.invalidate();}
     }
-    private void zoomControls() {
-        showDialog(new AlertDialog.Builder(this).setTitle("Zoom "+pad.viewport.percent()+"%")
-                .setItems(new String[]{"Zoom in","Zoom out","Fit page"},(dialog,which) -> {
-                    if(which==2) pad.fitPage(); else pad.zoomBy(which==0?1.5f:1/1.5f);
-                }));
+    private void describeNavigation() {
+        zoomButton.setContentDescription("Zoom "+zoomButton.caption+". Zoom and pan "
+                +(navigationLocked?"locked. Tap to unlock.":"unlocked. Tap to lock."));
+    }
+    private void toggleNavigationLock() {
+        // Discard any fingers already down; unlocking requires a fresh gesture.
+        pad.touchBlocked=true;pad.endNavigation();
+        selectionFeedback.update(zoomButton,zoomButton.markerArea(),() -> {
+            navigationLocked=!navigationLocked;
+            describeNavigation();
+        });
+        preferences.edit().putBoolean("navigation_locked",navigationLocked).apply();
+    }
+    private int shapeIcon(ToolSettings.Shape shape) {
+        switch(shape) {
+            case LINE:return R.drawable.ic_shape_line;
+            case RECTANGLE:return R.drawable.ic_shape_rectangle;
+            case SQUARE:return R.drawable.ic_shape_square;
+            case OVAL:return R.drawable.ic_shape_oval;
+            case CIRCLE:return R.drawable.ic_shape_circle;
+            default:throw new IllegalArgumentException("Unknown shape: "+shape);
+        }
     }
     private int tipIcon(ToolSettings.Head head) {
         return head==ToolSettings.Head.FLAT?R.drawable.ic_tip_flat
                 :head==ToolSettings.Head.FILBERT?R.drawable.ic_tip_filbert:R.drawable.ic_tip_round;
     }
+    private Button variantChoice(String label,int icon,boolean selected,Runnable choose) {
+        Button choice=new Button(this);choice.setText(label);choice.setTag(label);
+        choice.setAllCaps(false);choice.setTextColor(Color.BLACK);
+        choice.setGravity(android.view.Gravity.CENTER);choice.setPadding(dp(2),dp(8),dp(2),dp(4));
+        choice.setMinWidth(0);choice.setMinimumWidth(0);choice.setStateListAnimator(null);
+        android.graphics.drawable.Drawable glyph=getDrawable(icon);glyph.setBounds(0,0,dp(32),dp(32));
+        choice.setCompoundDrawables(null,glyph,null,null);choice.setCompoundDrawablePadding(dp(6));
+        android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
+        border.setColor(selected?0xffeeeeee:Color.WHITE);border.setStroke(dp(selected?2:1),selected?Color.BLACK:0xffbbbbbb);
+        border.setCornerRadius(dp(8));choice.setBackground(border);choice.setSelected(selected);
+        choice.setOnClickListener(v -> choose.run());return choice;
+    }
+    private void addVariant(LinearLayout row,Button choice) {
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(84),1);
+        params.setMargins(dp(2),0,dp(2),0);row.addView(choice,params);
+    }
     private LinearLayout headChoices(ToolSettings settings, java.util.function.Consumer<ToolSettings.Head> choose) {
-        LinearLayout row = new LinearLayout(this);
-        row.setContentDescription("Brush tips");
-        for (ToolSettings.Head head : ToolSettings.Head.values()) {
-            Button choice = new Button(this);choice.setText(head.label);choice.setTag(head.label);
-            choice.setAllCaps(false);choice.setTextSize(13);choice.setTextColor(Color.BLACK);
-            choice.setGravity(android.view.Gravity.CENTER);
-            choice.setPadding(dp(4),dp(8),dp(4),dp(6));choice.setMinWidth(0);choice.setMinimumWidth(0);
-            choice.setStateListAnimator(null);
-            android.graphics.drawable.Drawable tip=getDrawable(tipIcon(head));
-            tip.setBounds(0,0,dp(44),dp(44));
-            choice.setCompoundDrawables(null,tip,null,null);choice.setCompoundDrawablePadding(dp(4));
-            choice.setContentDescription(head.label+" "+settings.label());
-            android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
-            border.setColor(Color.WHITE);border.setStroke(dp(settings.head==head?2:1),settings.head==head?Color.BLACK:0xffbbbbbb);
-            border.setCornerRadius(dp(14));
-            choice.setBackground(border);choice.setSelected(settings.head==head);
-            choice.setOnClickListener(v -> choose.accept(head));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,dp(88),1);
-            params.setMargins(dp(3),0,dp(3),0);row.addView(choice,params);
+        LinearLayout row=new LinearLayout(this);row.setContentDescription("Brush tips");
+        for(ToolSettings.Head head:ToolSettings.Head.values()) {
+            Button choice=variantChoice(head.label,tipIcon(head),settings.head==head,() -> choose.accept(head));
+            choice.setContentDescription(head.label+" "+settings.label());addVariant(row,choice);
+        }
+        return row;
+    }
+    private LinearLayout shapeChoices(ToolSettings settings,java.util.function.Consumer<ToolSettings.Shape> choose) {
+        LinearLayout row=new LinearLayout(this);row.setContentDescription("Shape choices");
+        for(ToolSettings.Shape shape:ToolSettings.Shape.values()) {
+            Button choice=variantChoice(shape.label,shapeIcon(shape),settings.shape==shape,() -> choose.accept(shape));
+            choice.setContentDescription(shape.label+" shape");addVariant(row,choice);
         }
         return row;
     }
     private LinearLayout brushEditor() {
         LinearLayout editor=new LinearLayout(this);editor.setOrientation(LinearLayout.VERTICAL);
         editor.setPadding(dp(12),dp(12),dp(12),dp(4));
-        Runnable[] render=new Runnable[1];
-        render[0]=() -> {
-            editor.removeAllViews();ToolSettings current=library.current();
-            editor.addView(headChoices(current,head -> {
-                if (busy() || head==library.current().head) return;
-                library.selectHead(head);maximum=library.current().maximum;preferences();refreshToolSelection();
-                render[0].run();
-            }));
-            View divider=new View(this);divider.setBackgroundColor(0xffcccccc);
-            LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,dp(1));
-            line.setMargins(0,dp(14),0,dp(10));editor.addView(divider,line);
-            TextView title=new TextView(this);title.setText(current.head.label);title.setTextSize(16);
-            title.setTextColor(Color.BLACK);title.setTypeface(null,android.graphics.Typeface.BOLD);editor.addView(title);
-            TextView hint=new TextView(this);hint.setTextSize(12);hint.setTextColor(Color.DKGRAY);
-            hint.setText(current.head==ToolSettings.Head.ROUND?"Even in every direction"
-                    :current.head==ToolSettings.Head.FLAT?"Fine, straight edge · follows tilt":"Full, rounded edge · follows tilt");editor.addView(hint);
-            Footprint preview=new Footprint();editor.addView(preview,new LinearLayout.LayoutParams(-1,dp(112)));
-            TextView low=new TextView(this),high=new TextView(this);
-            SeekBar minimumSize=new SeekBar(this),size=new SeekBar(this);
-            String dimension=current.head==ToolSettings.Head.ROUND?"diameter":"width";
-            minimumSize.setContentDescription("Minimum "+dimension);size.setContentDescription("Maximum "+dimension);
-            sliderRow(editor,low,minimumSize,true);sliderRow(editor,high,size,true);
-            TextView heightLabel=current.head==ToolSettings.Head.FLAT?new TextView(this):null;
-            SeekBar height=current.head==ToolSettings.Head.FLAT?new SeekBar(this):null;
-            if(height!=null) {
-                height.setContentDescription("Brush height");height.setMax(ToolSettings.MAX_FLAT_HEIGHT);
-                sliderRow(editor,heightLabel,height,true);
-                TextView heightHint=new TextView(this);heightHint.setTextSize(12);heightHint.setTextColor(Color.DKGRAY);
-                heightHint.setText("1 px minimum; up to 20% of the pressure-sized width.");editor.addView(heightHint);
-            }
-            boolean[] syncing={false};
-            Runnable update=() -> {
-                syncing[0]=true;ToolSettings settings=library.current();
-                low.setText("Min "+dimension+"\n"+settings.minimum+" px");high.setText("Max "+dimension+"\n"+settings.maximum+" px");
-                minimumSize.setMax(settings.maximum-1);minimumSize.setProgress(settings.minimum-1);
-                size.setMax(ToolSettings.sizeLimit(settings.head)-2);size.setProgress(settings.maximum-2);
-                if(height!=null) {
-                    heightLabel.setText("Height\n"+(settings.headThickness==0?"1 px":settings.headThickness+"% width"));
-                    height.setProgress(settings.headThickness);
-                }
-                syncing[0]=false;preview.invalidate();
-            };
-            if(height!=null)height.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
-                    if(syncing[0])return;library.edit(library.current().headThickness(value));update.run();preferences();
-                }
-                @Override public void onStartTrackingTouch(SeekBar bar) {}
-                @Override public void onStopTrackingTouch(SeekBar bar) {}
-            });
-            minimumSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
-                    if(syncing[0])return;library.edit(library.current().minimum(value+1));update.run();preferences();
-                }
-                @Override public void onStartTrackingTouch(SeekBar bar) {}
-                @Override public void onStopTrackingTouch(SeekBar bar) {}
-            });
-            size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
-                    if(syncing[0])return;maximum=value+2;library.edit(library.current().size(maximum));update.run();preferences();
-                }
-                @Override public void onStartTrackingTouch(SeekBar bar) {}
-                @Override public void onStopTrackingTouch(SeekBar bar) {}
-            });
-            settingSlider(editor,"Pressure response",current.pressureResponse,true,value -> {
-                library.edit(library.current().pressureResponse(value));preferences();
-            });
-            if(current.tool!=ToolSettings.Tool.BRUSH) {
-                TextView mode=new TextView(this);mode.setTextSize(12);mode.setTextColor(Color.DKGRAY);mode.setPadding(0,dp(6),0,0);
-                mode.setText(current.tool==ToolSettings.Tool.WATERCOLOR?"Black dots; white adds no ink."
-                        :current.tool==ToolSettings.Tool.FLAT_WASH?"Even gray; darker marks stay."
-                        :"Colors mingle while wet. White adds water; use the dryer to set.");editor.addView(mode);
-            }
-            update.run();
-        };
-        render[0].run();return editor;
-    }
-    private void showBrushPicker(ToolSettings.Tool tool) {
-        if (brushPicker != null) brushPicker.dismiss();
-        library.select(tool);maximum=library.current().maximum;preferences();refreshToolSelection();
-        LinearLayout panel = new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(2),dp(2),dp(2),dp(2));
-        TextView title=new TextView(this);title.setText(library.current().label());title.setTextSize(17);
-        title.setTextColor(Color.BLACK);title.setTypeface(null,android.graphics.Typeface.BOLD);
-        title.setPadding(dp(16),dp(14),dp(16),0);panel.addView(title);
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.addView(brushEditor());
-        panel.addView(scroll,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout actions=new LinearLayout(this);actions.setGravity(android.view.Gravity.END);
-        Button add=new Button(this);add.setText("Add to Toolbar");add.setAllCaps(false);add.setTextSize(12);
-        add.setOnClickListener(v -> {
-            try {library.add();preferences();brushPicker.dismiss();rebuildTools();}
-            catch(IllegalStateException error){message(error.getMessage());}
-        });
-        actions.addView(add,new LinearLayout.LayoutParams(0,dp(48),1));
-        Button done=new Button(this);done.setText("Done");done.setAllCaps(false);done.setTextSize(12);
-        done.setOnClickListener(v -> brushPicker.dismiss());actions.addView(done,new LinearLayout.LayoutParams(dp(76),dp(48)));
-        for(Button action:new Button[]{add,done}) {
-            action.setBackgroundColor(Color.WHITE);action.setTextColor(Color.BLACK);
-            action.setStateListAnimator(null);action.setTypeface(null,android.graphics.Typeface.BOLD);
-        }
-        View divider=new View(this);divider.setBackgroundColor(0xffcccccc);panel.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
-        panel.addView(actions);
-        View root=getWindow().getDecorView();
-        int width=Math.min(dp(336),this.root.getWidth()-dp(24));
-        panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
-        int height=Math.min(panel.getMeasuredHeight()+dp(2),this.root.getHeight()-dp(24));
-        scroll.setLayoutParams(new LinearLayout.LayoutParams(-1,0,1));
-        QuarterTurnLayout popupContent=new QuarterTurnLayout(this); popupContent.setTurn(appTurn()); popupContent.addView(panel);
-        android.widget.PopupWindow popup=new android.widget.PopupWindow(popupContent,landscape ? height : width,landscape ? width : height,true);
-        android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
-        border.setColor(Color.WHITE);border.setStroke(dp(1),Color.BLACK);border.setCornerRadius(dp(6));
-        popup.setBackgroundDrawable(border);popup.setOutsideTouchable(true);popup.setElevation(0);popup.setAnimationStyle(0);
-        popup.setOnDismissListener(() -> { if (brushPicker==popup) brushPicker=null; });brushPicker=popup;
-        popup.showAtLocation(root,android.view.Gravity.CENTER,0,0);
-    }
-    private AlertDialog settings() {
         ToolSettings current=library.current();
-        if (current.isBrush()) return showToolSettings(brushEditor(),current.label());
+        TextView hint=new TextView(this);hint.setTag("hint");hint.setTextColor(Color.BLACK);
+        hint.setText(current.head==ToolSettings.Head.ROUND?"Even in every direction"
+                :current.head==ToolSettings.Head.FLAT?"Fine, straight edge · follows tilt":"Full, rounded edge · follows tilt");editor.addView(hint);
+        Footprint preview=new Footprint();editor.addView(preview,new LinearLayout.LayoutParams(-1,dp(112)));
+        TextView low=new TextView(this),high=new TextView(this);
+        SeekBar minimumSize=new SeekBar(this),size=new SeekBar(this);
+        String dimension=current.head==ToolSettings.Head.ROUND?"diameter":"width";
+        minimumSize.setContentDescription("Minimum "+dimension);size.setContentDescription("Maximum "+dimension);
+        sliderRow(editor,low,minimumSize,true);sliderRow(editor,high,size,true);
+        TextView heightLabel=current.head==ToolSettings.Head.FLAT?new TextView(this):null;
+        SeekBar height=current.head==ToolSettings.Head.FLAT?new SeekBar(this):null;
+        if(height!=null) {
+            height.setContentDescription("Brush height");height.setMax(ToolSettings.MAX_FLAT_HEIGHT);
+            sliderRow(editor,heightLabel,height,true);
+            TextView heightHint=new TextView(this);heightHint.setTag("hint");heightHint.setTextColor(Color.BLACK);
+            heightHint.setText("1 px minimum; up to 20% of the pressure-sized width.");editor.addView(heightHint);
+        }
+        boolean[] syncing={false};
+        Runnable update=() -> {
+            syncing[0]=true;ToolSettings settings=library.current();
+            low.setText("Min "+dimension+"\n"+settings.minimum+" px");high.setText("Max "+dimension+"\n"+settings.maximum+" px");
+            minimumSize.setMax(settings.maximum-1);minimumSize.setProgress(settings.minimum-1);
+            size.setMax(ToolSettings.sizeLimit(settings.head)-2);size.setProgress(settings.maximum-2);
+            if(height!=null) {
+                heightLabel.setText("Height\n"+(settings.headThickness==0?"1 px":settings.headThickness+"% width"));
+                height.setProgress(settings.headThickness);
+            }
+            syncing[0]=false;preview.invalidate();
+        };
+        if(height!=null)height.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                if(syncing[0])return;library.edit(library.current().headThickness(value));update.run();preferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        minimumSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                if(syncing[0])return;library.edit(library.current().minimum(value+1));update.run();preferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                if(syncing[0])return;maximum=value+2;library.edit(library.current().size(maximum));update.run();preferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        settingSlider(editor,"Pressure response",current.pressureResponse,true,value -> {
+            library.edit(library.current().pressureResponse(value));preferences();
+        });
+        if(current.tool!=ToolSettings.Tool.BRUSH) {
+            TextView mode=new TextView(this);mode.setTag("hint");mode.setTextColor(Color.BLACK);mode.setPadding(0,dp(6),0,0);
+            mode.setText(current.tool==ToolSettings.Tool.WATERCOLOR?"Black dots; white adds no ink."
+                    :current.tool==ToolSettings.Tool.FLAT_WASH?"Even gray; darker marks stay."
+                    :"Colors mingle while wet. White adds water; use the dryer to set.");editor.addView(mode);
+        }
+        update.run();
+        return editor;
+    }
+    private android.widget.PopupWindow showToolPanel() {
+        if(toolPicker!=null)toolPicker.dismiss();
+        closePaletteEditor();
+        View anchor=selectionButtons.get(selectedKey());
+        if(anchor==null)anchor=toolRail;
+        ToolSettingsPanel panel=new ToolSettingsPanel(anchor);panel.show();return panel.popup;
+    }
+    /** Common sizing, rotation, typography and dismissal for sidebar settings panels. */
+    private class SettingsPanel {
+        final View anchor;
+        final int preferredWidth;
+        final LinearLayout panel=new LinearLayout(PaintActivity.this);
+        final ScrollView scroll=new ScrollView(PaintActivity.this);
+        final android.widget.PopupWindow popup;
+        SettingsPanel(View anchor,int width) {
+            this.anchor=anchor;preferredWidth=width;
+            panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(10),dp(4),dp(10),dp(10));
+            android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
+            border.setColor(Color.WHITE);border.setStroke(dp(1),Color.BLACK);border.setCornerRadius(dp(8));panel.setBackground(border);
+            scroll.addView(panel);
+            QuarterTurnLayout rotated=new QuarterTurnLayout(PaintActivity.this);rotated.setTurn(appTurn());rotated.addView(scroll);
+            popup=new android.widget.PopupWindow(rotated,0,0,true);
+            popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            popup.setOutsideTouchable(true);popup.setElevation(0);popup.setAnimationStyle(0);
+            popup.setInputMethodMode(android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED);
+            popup.setOnDismissListener(() -> {if(toolPicker==popup)toolPicker=null;});
+        }
+        void show() {
+            if(toolPicker!=null)toolPicker.dismiss();
+            closePaletteEditor();stylePanelText(panel);toolPicker=popup;position();
+        }
+        Button closeButton(String description) {
+            Button close=new Button(PaintActivity.this);close.setText("×");close.setTag("close");
+            close.setContentDescription(description);close.setBackgroundColor(Color.WHITE);close.setStateListAnimator(null);
+            close.setOnClickListener(v -> popup.dismiss());return close;
+        }
+        void position() {
+            Matrix inverse=new Matrix();PanelCoordinates.fromView(root).invert(inverse);
+            android.graphics.RectF area=new android.graphics.RectF(0,0,pad.getWidth(),pad.getHeight());
+            PanelCoordinates.fromView(pad).mapRect(area);inverse.mapRect(area);area.inset(dp(8),dp(8));
+            int width=Math.min(dp(preferredWidth),Math.round(area.width()));
+            scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(Math.round(area.height()),View.MeasureSpec.AT_MOST));
+            int height=Math.min(scroll.getMeasuredHeight(),Math.round(area.height()));
+            android.graphics.RectF icon=new android.graphics.RectF(0,0,anchor.getWidth(),anchor.getHeight());
+            PanelCoordinates.fromView(anchor).mapRect(icon);inverse.mapRect(icon);
+            float left=landscape?icon.left:icon.centerX()<area.centerX()?icon.right+dp(8):icon.left-width-dp(8);
+            float top=!landscape?icon.top:icon.centerY()<area.centerY()?icon.bottom+dp(8):icon.top-height-dp(8);
+            left=Math.max(area.left,Math.min(left,area.right-width));top=Math.max(area.top,Math.min(top,area.bottom-height));
+            android.graphics.RectF bounds=new android.graphics.RectF(left,top,left+width,top+height);PanelCoordinates.fromView(root).mapRect(bounds);
+            if(popup.isShowing())popup.update(Math.round(bounds.left),Math.round(bounds.top),Math.round(bounds.width()),Math.round(bounds.height()));
+            else {popup.setWidth(Math.round(bounds.width()));popup.setHeight(Math.round(bounds.height()));
+                popup.showAtLocation(root,android.view.Gravity.TOP|android.view.Gravity.LEFT,Math.round(bounds.left),Math.round(bounds.top));}
+        }
+    }
+    private final class ToolSettingsPanel extends SettingsPanel {
+        final boolean shapes=library.current().tool==ToolSettings.Tool.SHAPES;
+        final boolean brush=library.current().isBrush();
+        final String presetId=library.activeId();
+        ToolSettingsPanel(View anchor) {
+            super(anchor,library.current().tool==ToolSettings.Tool.SHAPES?(largeSettingsText()?560:520):(largeSettingsText()?448:400));
+            render();
+        }
+        void render() {
+            panel.removeAllViews();
+            ToolSettings current=library.current();
+            if(shapes || brush) panel.addView(shapes?shapeChoices(current,shape -> {
+                library.edit(library.current().shape(shape));selected();
+            }):headChoices(current,head -> {library.selectHead(head);selected();}));
+            if(shapes || brush) {
+                View divider=new View(PaintActivity.this);divider.setBackgroundColor(0xffcccccc);
+                LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,dp(1));line.setMargins(dp(2),dp(12),dp(2),0);panel.addView(divider,line);
+            }
+            panel.addView(shapes?shapeEditor(this::position):brush?brushEditor():toolEditor());
+            LinearLayout actions=new LinearLayout(PaintActivity.this);actions.setGravity(android.view.Gravity.END);
+            Button save=new Button(PaintActivity.this);save.setAllCaps(false);save.setBackgroundColor(Color.WHITE);
+            if(presetId.isEmpty()) {save.setText("Add to Toolbar");save.setContentDescription("Add to Toolbar");}
+            else {
+                save.setContentDescription("Delete custom tool");
+                save.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_trash,0,0,0);
+            }
+            save.setOnClickListener(v -> {
+                try {
+                    if(presetId.isEmpty())library.add();else library.remove(presetId);
+                    maximum=library.current().maximum;preferences();popup.dismiss();rebuildTools();
+                } catch(IllegalStateException error){message(error.getMessage());}
+            });
+            actions.addView(save,new LinearLayout.LayoutParams(0,dp(48),1));
+            actions.addView(closeButton(shapes?"Close shapes":brush?"Close brush":"Close tool settings"),new LinearLayout.LayoutParams(dp(48),dp(48)));
+            panel.addView(actions);stylePanelText(panel);
+            if(popup.isShowing())position();
+        }
+        void selected() {
+            maximum=library.current().maximum;preferences();refreshToolSelection();render();
+        }
+    }
+    private LinearLayout shapeEditor(Runnable resized) {
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(12),dp(12),dp(12),dp(4));
+        ToolSettings current=library.current();
+        android.widget.RadioGroup modes=new android.widget.RadioGroup(this);modes.setOrientation(LinearLayout.HORIZONTAL);
+        for(boolean filled:new boolean[]{false,true}) {
+            android.widget.RadioButton choice=new android.widget.RadioButton(this);
+            choice.setId(View.generateViewId());choice.setText(filled?"Filled":"Outline");choice.setTextColor(Color.BLACK);
+            choice.setContentDescription(filled?"Filled shape":"Outline shape");choice.setTag(filled);
+            modes.addView(choice,new LinearLayout.LayoutParams(0,dp(56),1));choice.setChecked(current.filled==filled);
+        }
+        content.addView(modes);modes.setVisibility(current.shape==ToolSettings.Shape.LINE?View.GONE:View.VISIBLE);
+        LinearLayout widthControls=new LinearLayout(this);widthControls.setOrientation(LinearLayout.VERTICAL);
+        TextView label=new TextView(this);String caption=current.shape==ToolSettings.Shape.LINE?"Line width":"Outline width";
+        label.setText(caption+"\n"+current.outlineWidth+" px");
+        SeekBar width=new SeekBar(this);width.setContentDescription("Shape outline width");
+        width.setMax(127);width.setProgress(current.outlineWidth-1);sliderRow(widthControls,label,width,true);content.addView(widthControls);
+        widthControls.setVisibility(current.shape==ToolSettings.Shape.LINE || !current.filled?View.VISIBLE:View.GONE);
+        modes.setOnCheckedChangeListener((group,id) -> {
+            View choice=group.findViewById(id);if(choice==null)return;
+            library.edit(library.current().filled((Boolean)choice.getTag()));preferences();refreshToolSelection();
+            widthControls.setVisibility(library.current().filled?View.GONE:View.VISIBLE);resized.run();
+        });
+        width.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                library.edit(library.current().outlineWidth(value+1));label.setText(caption+"\n"+(value+1)+" px");preferences();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        TextView note=new TextView(this);note.setText("Drag to size · lift to finish");note.setTextColor(Color.BLACK);note.setTag("hint");
+        note.setPadding(0,dp(8),0,dp(4));content.addView(note);
+        return content;
+    }
+    private android.widget.PopupWindow settings() {return showToolPanel();}
+    private LinearLayout toolEditor() {
+        ToolSettings current=library.current();
         if(current.tool==ToolSettings.Tool.AIRBRUSH) {
             LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
             content.setPadding(dp(16),dp(8),dp(16),dp(8));
-            TextView label=new TextView(this);label.setText("Diameter: "+current.maximum+" px");
+            TextView label=new TextView(this);label.setText("Diameter\n"+current.maximum+" px");
             SeekBar size=new SeekBar(this);size.setContentDescription("Airbrush diameter");
-            size.setMax(126);size.setProgress(current.maximum-2);sliderRow(content,label,size,false);
+            size.setMax(126);size.setProgress(current.maximum-2);sliderRow(content,label,size,true);
             size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
                     maximum=value+2;library.edit(library.current().size(maximum));
-                    label.setText("Diameter: "+maximum+" px");preferences();
+                    label.setText("Diameter\n"+maximum+" px");preferences();
                 }
                 @Override public void onStartTrackingTouch(SeekBar bar) {}
                 @Override public void onStopTrackingTouch(SeekBar bar) {}
@@ -1494,7 +1645,7 @@ public final class PaintActivity extends Activity {
             });
             TextView note=new TextView(this);note.setTag("hint");
             note.setText("Press harder for stronger spray. Hold or move slowly to build color. Size stays fixed.");
-            content.addView(note);return showToolSettings(content,"Airbrush");
+            content.addView(note);return content;
         }
         if(current.tool==ToolSettings.Tool.FILL) {
             LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(8),dp(16),dp(8));
@@ -1520,7 +1671,7 @@ public final class PaintActivity extends Activity {
                 library.edit(library.current().tolerance(value));preferences();
             });
             hint.run();content.addView(note);
-            return showToolSettings(content,"Flood fill");
+            return content;
         }
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(8), dp(16), dp(8));
@@ -1531,18 +1682,18 @@ public final class PaintActivity extends Activity {
         String dimension="diameter";
         TextView minimumLabel=new TextView(this);
         SeekBar minimumSize=new SeekBar(this);minimumSize.setContentDescription("Minimum "+dimension);
-        sliderRow(content,minimumLabel,minimumSize,false);
+        sliderRow(content,minimumLabel,minimumSize,true);
         TextView label = new TextView(this);
         SeekBar size = new SeekBar(this); size.setContentDescription("Maximum "+dimension);size.setMax(126); size.setProgress(maximum - 2);
-        sliderRow(content,label,size,false);
+        sliderRow(content,label,size,true);
         Runnable update = () -> {
             syncing[0]=true;ToolSettings s=library.current();
-            minimumLabel.setText(("Minimum "+dimension+": ")+s.minimum+" px");
-            label.setText(("Maximum "+dimension+": ")+s.maximum+" px");
+            minimumLabel.setText(("Min "+dimension+"\n")+s.minimum+" px");
+            label.setText(("Max "+dimension+"\n")+s.maximum+" px");
             minimumSize.setMax(s.maximum-1);minimumSize.setProgress(s.minimum-1);size.setProgress(s.maximum-2);
             if(tipControl[0]!=null) {
                 tipControl[0].setMax(s.maximum-s.minimum);tipControl[0].setProgress(s.tip-s.minimum);
-                tipLabel[0].setText("Upright tip at full pressure: "+s.tip+" px");
+                tipLabel[0].setText("Upright tip\n"+s.tip+" px");
             }
             syncing[0]=false;preview.invalidate();
         };
@@ -1573,10 +1724,10 @@ public final class PaintActivity extends Activity {
                 library.edit(library.current().hardness(value));preferences();preview.invalidate();
             });
             TextView note=new TextView(this);note.setText("Soft = darker. Hard = lighter.");note.setTag("hint");content.addView(note);
-            CheckBox tilt=new CheckBox(this); tilt.setText("Broaden with tilt"); tilt.setChecked(current.tilt); content.addView(tilt);
+            CheckBox tilt=new CheckBox(this); tilt.setText("Broaden with tilt");tilt.setContentDescription("Broaden with tilt"); tilt.setChecked(current.tilt); content.addView(tilt);
             tilt.setOnCheckedChangeListener((b,checked) -> { ToolSettings s=library.current(); library.edit(s.options(s.tip,s.soft,checked)); preferences(); preview.invalidate(); });
-            tipLabel[0]=new TextView(this);content.addView(tipLabel[0]);
-            SeekBar tip=new SeekBar(this);tip.setContentDescription("Upright tip at full pressure");tipControl[0]=tip;content.addView(tip);
+            tipLabel[0]=new TextView(this);
+            SeekBar tip=new SeekBar(this);tip.setContentDescription("Upright tip at full pressure");tipControl[0]=tip;sliderRow(content,tipLabel[0],tip,true);
             tip.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
                     if(syncing[0])return;
@@ -1594,22 +1745,22 @@ public final class PaintActivity extends Activity {
             TextView note=new TextView(this); note.setText("Pull shading in the direction you rub. Lower strength blends gently; repeat passes to build it up.");note.setTag("hint");content.addView(note);
         }
         update.run();
-        return showToolSettings(content,current.description());
+        return content;
     }
 
     private void sliderRow(LinearLayout content,TextView label,SeekBar bar,boolean compact) {
         if (!compact) { content.addView(label);content.addView(bar);return; }
         LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        label.setTextSize(13);label.setTextColor(Color.BLACK);
-        row.addView(label,new LinearLayout.LayoutParams(dp(112),-2));
-        row.addView(bar,new LinearLayout.LayoutParams(0,dp(48),1));
+        label.setTextColor(Color.BLACK);
+        row.addView(label,new LinearLayout.LayoutParams(dp(largeSettingsText()?156:140),-2));
+        row.addView(bar,new LinearLayout.LayoutParams(0,dp(56),1));
         content.addView(row);
     }
     private void settingSlider(LinearLayout content,String name,int initial,java.util.function.IntConsumer change) {
-        settingSlider(content,name,initial,false,change);
+        settingSlider(content,name,initial,true,change);
     }
     private void settingSlider(LinearLayout content,String name,int initial,boolean compact,java.util.function.IntConsumer change) {
-        String caption=compact?"Pressure\n":name+": ";
+        String caption=compact?(name.equals("Pressure response")?"Pressure":name)+"\n":name+": ";
         TextView label=new TextView(this);label.setText(caption+initial+"%");
         SeekBar bar=new SeekBar(this);bar.setMax(100);bar.setProgress(initial);bar.setContentDescription(name);
         sliderRow(content,label,bar,compact);
@@ -1619,32 +1770,10 @@ public final class PaintActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar slider){}
         });
     }
-    private AlertDialog showToolSettings(LinearLayout content,String title) {
-        String presetId=library.activeId();
-        boolean custom=!presetId.isEmpty();
-        if(custom) title="Custom "+title;
-        if(!library.current().isBrush())styleSettings(content);
-        ScrollView scroll=new ScrollView(this);scroll.addView(content);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(title).setView(scroll).setPositiveButton("Done",null)
-                .setNeutralButton(custom?"Delete custom tool":"Add to Toolbar",null).create();
-        dialog.setOnDismissListener(d -> rebuildTools()); dialog.show();compactDialog(dialog);
-        Button action=dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
-        if(custom) {
-            action.setText("");action.setContentDescription("Delete custom tool");
-            action.setMinWidth(dp(48));action.setMinimumWidth(dp(48));action.setMinHeight(dp(48));
-            action.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_trash,0,0,0);
-        }
-        action.setOnClickListener(v -> {
-            try {
-                if(custom) library.remove(presetId); else library.add();
-                maximum=library.current().maximum;
-                preferences();dialog.dismiss();
-            } catch(IllegalStateException error) { message(error.getMessage()); }
-        });
-        return dialog;
-    }
-    private void compactDialog(AlertDialog dialog) {
-        orientDialog(dialog);
+    private void compactDialog(AlertDialog dialog) {compactDialog(dialog,440);}
+    private void compactDialog(AlertDialog dialog,int width) {
+        orientDialog(dialog,width);
+        stylePanelText(dialog.getWindow().getDecorView());
         for(int which:new int[]{AlertDialog.BUTTON_POSITIVE,AlertDialog.BUTTON_NEGATIVE,AlertDialog.BUTTON_NEUTRAL}) {
             Button b=dialog.getButton(which);if(b!=null){b.setAllCaps(false);b.setTypeface(null,android.graphics.Typeface.BOLD);}
         }
@@ -1652,10 +1781,11 @@ public final class PaintActivity extends Activity {
     private AlertDialog showDialog(AlertDialog.Builder builder) {
         AlertDialog dialog=builder.create(); dialog.show(); compactDialog(dialog); return dialog;
     }
-    void orientDialog(AlertDialog dialog) {
+    void orientDialog(AlertDialog dialog) {orientDialog(dialog,440);}
+    private void orientDialog(AlertDialog dialog,int desiredWidth) {
         android.view.Window window=dialog.getWindow();
         if (window==null) return;
-        int width=Math.min(dp(440),root.getWidth()-dp(32));
+        int width=Math.min(dp(desiredWidth),root.getWidth()-dp(32));
         if (appRotation == Surface.ROTATION_0) { window.setLayout(width,-2); return; }
         android.view.ViewGroup content=window.findViewById(android.R.id.content);
         if (content==null || content.getChildCount()!=1 || content.getChildAt(0) instanceof QuarterTurnLayout) return;
@@ -1664,19 +1794,23 @@ public final class PaintActivity extends Activity {
         content.addView(frame,new android.widget.FrameLayout.LayoutParams(-1,-1));
         window.setLayout(landscape ? -2 : width,landscape ? width : -2);
     }
-    private void styleSettings(LinearLayout content) {
-        for(int i=0;i<content.getChildCount();i++) {
-            View v=content.getChildAt(i);
-            if(v instanceof SeekBar) {
-                v.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(40)));
-            } else if(v instanceof TextView) {
-                TextView text=(TextView)v;text.setTextColor(Color.BLACK);
-                boolean hint="hint".equals(text.getTag());text.setTextSize(hint?14:16);
-                text.setTypeface(null,hint?android.graphics.Typeface.NORMAL:android.graphics.Typeface.BOLD);
-                if(!(v instanceof Button))text.setPadding(0,dp(5),0,dp(2));
-            }
+    private boolean largeSettingsText() {return preferences.getBoolean("large_settings_text",false);}
+    private float settingsTextSize() {return largeSettingsText()?18:16;}
+    private void stylePanelText(View view) {
+        if(view instanceof TextView) {
+            TextView text=(TextView)view;
+            boolean hint="hint".equals(text.getTag());
+            text.setTextSize("close".equals(text.getTag())?22:hint?settingsTextSize()-1:settingsTextSize());
+            text.setTextColor(Color.BLACK);
+            text.setTypeface(null,hint || text instanceof android.widget.EditText?android.graphics.Typeface.NORMAL:android.graphics.Typeface.BOLD);
+            if(text instanceof Button)((Button)text).setAllCaps(false);
+        }
+        if(view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group=(android.view.ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)stylePanelText(group.getChildAt(i));
         }
     }
+    private void styleSettings(LinearLayout content) {stylePanelText(content);}
     private void recovery() {
         if (loading || pad.document == null) return;
         store.recoverLater(new DocumentStore.Snapshot(book, drawingName), (unused, error) -> {
@@ -1762,7 +1896,7 @@ public final class PaintActivity extends Activity {
         setPickingShade(false);
         if (filePopup != null) filePopup.dismiss();
         if (layersPopup != null) layersPopup.dismiss();
-        if (brushPicker != null) brushPicker.dismiss();
+        if (toolPicker != null) toolPicker.dismiss();
         resumed = false;
         if (orientationSensor != null) orientationSensor.disable();
         hideRotationSuggestion();
@@ -2070,7 +2204,7 @@ public final class PaintActivity extends Activity {
                     float minor=settings.tip+(settings.maximum-settings.tip)*.28f;
                     canvas.drawOval(x-r,y-minor/2,x+r,y+minor/2,paint);
                 } else BrushStamp.draw(canvas,paint,x,y,r,settings);
-                paint.setShader(null);paint.setTextSize(12*getResources().getDisplayMetrics().scaledDensity);paint.setTextAlign(Paint.Align.CENTER);
+                paint.setShader(null);paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);paint.setTextSize((settingsTextSize()-1)*getResources().getDisplayMetrics().scaledDensity);paint.setTextAlign(Paint.Align.CENTER);
                 String prefix=i==0?"Min ":settings.tool==ToolSettings.Tool.PENCIL?(settings.tilt?"Max tilted ":"Max upright "):"Max ";
                 canvas.drawText(prefix+diameter+" px",x,getHeight()-dp(8),paint);
             }
@@ -2105,6 +2239,12 @@ public final class PaintActivity extends Activity {
         private final android.os.MessageQueue.IdleHandler wetIdle = () -> { advanceWet(); return false; };
         private long lastWetComputeNanos, lastWetRenderNanos, lastWetPresentNanos, wetMaxSliceNanos;
         private int wetSliceCount;
+        private ShapePreview shapeStroke;
+        private float shapeX,shapeY;
+        private boolean shapeFrameScheduled;
+        private long lastShapeFrame;
+        private int shapeFrameCount;
+        private final Runnable shapeFrame=this::drawShapeFrame;
         private FloodFill fill;
         private FloodFill gradientFill;
         private boolean fillGesture, gradientWaiting, gradientReady, gradientCommit;
@@ -2124,12 +2264,16 @@ public final class PaintActivity extends Activity {
         private final Runnable wetStep = () -> wetQueue.addIdleHandler(wetIdle);
         private int fingerA=-1, fingerB=-1;
         private boolean navigating, touchBlocked;
+        private boolean navigationFrameScheduled;
+        private long lastNavigationFrame, lastNavigationRasterNanos, lastNavigationPresentNanos;
+        private int navigationFrameCount;
+        private final Runnable navigationFrame=this::drawNavigationFrame;
         private float fingerX, fingerY, fingerSpan;
         private long penGuardUntil;
 
         DrawingPad() {
             super(PaintActivity.this);
-            setContentDescription("Drawing canvas; use the pen to paint, two fingers to zoom and pan");
+            setContentDescription("Drawing canvas; use the pen to paint. Unlock Zoom to pinch and pan with two fingers.");
             input = new NativePen(this, (bitmap, region) -> bitmap.recycle());
         }
         @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
@@ -2149,6 +2293,7 @@ public final class PaintActivity extends Activity {
             if (display != null && display.getWidth() == width && display.getHeight() == height) return;
             if (display != null) display.recycle();
             display = Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+            display.setHasAlpha(false);
         }
         void updateViewport() {
             if (display == null || getWidth() <= 0 || getHeight() <= 0) return;
@@ -2168,7 +2313,9 @@ public final class PaintActivity extends Activity {
             pageToView.invert(viewToPage);
             unscaledPage = pageRotation == Surface.ROTATION_0 && pageToView.isIdentity();
             boolean wasScaled=viewportBitmap!=null;
-            boolean scaled=viewport.zoom!=1 || scale!=1;
+            // Keep one screen-sized raster and presenter throughout a pinch, including
+            // its fitted endpoints. Changing format on each crossing stalls the gesture.
+            boolean scaled=navigating || viewport.zoom!=1 || scale!=1;
             if(viewportBitmap!=null && (!scaled || viewportBitmap.bitmap.getWidth()!=getWidth()
                     || viewportBitmap.bitmap.getHeight()!=getHeight())) { viewportBitmap.close(); viewportBitmap=null; }
             if(scaled && viewportBitmap==null) viewportBitmap=new ViewportBitmap(getWidth(),getHeight());
@@ -2205,7 +2352,8 @@ public final class PaintActivity extends Activity {
             if (display == null) return;
             display.eraseColor(Color.WHITE);
             if (document != null) {
-                render(new Rect(0, 0, Math.min(document.width, display.getWidth()), Math.min(document.height, display.getHeight())));
+                if(viewportBitmap!=null)ViewportBitmap.compose(document,display);
+                else render(new Rect(0, 0, Math.min(document.width, display.getWidth()), Math.min(document.height, display.getHeight())));
                 document.clearDirty();
             }
             pending.setEmpty();
@@ -2222,6 +2370,21 @@ public final class PaintActivity extends Activity {
                 pending.union(viewportBitmap==null?dirty:viewportBitmap.update(display,pageToView,dirty));
             }
             document.clearDirty();
+        }
+        private void renderShape(Rect dirty) {
+            if(dirty.isEmpty())return;
+            // Preview pixels are already rasterized natively. Submit one complete frame.
+            dirty.inset(-2,-2);
+            if(!dirty.intersect(0,0,document.width,document.height))return;
+            pending.union(viewportBitmap==null?dirty:viewportBitmap.update(display,pageToView,dirty));
+        }
+        private void drawShapeFrame() {
+            removeCallbacks(shapeFrame);shapeFrameScheduled=false;
+            if(shapeStroke==null)return;
+            // Budget from frame start; rendering time must not add another full-frame delay.
+            lastShapeFrame=SystemClock.uptimeMillis();
+            renderShape(shapeStroke.preview(shapeX,shapeY,display,viewportBitmap!=null));
+            flush(true);shapeFrameCount++;
         }
         private void render(Rect dirty) {
             int count = dirty.width() * dirty.height();
@@ -2251,7 +2414,7 @@ public final class PaintActivity extends Activity {
         }
         void connectDisplay() {
             scheduleWet();
-            if (paletteEditor!=null || !resumed || !hasWindowFocus() || loading || navigating || display == null || direct != null) return;
+            if (paletteEditor!=null || !resumed || !hasWindowFocus() || loading || display == null || direct != null) return;
             if (isLayoutRequested() || root.isLayoutRequested() || orientationFrame.isLayoutRequested()) return;
             try {
                 if (!input.prepareDocumentCanvas()) throw new IllegalStateException(input.status);
@@ -2282,9 +2445,9 @@ public final class PaintActivity extends Activity {
             removeCallbacks(retry);
             if (direct == null) { invalidate(); pending.setEmpty(); return; }
             try {
-                int result = direct.present(viewportBitmap==null?display:viewportBitmap.bitmap, pending);
+                int result=direct.present(viewportBitmap==null?display:viewportBitmap.bitmap,pending);
                 lastPresent = SystemClock.uptimeMillis();
-                if (result >= 0) { pending.setEmpty(); retries = 0; }
+                if (result >= 0) { pending.setEmpty();retries=0; }
                 else if (++retries < 120) postDelayed(retry, 8);
                 else throw new IllegalStateException("Display remained busy");
             } catch (RuntimeException error) {
@@ -2299,6 +2462,7 @@ public final class PaintActivity extends Activity {
             if(pickingShade || pickPointer!=-1) { sampleShadeGesture(event); return true; }
             if(hasGradient()) return true;
             if(fillGesture) { continueFillGesture(event); return true; }
+            if(shapeStroke!=null) { continueShape(event); return true; }
             long inputStart = System.nanoTime();
             long eventAge = Math.max(0, SystemClock.uptimeMillis() - event.getEventTime());
             boolean drawingInput = false;
@@ -2315,6 +2479,13 @@ public final class PaintActivity extends Activity {
                 boolean erasing = eraseMode && settings.supportsEraseMode();
                 if (erasing || !settings.isBrush() || !wetCanvas) dryWet();
                 else if (wet == null) wet = new WetWatercolor(document, wetness);
+                if(settings.tool==ToolSettings.Tool.SHAPES) {
+                    renderDirty();
+                    pointer=event.getPointerId(index);
+                    shapeX=samplePoint[0];shapeY=samplePoint[1];
+                    shapeStroke=new ShapePreview(document,settings,gray,shapeX,shapeY);
+                    getParent().requestDisallowInterceptTouchEvent(true);drawShapeFrame();return true;
+                }
                 if(settings.tool==ToolSettings.Tool.FILL) {
                     fillGesture=true; pointer=event.getPointerId(index);
                     fillStartX=fillEndX=samplePoint[0]; fillStartY=fillEndY=samplePoint[1];
@@ -2350,6 +2521,28 @@ public final class PaintActivity extends Activity {
                     && event.getPointerId(index) == pointer)) finishStroke();
             return true;
         }
+        private void continueShape(MotionEvent event) {
+            int action=event.getActionMasked(), index=event.findPointerIndex(pointer);
+            if(action==MotionEvent.ACTION_CANCEL || index<0) { finishStroke();return; }
+            boolean up=(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_POINTER_UP)
+                    && event.getPointerId(event.getActionIndex())==pointer;
+            if(action==MotionEvent.ACTION_MOVE || up) {
+                pagePoint(event.getX(index),event.getY(index));
+                shapeX=samplePoint[0];shapeY=samplePoint[1];
+                if(!up && !shapeFrameScheduled) {
+                    shapeFrameScheduled=true;
+                    postDelayed(shapeFrame,Math.max(0,16-(SystemClock.uptimeMillis()-lastShapeFrame)));
+                }
+            }
+            if(up) {
+                drawShapeFrame();
+                boolean changed=shapeStroke.finish();shapeStroke=null;pointer=-1;
+                // The committed geometry matches the preview exactly; keep its native raster.
+                document.clearDirty();
+                getParent().requestDisallowInterceptTouchEvent(false);
+                if(changed) recovery();
+            }
+        }
         private void pagePoint(float x, float y) {
             samplePoint[0] = x; samplePoint[1] = y;
             if (!unscaledPage) viewToPage.mapPoints(samplePoint);
@@ -2364,8 +2557,27 @@ public final class PaintActivity extends Activity {
         private void endNavigation() {
             fingerA=fingerB=-1;
             if(!navigating) return;
+            if(navigationFrameScheduled)drawNavigationFrame();
             navigating=false; getParent().requestDisallowInterceptTouchEvent(false);
-            post(this::connectDisplay);
+            if(viewport.zoom==1 && viewport.scale()==1) {
+                disconnectDisplay();updateViewport();invalidate();
+            }
+            if(direct==null)post(this::connectDisplay);else scheduleWet();
+        }
+        private void drawNavigationFrame() {
+            removeCallbacks(navigationFrame);navigationFrameScheduled=false;
+            if(!navigating)return;
+            lastNavigationFrame=SystemClock.uptimeMillis();
+            long began=System.nanoTime();
+            updateViewport();
+            long rendered=System.nanoTime();
+            pending.set(0,0,getWidth(),getHeight());flush(true);
+            // Keep Android's retained drawing commands current without requesting a
+            // compositor frame for every finger movement on the direct display path.
+            if(direct!=null)selectionFeedback.retainForNextDraw(this,new Rect(0,0,getWidth(),getHeight()));
+            lastNavigationRasterNanos=rendered-began;
+            lastNavigationPresentNanos=System.nanoTime()-rendered;
+            navigationFrameCount++;
         }
         private boolean navigationGesture(MotionEvent event) {
             int action=event.getActionMasked(), index=event.getActionIndex();
@@ -2379,6 +2591,7 @@ public final class PaintActivity extends Activity {
                 if(pen) penGuardUntil=SystemClock.uptimeMillis()+250;
                 return false;
             }
+            if(navigationLocked) { touchBlocked=true;endNavigation();return true; }
             if(action==MotionEvent.ACTION_CANCEL || action==MotionEvent.ACTION_UP) { endNavigation(); return true; }
             if(touchBlocked) return true;
             if(action==MotionEvent.ACTION_POINTER_UP) {
@@ -2396,7 +2609,8 @@ public final class PaintActivity extends Activity {
                 fingerX=(event.getX(0)+event.getX(1))/2; fingerY=(event.getY(0)+event.getY(1))/2;
                 fingerSpan=(float)Math.hypot(event.getX(1)-event.getX(0),event.getY(1)-event.getY(0));
                 if(fingerSpan<dp(24)) { touchBlocked=true; fingerA=fingerB=-1; return true; }
-                navigating=true; disconnectDisplay();
+                disconnectDisplay();navigating=true;
+                updateViewport();connectDisplay();
                 getParent().requestDisallowInterceptTouchEvent(true); return true;
             }
             int a=event.findPointerIndex(fingerA), b=event.findPointerIndex(fingerB);
@@ -2406,7 +2620,11 @@ public final class PaintActivity extends Activity {
                 float span=(float)Math.hypot(event.getX(b)-event.getX(a),event.getY(b)-event.getY(a));
                 if(span<dp(24)) return true;
                 viewport.gesture(span/fingerSpan,fingerX,fingerY,x,y);
-                fingerX=x; fingerY=y; fingerSpan=span; viewportChanged();
+                fingerX=x; fingerY=y; fingerSpan=span;
+                if(!navigationFrameScheduled) {
+                    navigationFrameScheduled=true;
+                    postDelayed(navigationFrame,Math.max(0,16-(SystemClock.uptimeMillis()-lastNavigationFrame)));
+                }
             }
             return true;
         }
@@ -2534,6 +2752,11 @@ public final class PaintActivity extends Activity {
             if(navigating) touchBlocked=true;
             endNavigation();
             removeCallbacks(sprayStep);
+            if(shapeStroke!=null) {
+                removeCallbacks(shapeFrame);shapeFrameScheduled=false;
+                renderShape(shapeStroke.cancel(display,viewportBitmap!=null));shapeStroke=null;pointer=-1;
+                flush(true);getParent().requestDisallowInterceptTouchEvent(false);
+            }
             if(pickPointer!=-1) {
                 pickPointer=-1; getParent().requestDisallowInterceptTouchEvent(false);
                 selectionFeedback.update(shadePicker,new Rect(0,0,shadePicker.getWidth(),shadePicker.getHeight()),() -> gray=pickOriginalShade);
@@ -2569,7 +2792,7 @@ public final class PaintActivity extends Activity {
             scheduleWet(wet != null && wet.framePending() ? 1 : WetWatercolor.FRAME_MS);
         }
         private void scheduleWet(int delayMillis) {
-            if (wet != null && wet.isAnimating() && resumed && hasWindowFocus() && !loading) {
+            if (wet != null && wet.isAnimating() && resumed && hasWindowFocus() && !loading && !navigating) {
                 if (!wetScheduled) { wetScheduled = true; postDelayed(wetStep, delayMillis); }
             }
         }
@@ -2578,7 +2801,7 @@ public final class PaintActivity extends Activity {
         }
         private void advanceWet() {
             wetScheduled = false;
-            if (wet == null || !resumed || !hasWindowFocus() || loading) return;
+            if (wet == null || !resumed || !hasWindowFocus() || loading || navigating) return;
             boolean drawing = stroke != null;
             long budget = wetBudget.nanos(drawing, wet.strokePixels(), wet.activePixels(), SystemClock.uptimeMillis());
             // Submit the pen's outstanding pixels before adding more display work.

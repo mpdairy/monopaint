@@ -16,6 +16,7 @@ final class DirectEink {
                                             int right, int bottom, int x, int y);
     private static native void nativeClose(long handle);
     private static native int nativeReadGray(long handle, int x, int y);
+    private static native void nativeRotate(Bitmap source,Bitmap target,int quarter,int left,int top,int right,int bottom);
     private long handle;
     private final int x, y;
     private Matrix sourceToBuffer;
@@ -24,6 +25,7 @@ final class DirectEink {
     private final RectF mapped = new RectF();
     private final Rect bufferDirty = new Rect();
     private int sourceWidth, sourceHeight;
+    private int bufferTurn=-1;
     DirectEink(int x, int y, Bitmap background, int requestFlags, int displayMode) {
         this.x=x; this.y=y;
         handle=nativeOpen(background,x,y,requestFlags,displayMode);
@@ -55,7 +57,8 @@ final class DirectEink {
         buffer=Bitmap.createBitmap(pixels.width(),pixels.height(),Bitmap.Config.ARGB_8888);
         bufferCanvas=new Canvas(buffer);
         bufferCanvas.drawColor(android.graphics.Color.WHITE);
-        bufferCanvas.drawBitmap(background,sourceToBuffer,null);
+        bufferTurn=quarterTurn(sourceToBuffer,sourceWidth,sourceHeight);
+        copyToBuffer(background,new Rect(0,0,buffer.getWidth(),buffer.getHeight()));
         try { handle=nativeOpen(buffer,x,y,requestFlags,displayMode); }
         catch (RuntimeException | LinkageError error) { buffer.recycle(); throw error; }
     }
@@ -66,13 +69,32 @@ final class DirectEink {
                 throw new IllegalStateException("Display source dimensions changed");
             mapped.set(dirty); sourceToBuffer.mapRect(mapped); mapped.roundOut(bufferDirty);
             if (!bufferDirty.intersect(0,0,buffer.getWidth(),buffer.getHeight())) return 0;
-            int save=bufferCanvas.save();
-            bufferCanvas.clipRect(bufferDirty);
-            bufferCanvas.drawBitmap(bitmap,sourceToBuffer,null);
-            bufferCanvas.restoreToCount(save);
+            copyToBuffer(bitmap,bufferDirty);
             return nativePresent(handle,buffer,bufferDirty.left,bufferDirty.top,bufferDirty.right,bufferDirty.bottom,x,y);
         }
         return nativePresent(handle,bitmap,dirty.left,dirty.top,dirty.right,dirty.bottom,x,y);
+    }
+    private void copyToBuffer(Bitmap source,Rect dirty) {
+        // Control captures can have transparent corners; retain Canvas's blending
+        // for those. Document/viewport rasters explicitly contain opaque pixels.
+        if(bufferTurn>=0 && !source.hasAlpha())nativeRotate(source,buffer,bufferTurn,dirty.left,dirty.top,dirty.right,dirty.bottom);
+        else {
+            int save=bufferCanvas.save();bufferCanvas.clipRect(dirty);
+            bufferCanvas.drawBitmap(source,sourceToBuffer,null);bufferCanvas.restoreToCount(save);
+        }
+    }
+    private static int quarterTurn(Matrix transform,int width,int height) {
+        float[] actual=new float[9],expected=new float[9];transform.getValues(actual);
+        for(int turn=0;turn<4;turn++) {
+            Matrix rotation=new Matrix();rotation.setRotate(turn*90);
+            if(turn==1)rotation.postTranslate(height,0);
+            else if(turn==2)rotation.postTranslate(width,height);
+            else if(turn==3)rotation.postTranslate(0,width);
+            rotation.getValues(expected);boolean matches=true;
+            for(int i=0;i<9;i++)if(Math.abs(actual[i]-expected[i])>.00001f)matches=false;
+            if(matches)return turn;
+        }
+        return -1;
     }
     synchronized void close() {
         if (handle==0) return;

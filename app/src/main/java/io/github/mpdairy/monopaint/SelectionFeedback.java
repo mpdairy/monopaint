@@ -26,7 +26,7 @@ final class SelectionFeedback {
         return true;
     };
 
-    private void retainForNextDraw(View owner, Rect area) {
+    void retainForNextDraw(View owner, Rect area) {
         ViewTreeObserver next = owner.getRootView().getViewTreeObserver();
         if (observer != next) {
             if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(syncBeforeDraw);

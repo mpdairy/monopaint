@@ -19,6 +19,7 @@ pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 - 65 grayscale dot densities, including pure black and white.
 - Eyedropper for visible shades and a configurable toolbar.
 - Gradient fill with live color selection; lift the pen to finish.
+- Lines, rectangles, squares, ovals, and circles with simple outlines or solid fills.
 - Custom tools, drag-to-reorder toolbar, undo/redo, and multi-page drawings.
 - Up to eight layers per page, with names, visibility, ordering, and undoable deletion.
 - Local saves and automatic recovery. No account or network permissions.
@@ -40,8 +41,8 @@ Layers, visibility, and the selected layer save separately for every page.
 Existing drawings open unchanged as **Layer 1**. New saves use a layered page
 format that older app versions cannot read. PNG exports combine visible layers.
 
-Tap the selected **Fill** tool again to choose **Linear** or **Circular** in
-its settings. The choice is remembered for each tool or preset.
+Select **Fill**, then tap it again to open its settings beside the icon and
+choose **Linear** or **Circular**. The choice is remembered for each tool or preset.
 
 With **Fill** selected:
 
@@ -53,26 +54,53 @@ The direction line stays visible until you begin choosing the second color.
 Hold and slide on the color bar, or use the eyedropper, to preview it. Lift to finish. Undo reverses the whole fill. Fill uses the selected
 layer and its tolerance.
 
+Select **Shapes**, then tap it again to open its choices and current settings
+beside the toolbar. Choose **Line**, **Rectangle**, **Square**, **Oval**, or **Circle**.
+Its toolbar icon always shows the selected shape, including in saved shortcuts. Tap × or outside the panel to close it.
+Drag on the canvas to size the live preview; lift to finish. The preview follows
+the latest pen position and commits to the layer only when you lift. Squares and circles
+keep equal width and height in any drag direction. **Outline** leaves the inside
+empty, with a **1–128 px** width; **Filled** paints one solid shape in the current
+color. Lines always use the width setting. Shapes paint opaquely on the selected
+layer, including white, and each shape is one undo action. Leaving an unfinished
+preview cancels it. Shape settings work with saved custom tools and toolbar
+visibility/order.
+
 Select **Airbrush** for a smooth spray of the current shade. Press harder for
-stronger spray; hold still or move slowly to build color. Tap it again to set
+stronger spray; hold still or move slowly to build color. Its side panel sets
 **Diameter** (fixed size) and **Flow** (buildup rate). Fast strokes paint immediately with
 smooth, continuous spray. Airbrush lays translucent
 paint on the selected layer, including white. Select the eraser color for soft
 erasing with the same diameter and flow. Airbrush uses its own flow and does not use brush wetness or the
 opaque/transparent brush modes. Each spray stroke is one undo action.
 
-Tap a tool to select it. Tap a selected brush again (or hold it) to open the
-centered panel of large Round / Flat / Filbert tips. Choose a tip to show its
-controls directly underneath; the menu stays open while you switch and adjust
-tips. Other tools and custom tools open settings on a second tap.
+Every drawing tool and custom shortcut uses the same interaction: tap to select,
+then tap the selected tool again to open its settings beside the icon. The first
+selection leaves the canvas ready to draw. Brush settings show Round / Flat /
+Filbert choices with the current controls underneath; Shapes works the same way.
+Both regular and custom icons follow the selected brush tip or shape immediately.
+Changing a shortcut preserves the regular tool's separate settings and icon.
+Panels fit either toolbar side in all four rotations. Tap × or outside to close.
 **Add to Toolbar** saves a custom tool, and its settings save automatically when
 edited. Favorites keep their settings separate from the regular tools. Matching
 favorite icons have one dot, two dots, and so on in toolbar order. Hold and drag
 custom tools to reorder them. For thinner light strokes,
 move **Pressure response** toward **Firm touch**; 50% keeps the original response.
 
+**Zoom** shows the current percentage and a small padlock. Zoom and pan start
+locked to prevent accidental movement while drawing. Tap to unlock, then pinch
+with two fingers to zoom or drag with two fingers to pan. Pinch inward to fit the
+whole page. Tap again to lock the current view; pen drawing works in either state.
+The lock updates immediately through the fast e-ink path and your choice is saved.
+Zoom has no settings panel and retains the selected drawing tool or shortcut.
+
+**Menu → Settings → Settings text size** offers **Medium** (the default) and
+**Large**. Tool panels, Layers, Palette, and the main settings use the same size
+choice, with bold control labels and plain helper text. Panels omit redundant
+tool-name headings. Text size is independent of the sidebar icon size.
+
 **Menu → Settings → Toolbar** shows each tool's icon with a visibility checkbox
-and up/down arrows. Show, hide, or reorder Brush, Pencil, Airbrush, Fill, Eraser, Blending
+and up/down arrows. Show, hide, or reorder Brush, Pencil, Airbrush, Fill, Shapes, Eraser, Blending
 stump, Layers, Zoom, and Palette. All start visible; keep at least one painting tool enabled.
 Hidden tools keep their settings and position, and custom tools remain in their
 own section. Hiding the selected regular tool switches to another visible tool.
@@ -190,16 +218,21 @@ selection dots also work with rotated controls, and the landscape shade strip
 keeps white at the top and black at the bottom, with its black selection marker
 on the inner edge facing the canvas for either drawing hand.
 
-Pinch with **two fingers** to zoom, or drag both fingers together to pan. The pen
-continues to paint at the same size in the drawing; one finger leaves the canvas
+Tap **Zoom** to unlock navigation, then pinch with **two fingers** to zoom, or drag
+both fingers together to pan. The pen continues to paint at the same size in the drawing; one finger leaves the canvas
 alone. Lift the pen away from the screen before navigating, since pen contact
 and nearby hover suppress touch navigation.
 
-The **Zoom** button in the tool rail shows the current percentage. Tap it for
-**Zoom in**, **Zoom out**, or **Fit page**; hold it to fit the page immediately.
+The **Zoom** button shows the current percentage and a closed/open padlock.
+Tap it to lock or unlock both gestures; the view stays where it is. Navigation
+starts locked and remembers your choice. Pinch inward to fit the whole page.
 100% means one drawing pixel per screen pixel, with a maximum of 800%. The view
 stays within the page edges. Opening/changing pages or rotating returns to the
 whole page. Zoom changes only the view, preserving drawing pixels and undo.
+Pinch and pan use a direct e-ink preview that follows the latest finger position.
+Queued movement is combined into one current frame; the percentage uses fast
+feedback too. The preview keeps full-resolution calibrated shades, and lifting
+your fingers finishes the latest view before the next pen stroke.
 
 ## Sideload onto a Manta
 

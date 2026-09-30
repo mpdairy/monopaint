@@ -5,6 +5,25 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
 
 ## Requested features
 
+- [x] **Consistent side-opening tool settings — implemented; hands-on acceptance pending.**
+  Every drawing tool and custom preset selects on the first tap; tapping the
+  selected entry again opens its choices/current settings beside the icon.
+  Brush and Shapes icons reflect their selected variant in both toolbar sections
+  and update live after edits. Custom presets retain independent settings and
+  deletion; matching shortcut icons receive consecutive dots. Removed redundant
+  tool headings. Settings text uses bold 16 sp labels
+  by default, with an 18 sp Large option under main Settings; helper text is one
+  point smaller. Layers, Palette, and main settings share the text preference.
+  Zoom now uses the direct lock toggle described below.
+  This replaces the oversized 18–24 sp readability follow-up. Panels fit either
+  toolbar side and every rotation. Filled shapes still use one solid shade.
+
+- [ ] **Layer opacity.** Add a per-layer 0–100% opacity control in Layers,
+  defaulting to 100%, that fades the whole layer without changing its marks.
+  Useful for fading a sketch under finished ink, softening shading, or making
+  a reference layer less distracting. Remember opacity with the drawing.
+  Backlog idea only; do not implement yet.
+
 - [ ] **Nomad-sized preview on Manta.** Add a temporary preview that lays out
   the whole app inside a 1404 × 1872 px area of the Manta, leaving the rest blank,
   to try the Nomad's smaller painting space, sidebar, settings, and rotated
@@ -49,17 +68,26 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   The delayed hint, held preview, eyedropper sampling
   underneath the preview, and release-to-finish behavior apply to both types.
 
-- [ ] **Basic shapes tool.** Draw straight lines, squares, rectangles, circles,
-  and ovals. Decide how to select a shape and constrain squares/circles, and
-  whether the first version supports outlines, filled shapes, or both.
+- [x] **Basic shapes tool — complete and user-accepted.** Shapes
+  in the sidebar offers Line, Rectangle, Square, Oval, and Circle. Drag to size
+  a live preview; lift to commit. Square and Circle keep equal dimensions.
+  Outline uses a 1–128 px width and leaves the interior empty; Filled uses one
+  solid current shade with no separate outline color. Shapes affect only the
+  selected layer and support one-step undo/redo. Interrupted previews cancel.
+  Settings persist per regular tool/custom preset, with toolbar visibility/order.
+  Drag performance follow-up uses a native display-only preview and coalesces
+  pen moves to the latest position. The document changes once on pen-up.
+  User accepted the improved shape drag speed on 2026-09-30.
+  Host checks and tablet pen/control checks cover rotations, both hands, zoom,
+  preview replacement, pen-up placement, cancellation, and session restoration.
 
 - [x] **Choose visible tools in Settings.** Settings → Toolbar uses actual icons,
   visibility checkboxes, and up/down ordering for Brush, Pencil, Fill, Eraser,
   Blending stump, Airbrush, Layers, Zoom, and Palette. All remain visible by
   default, and at least one regular tool stays visible. Hiding the selected
   regular tool selects another visible tool. Hidden tools keep their settings;
-  custom presets remain available and keep their selection. Shapes can join
-  these controls when implemented.
+  custom presets remain available and keep their selection. Shapes is included in
+  these controls too.
 
 - [x] **Eyedropper beside the color picker.** The eyedropper sits immediately
   left of the color bar, after the wet-canvas controls. Tap it, then hold and
@@ -70,20 +98,33 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   marker reappears to show the sampled shade. Hidden selected layers do not
   prevent sampling visible artwork. An interrupted gesture restores the prior shade.
 
-- [x] **Zoom and pan — complete and user-tested.** Two-finger pinch and drag navigate the page; one finger
-  never paints or pans, and pen contact/hover suppresses navigation. The Zoom
-  toolbar control shows the current percentage and offers Zoom in, Zoom out,
-  and Fit page; holding it fits the page directly. Magnification tops out at
-  800%. New pages and orientation changes start fitted. Zoom renders logical
-  shades at screen resolution and keeps pen input on the direct e-ink path.
-  Host and tablet checks cover coordinates, undo, palm rejection, cancellation,
-  shade calibration, all rotations, and both hands. User verified zoom and pan
-  through hands-on use on 2026-09-29.
+- [x] **Zoom and pan lock — complete and user-accepted.**
+  Navigation starts locked; tapping Zoom toggles both pinch zoom and two-finger
+  panning. A small closed/open padlock updates through the fast e-ink feedback
+  path beside the current percentage. Locking preserves the current view and
+  leaves pen drawing enabled. The lock choice persists across restarts.
+  Zoom has no settings panel or hold-to-fit action; pinch inward to fit the page.
+  One finger never paints or pans, and pen contact/hover suppresses navigation
+  even when unlocked. Magnification tops out at 800%; new pages and orientation
+  changes start fitted. Host checks, lint, and tablet gesture/toolbar checks pass
+  in all four rotations and both hands, including fast lock feedback and drawing
+  while locked. User accepted the lock on 2026-09-30.
+
+- [x] **Faster pinch and pan preview — complete and user-accepted.**
+  Gestures use the fast e-ink path with one retained presenter and coalesce queued
+  moves to the latest finger position. The percentage uses fast feedback too.
+  Full-resolution calibrated shades remain intact; gesture completion and pen
+  interruption settle the latest view. Native layer composition speeds gesture
+  setup, and tiled sampling plus native panel rotation speed up sideways views.
+  Host/build/lint and all-rotation tablet checks pass, including queued input,
+  pen/lock interruption, exact preview pixels, and retained Android redraws.
+  User accepted the faster navigation through hands-on use on 2026-09-30.
 
 - [x] **Erase with the current brush.** An eraser color sits beside the white
   end of the color selector, including rotated layouts. Selecting it moves the
   color marker under the icon; selecting a shade (including the same shade) or
-  accepting an eyedropper sample returns to painting. Brush heads retain their
+  accepting an eyedropper sample returns to painting. Tapping the eraser color
+  again returns to the previously selected shade. Brush heads retain their
   shape, size, tilt and pressure response; pencil retains its grain, and airbrush
   retains its soft flow and timed buildup. Erasing removes selected-layer coverage
   to reveal layers underneath, with one-step undo. It settles wet paint and bypasses

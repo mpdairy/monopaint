@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit;
 /** Controlled app-local stylus replay. Measures firmware bitmap widths, never physical latency. */
 public final class WidthInstrumentation extends Instrumentation {
     private boolean displayProbeOnly, paletteOnly, palettePerfOnly;
-    private boolean paintOnly;
-    private boolean brushOnly;
+    private boolean paintOnly, shapesOnly, shapesPerfOnly;
+    private boolean brushOnly, pickerOnly;
     private boolean brushPerfOnly;
     private boolean storageOnly;
     private boolean orientationOnly, layersOnly, toolbarOnly, gradientOnly, airbrushOnly, eraseOnly, zoomOnly;
@@ -46,6 +46,9 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onCreate(Bundle args) {
         super.onCreate(args);
         displayProbeOnly = args != null && "true".equals(args.getString("displayProbeOnly"));
+        pickerOnly = args != null && "true".equals(args.getString("pickerOnly"));
+        shapesPerfOnly = args != null && "true".equals(args.getString("shapesPerfOnly"));
+        shapesOnly = args != null && "true".equals(args.getString("shapesOnly"));
         paintOnly = args != null && "true".equals(args.getString("paintOnly"));
         brushOnly = args != null && "true".equals(args.getString("brushOnly"));
         brushPerfOnly = args != null && "true".equals(args.getString("brushPerfOnly"));
@@ -64,9 +67,12 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
+        if (pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
-                if (palettePerfOnly) PaletteUiChecks.run(this,report,true);
+                if (pickerOnly) ShapeUiChecks.run(this,report,false,true);
+                else if (shapesPerfOnly) ShapeUiChecks.run(this,report,true);
+                else if (shapesOnly) ShapeUiChecks.run(this,report);
+                else if (palettePerfOnly) PaletteUiChecks.run(this,report,true);
                 else if (paletteOnly) PaletteUiChecks.run(this,report);
                 else if (zoomOnly) ZoomUiChecks.run(this,report);
                 else if (eraseOnly) EraseUiChecks.run(this,report);

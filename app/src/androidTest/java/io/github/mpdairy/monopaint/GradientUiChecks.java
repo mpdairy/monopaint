@@ -239,10 +239,10 @@ final class GradientUiChecks {
         }
     }
     private static void chooseGradient(Instrumentation test,PaintActivity activity,ToolSettings.Gradient type) throws Exception {
-        android.app.AlertDialog[] dialog={null};
+        android.widget.PopupWindow[] dialog={null};
         try {
-            main(test,() -> dialog[0]=(android.app.AlertDialog)call(activity,"settings"));test.waitForIdleSync();
-            tap(test,description(dialog[0].getWindow().getDecorView(),type.label+" gradient"));
+            main(test,() -> dialog[0]=(android.widget.PopupWindow)call(activity,"settings"));test.waitForIdleSync();
+            tap(test,description(dialog[0].getContentView(),type.label+" gradient"));
             main(test,() -> {
                 check(((ToolLibrary)get(activity,"library")).current().gradient==type,"Gradient control selects "+type);
                 SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");

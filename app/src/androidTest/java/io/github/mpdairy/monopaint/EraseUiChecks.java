@@ -75,6 +75,7 @@ final class EraseUiChecks {
                     ToolSettings settings=tools.current();
                     call(activity,"setWetCanvas",new Class<?>[]{boolean.class},true);
                     call(activity,"setTransparentPaint",new Class<?>[]{boolean.class},true);
+                    call(activity,"selectShade",new Class<?>[]{int.class},0);
                     ((View)get(activity,"eraseButton")).performClick();
                     replay(pad,160,240);
                     check(doc.opacity(160,240)==0&&get(pad,"wet")==null,"Erase bypasses wet/transparent paint for "+head);
@@ -91,6 +92,7 @@ final class EraseUiChecks {
                     check(doc.opacity(160,240)<255,"Tool erases: "+tool);check(doc.undo(),"Tool undo");
                 }
                 tools.select(ToolSettings.Tool.AIRBRUSH);String preset=tools.add().id;call(activity,"rebuildTools");
+                call(activity,"selectShade",new Class<?>[]{int.class},0);
                 ((View)get(activity,"eraseButton")).performClick();
                 check(tools.activeId().equals(preset),"Erase mode preserves favorite identity");
                 call(activity,"preferences");check(prefs.getBoolean("erase_mode",false),"Erase selection saved");

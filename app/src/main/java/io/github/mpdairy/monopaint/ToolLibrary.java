@@ -68,7 +68,8 @@ final class ToolLibrary {
         int number = 0;
         for (Preset preset : presets) {
             ToolSettings candidate = preset.settings.asBrush();
-            if (candidate.tool == type.tool && candidate.head == type.head) number++;
+            if (candidate.tool == type.tool && candidate.head == type.head
+                    && (type.tool != ToolSettings.Tool.SHAPES || candidate.shape == type.shape)) number++;
             if (preset.id.equals(id)) return number;
         }
         throw new IllegalArgumentException("Preset no longer exists");
@@ -94,7 +95,7 @@ final class ToolLibrary {
     }
     byte[] encode() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
-        out.writeInt(0x5453503f);
+        out.writeInt(0x54535040);
         for (ToolSettings settings : builtins) write(out, settings);
         for (ToolSettings settings : builtins) if (settings.isBrush())
             for (ToolSettings remembered : heads[settings.tool.ordinal()]) write(out, remembered);
@@ -107,9 +108,9 @@ final class ToolLibrary {
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
             int version = in.readInt();
-            if (version < 0x54535031 || version > 0x5453503f) throw new IOException("Unknown preset format");
+            if (version < 0x54535031 || version > 0x54535040) throw new IOException("Unknown preset format");
             ToolLibrary library = new ToolLibrary();
-            int builtinCount = version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
+            int builtinCount = version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
             for (int index = 0; index < builtinCount; index++) {
                 ToolSettings.Tool tool = ToolSettings.Tool.values()[index];
                 ToolSettings settings = read(in, version);
@@ -146,10 +147,11 @@ final class ToolLibrary {
         out.writeInt(settings.minimum); out.writeInt(settings.tolerance); out.writeInt(settings.strength); out.writeInt(settings.pressureResponse);
         out.writeByte(settings.head.ordinal()); out.writeInt(settings.angle);
         out.writeInt(settings.bristles); out.writeInt(settings.headThickness); out.writeByte(settings.gradient.ordinal());
+        out.writeByte(settings.shape.ordinal()); out.writeBoolean(settings.filled); out.writeInt(settings.outlineWidth);
     }
     private static ToolSettings read(DataInputStream in, int version) throws IOException {
         int tool = in.readUnsignedByte();
-        if (tool >= (version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5)) throw new IOException("Unknown tool");
+        if (tool >= (version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5)) throw new IOException("Unknown tool");
         int maximum = in.readInt(), tip = in.readInt();
         // Keep old preset identities/order/sizes; old hard erasers now start gently feathered.
         if (version == 0x54535031) {
@@ -166,12 +168,16 @@ final class ToolLibrary {
         int bristles=version>=0x54535039?in.readInt():0;
         int headThickness=version>=0x5453503c?in.readInt():ToolSettings.DEFAULT_HEAD_THICKNESS;
         int gradient=version>=0x5453503e?in.readUnsignedByte():0;
+        int shape=version>=0x54535040?in.readUnsignedByte():0;
+        boolean filled=version>=0x54535040 && in.readBoolean();
+        int outlineWidth=version>=0x54535040?in.readInt():3;
+        if(shape>=ToolSettings.Shape.values().length) throw new IOException("Unknown shape");
         if(gradient>=ToolSettings.Gradient.values().length) throw new IOException("Unknown gradient type");
         if (head >= ToolSettings.Head.values().length) throw new IOException("Unknown brush head");
         // Earlier builds ignored Flat's stored thickness and always drew 1px.
         // Preserve that appearance until the user changes the new height slider.
         if (version < 0x5453503d && head == ToolSettings.Head.FLAT.ordinal()) headThickness=0;
-        return new ToolSettings(ToolSettings.Tool.values()[tool], minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, ToolSettings.Head.values()[head], angle, bristles, headThickness, ToolSettings.Gradient.values()[gradient]).automaticHead();
+        return new ToolSettings(ToolSettings.Tool.values()[tool], minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, ToolSettings.Head.values()[head], angle, bristles, headThickness, ToolSettings.Gradient.values()[gradient], ToolSettings.Shape.values()[shape], filled, outlineWidth).automaticHead();
     }
     static final class Preset {
         final String id, name; final ToolSettings settings;

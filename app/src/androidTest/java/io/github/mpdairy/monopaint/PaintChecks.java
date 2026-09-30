@@ -487,14 +487,19 @@ final class PaintChecks {
                 Button anchor=findButton(activity,name);check(anchor!=null&&anchor.isShown(),name+" is present in the toolbar");
                 test.runOnMainSync(() -> {
                     anchor.performClick();
-                    try {if (field(activity,"brushPicker")==null) anchor.performClick();}
+                    try {if (field(activity,"toolPicker")==null) anchor.performClick();}
                     catch(Exception error){throw new IllegalStateException(error);}
                 });test.waitForIdleSync();
-                android.widget.PopupWindow popup=(android.widget.PopupWindow)field(activity,"brushPicker");
-                check(popup!=null&&popup.isShowing(),"Selected brush opens the centered editor");
-                View panel=popup.getContentView();int[] p=new int[2];panel.getLocationOnScreen(p);
-                check(Math.abs(p[0]+panel.getWidth()/2-activity.getResources().getDisplayMetrics().widthPixels/2)<4,
-                        "Brush editor stays centered with either toolbar position");
+                android.widget.PopupWindow popup=(android.widget.PopupWindow)field(activity,"toolPicker");
+                check(popup!=null&&popup.isShowing(),"Selected brush opens the side editor");
+                View panel=popup.getContentView();
+                android.graphics.RectF bounds=new android.graphics.RectF(0,0,panel.getWidth(),panel.getHeight());
+                PanelCoordinates.fromView(panel).mapRect(bounds);
+                View padView=(View)pad;android.graphics.RectF canvas=new android.graphics.RectF(0,0,padView.getWidth(),padView.getHeight());
+                PanelCoordinates.fromView(padView).mapRect(canvas);
+                check(canvas.contains(bounds),"Brush editor opens beside toolbar inside canvas");
+                check(findDescription(panel,"Pressure response")!=null,
+                        "Second tap opens current settings alongside choices");
                 for(String head:new String[]{"Round","Flat","Filbert"})check(findButton(panel,head)!=null,"Picker includes "+head);
                 check(findDescription(panel,"Brush settings")==null,"Head controls need no separate settings button");
                 test.runOnMainSync(() -> findButton(panel,"Flat").performClick());test.waitForIdleSync();
@@ -535,12 +540,12 @@ final class PaintChecks {
                 check((Integer)field(buttons.get(id),"iconResource")==expected,"Custom tool gets the matching enlarged tip icon");
                 ToolLibrary restored=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
                 check(restored.current().equals(flat)&&restored.activeId().equals(id),"Tip controls and custom selection persist");
-                android.app.AlertDialog[] dialog=new android.app.AlertDialog[1];
+                android.widget.PopupWindow[] dialog=new android.widget.PopupWindow[1];
                 test.runOnMainSync(() -> {
-                    dialog[0]=(android.app.AlertDialog)call(activity,"settings",new Class<?>[0]);
-                    ((android.widget.SeekBar)findDescription(dialog[0].getWindow().getDecorView(),"Brush height")).setProgress(5);
+                    dialog[0]=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
+                    ((android.widget.SeekBar)findDescription(dialog[0].getContentView(),"Brush height")).setProgress(5);
                     check(library.current().headThickness==5&&library.builtin(ToolSettings.Tool.BRUSH).headThickness==20,"Favorite height changes leave regular height intact");
-                    findButton(dialog[0].getWindow().getDecorView(),"Filbert").performClick();
+                    findButton(dialog[0].getContentView(),"Filbert").performClick();
                 });test.waitForIdleSync();
                 check(dialog[0].isShowing()&&library.activeId().equals(id)&&library.current().head==ToolSettings.Head.FILBERT,
                         "Custom tip controls also switch in place without losing preset identity");
@@ -637,19 +642,19 @@ final class PaintChecks {
         for(ToolSettings.Tool tool:ToolSettings.Tool.values()) {
             test.runOnMainSync(() -> {
                 tools.select(tool);set(activity,"maximum",tools.current().maximum);
-                android.app.AlertDialog dialog=(android.app.AlertDialog)call(activity,"settings",new Class<?>[0]);
+                android.widget.PopupWindow dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
                 try {
-                    Button add=dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL);
+                    Button add=findButton(dialog.getContentView(),"Add to Toolbar");
                     check(add.getText().toString().equals("Add to Toolbar"),"Built-in settings offer Add to Toolbar");
                     add.performClick();
                     check(!dialog.isShowing()&&tools.presets().size()==1&&!tools.activeId().isEmpty(),"Adding saves immediately without a naming dialog");
                 } finally {dialog.dismiss();}
                 String id=tools.activeId();
-                dialog=(android.app.AlertDialog)call(activity,"settings",new Class<?>[0]);
+                dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
                 try {
-                    View root=dialog.getWindow().getDecorView();
+                    View root=dialog.getContentView();
                     check(findButton(root,"Manage custom preset")==null&&findButton(root,"Add to Toolbar")==null,"Custom settings have no management or add button");
-                    String slider=tool==ToolSettings.Tool.FILL?"Tolerance":"Maximum diameter";
+                    String slider=tool==ToolSettings.Tool.FILL?"Tolerance":tool==ToolSettings.Tool.AIRBRUSH?"Airbrush diameter":tool==ToolSettings.Tool.SHAPES?"Shape outline width":"Maximum diameter";
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(41);
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(53);
                     if(ToolSettings.defaults(tool).isBrush()) {
@@ -662,7 +667,7 @@ final class PaintChecks {
                     if(tool==ToolSettings.Tool.ERASER) ((android.widget.SeekBar)findDescription(root,"Softness")).setProgress(27);
                     if(tool==ToolSettings.Tool.SOFTEN) ((android.widget.SeekBar)findDescription(root,"Strength")).setProgress(62);
                     check(tools.activeId().equals(id)&&tools.presets().get(0).settings.equals(tools.current()),"Slider edits update the selected custom tool");
-                    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+                    dialog.getContentView().findViewWithTag("close").performClick();
                 } finally {dialog.dismiss();}
                 ToolSettings edited=tools.current();tools.select(tool);tools.recall(id);
                 check(tools.current().equals(edited),"Edited custom tool recalls the new values");
@@ -670,9 +675,9 @@ final class PaintChecks {
                     ToolLibrary saved=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
                     check(saved.activeId().equals(id)&&saved.presets().get(0).settings.equals(edited),"Dialog edits persist to preferences");
                 } catch(Exception error) {throw new IllegalStateException(error);}
-                dialog=(android.app.AlertDialog)call(activity,"settings",new Class<?>[0]);
+                dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
                 try {
-                    Button delete=dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL);
+                    Button delete=(Button)findDescription(dialog.getContentView(),"Delete custom tool");
                     check(delete.getText().length()==0&&delete.getCompoundDrawablesRelative()[0]!=null
                             &&"Delete custom tool".contentEquals(delete.getContentDescription()),"Delete is an accessible trash icon");
                     delete.performClick();

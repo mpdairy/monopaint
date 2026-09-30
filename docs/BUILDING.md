@@ -51,11 +51,19 @@ Use `-e storageOnly true` for focused Android storage checks in a disposable cac
 directory: nested folders, repeat saves, overwrite protection, Save As copies,
 failed saves, recovery destinations, and interrupted-save backup restoration.
 These checks do not open or change the user's canvas.
-Use `-e zoomOnly true` for two-finger pinch/pan, the toolbar percentage, single-finger
+Use `-e zoomOnly true` for the default/saved navigation lock, fast lock feedback,
+locked pinch/pan rejection with pen drawing retained, pinch-to-fit, no Zoom panel
+or hold reset, the toolbar percentage, single-finger
 and active-pen palm rejection, cancellation, zoomed pen placement and undo,
 fractional-scale shade calibration, clipped native display updates, fit reset,
 page changes, and all four orientations with both hands. It also reports full-screen
-zoom raster CPU time and restores the original drawing and settings.
+zoom raster CPU time and restores the original drawing and settings. The checks
+include queued-move coalescing, a retained native presenter, no Android canvas
+redraws during live navigation, exact preview/Android redraw agreement,
+cancellation and pen/lock interruption, fractional sampling in every rotation,
+native composition of eight partially transparent/hidden layers, and exact
+clipped native panel rotation. Gesture
+and preview-frame timings measure app processing, not physical panel latency.
 Use `-e gradientOnly true` for Linear/Circular settings and persistence, radial
 colors and line-only guides, full-page circular fills, held pen previews and release-to-commit on the
 color bar and eyedropper in every orientation and hand, retained direction guide
@@ -70,6 +78,18 @@ pencil and soft airbrush erasing, undo, wet/transparent painting settings, favor
 saved selection, same-shade return to painting, eyedropper accept/cancel, and
 retained standalone eraser behavior. It restores the original book and settings
 and saves `erase-mode.png` in the target app cache.
+Use `-e shapesOnly true` for Shapes toolbar selection, actual settings taps in all
+four orientations and both hands, live preview/shrink, final pen-up placement,
+undo/redo, interrupted preview cancellation, zoomed circle geometry, and a large
+solid fill. The suite restores the original book/settings and drains its saves;
+`shapes-settings.png` in app cache shows only a temporary test drawing. The suite
+also compares the native preview against the committed raster for every shape,
+shade, fill mode, clipping direction, and partially transparent upper layers.
+Queued-motion checks and a continuous 125 Hz stylus replay verify that previews
+use the latest position and pen-up commits the exact endpoint. Use
+`-e shapesPerfOnly true` for large rectangle/circle preview benchmarks, including
+input handling, the coalesced preview frame, and direct display submission.
+Both modes restore and verify every saved page afterward.
 Use `-e airbrushOnly true` for airbrush toolbar selection, retained standalone
 Eraser, diameter/flow controls, stationary timed spray in all four orientations,
 immediate movement without a timer wait, batched fast sweeps with interleaved
@@ -191,3 +211,18 @@ CPU replay. The
 `texture` number in benchmark case metadata is the saved setting; bristle
 texture is currently disabled, so that case must match the solid footprint.
 Timings measure rendering work, not panel latency.
+
+Tool-picker touch/layout checks (temporary book with verified session restoration):
+
+```sh
+adb shell am instrument -w -e pickerOnly true dev.tilesmile.supernote.paint.test/io.github.mpdairy.monopaint.WidthInstrumentation
+adb shell am start -n dev.tilesmile.supernote.paint/io.github.mpdairy.monopaint.PaintActivity
+```
+
+Covers every drawing tool: first-tap selection without a popup, second-tap
+settings, matching options and live variant icons in both toolbar sections,
+settings persistence, brush-head memory, outside dismissal without drawing, and
+panel bounds in all four orientations with both toolbar positions. Also checks
+the Medium/Large settings text preference against tool panels and Layers,
+Zoom lock toggles without a panel or changing the drawing tool, and
+custom-tool creation, independent editing, and deletion.

@@ -226,6 +226,40 @@ final class ToneDocument {
         if(result<opacity(x,y)) setPixel(x,y,tones[i]&255,result);
     }
     void paintTone(int x,int y,int gray) { setPixel(x,y,gray,255); }
+    /** Opaque scanline for geometric shapes; capture undo tiles once, then fill contiguous pixels. */
+    void paintSpan(int x, int end, int y, int gray) {
+        if(!editing) throw new IllegalStateException("No active gesture");
+        if(gray<0 || gray>255) throw new IllegalArgumentException("Invalid pixel");
+        x=Math.max(0,x);end=Math.min(width,end);
+        if(y<0 || y>=height || x>=end) return;
+        writable();
+        int rowKey=(y/TILE)*columns();
+        for(int column=x/TILE;column<=(end-1)/TILE;column++) {
+            int key=rowKey+column;
+            if(!captured[key]) { before.put(key,copyTile(key));captured[key]=true; }
+        }
+        Arrays.fill(tones,y*width+x,y*width+end,(byte)gray);
+        Arrays.fill(alpha,y*width+x,y*width+end,(byte)255);
+        left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,end);bottom=Math.max(bottom,y+1);
+    }
+    /** Restore only pixels removed by a resizing preview, keeping its original undo capture. */
+    void restoreSpan(int x,int end,int y) {
+        if(!editing) throw new IllegalStateException("No active gesture");
+        x=Math.max(0,x);end=Math.min(width,end);
+        if(y<0 || y>=height || x>=end)return;
+        writable();
+        for(int column=x/TILE;column<=(end-1)/TILE;column++) {
+            int key=(y/TILE)*columns()+column;
+            byte[] tile=before.get(key);
+            if(tile==null)continue;
+            int tileX=column*TILE,tileWidth=Math.min(TILE,width-tileX);
+            int start=Math.max(x,tileX),stop=Math.min(end,tileX+tileWidth);
+            int offset=(y%TILE)*tileWidth+start-tileX;
+            System.arraycopy(tile,offset,tones,y*width+start,stop-start);
+            System.arraycopy(tile,tile.length/2+offset,alpha,y*width+start,stop-start);
+        }
+        left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,end);bottom=Math.max(bottom,y+1);
+    }
     private void setPixel(int x,int y,int gray,int coverage) {
         if (!editing) throw new IllegalStateException("No active gesture");
         if(gray<0||gray>255||coverage<0||coverage>255) throw new IllegalArgumentException("Invalid pixel");

@@ -245,23 +245,22 @@ final class OrientationChecks {
         c.setAxisValue(MotionEvent.AXIS_ORIENTATION,tiltX);c.setAxisValue(MotionEvent.AXIS_TILT,tiltY); return c;
     }
     private static void dialogChecks(Instrumentation test,PaintActivity activity) throws Exception {
-        android.app.AlertDialog[] dialog={null};
+        android.widget.PopupWindow[] dialog={null};
         main(test,() -> {
             Method method=PaintActivity.class.getDeclaredMethod("settings"); method.setAccessible(true);
-            dialog[0]=(android.app.AlertDialog)method.invoke(activity);
+            dialog[0]=(android.widget.PopupWindow)method.invoke(activity);
         });
         test.waitForIdleSync(); SystemClock.sleep(200);
         try {
             main(test,() -> {
-                android.view.ViewGroup content=dialog[0].getWindow().findViewById(android.R.id.content);
-                check(content.getChildAt(0) instanceof QuarterTurnLayout,"Tool dialog rotates inside its portrait window");
-                View frame=content.getChildAt(0);
+                View frame=dialog[0].getContentView();
+                check(frame instanceof QuarterTurnLayout,"Tool panel rotates inside its portrait window");
                 check(frame.getWidth()>0 && frame.getHeight()>0,"Rotated settings has a measured content area");
                 android.graphics.Rect visible=new android.graphics.Rect();
                 check(frame.getGlobalVisibleRect(visible) && visible.width()==frame.getWidth() && visible.height()==frame.getHeight(),"Rotated settings fits its window");
                 check(activity.getWindowManager().getDefaultDisplay().getRotation()==Surface.ROTATION_0,"Opening settings never turns the desktop");
             });
-            View done=dialog[0].getButton(android.app.AlertDialog.BUTTON_POSITIVE);
+            View done=dialog[0].getContentView().findViewWithTag("close");
             float[] point=physicalPoint(done,done.getWidth()/2f,done.getHeight()/2f);
             long now=SystemClock.uptimeMillis();
             for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {

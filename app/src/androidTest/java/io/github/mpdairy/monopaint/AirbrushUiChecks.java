@@ -1,6 +1,6 @@
 package io.github.mpdairy.monopaint;
 
-import android.app.AlertDialog;
+import android.widget.PopupWindow;
 import android.app.Instrumentation;
 import android.content.Intent;
 import android.graphics.Matrix;
@@ -24,7 +24,7 @@ final class AirbrushUiChecks {
         Object pad=get(activity,"pad");DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName");ToolLibrary library=(ToolLibrary)get(activity,"library");
         int gray=(Integer)get(activity,"gray"),maximum=(Integer)get(activity,"maximum"),rotation=(Integer)get(activity,"appRotation");
-        ToneDocument doc=new ToneDocument(320,480);AlertDialog[] dialog={null};
+        ToneDocument doc=new ToneDocument(320,480);PopupWindow[] dialog={null};
         boolean originalErase=(Boolean)get(activity,"eraseMode");
         try {
             main(test,() -> {
@@ -38,8 +38,8 @@ final class AirbrushUiChecks {
                 check(buttons.containsKey("tool:ERASER"),"Standalone eraser remains available");
                 ((View)buttons.get("tool:AIRBRUSH")).performClick();
                 check(((ToolLibrary)get(activity,"library")).current().tool==ToolSettings.Tool.AIRBRUSH,"Toolbar selects airbrush");
-                dialog[0]=(AlertDialog)call(activity,"settings");
-                View content=dialog[0].getWindow().getDecorView();
+                dialog[0]=(PopupWindow)call(activity,"settings");
+                View content=dialog[0].getContentView();
                 ((SeekBar)find(content,"Airbrush diameter")).setProgress(62);
                 ((SeekBar)find(content,"Flow")).setProgress(55);
                 ToolSettings settings=((ToolLibrary)get(activity,"library")).current();
