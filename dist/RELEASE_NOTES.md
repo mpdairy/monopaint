@@ -1,13 +1,16 @@
-MonoPaint 0.8 is a maintenance release that reorganizes the app's internals.
+MonoPaint 0.85 adds the Brush pen and wet paint that runs with gravity.
 
-- The painting screen is split into focused components, and tools are now
-  described declaratively, making new tools and settings easier to add.
-- Tool settings rows share consistent padding.
-- Drawing behavior, tools, and file formats are otherwise unchanged from 0.7.
+- Brush pen: clear water that lifts and moves the paint it touches. Its edges
+  stay sharp on a dry canvas and soften on a wet one. Like a pencil, it widens
+  as you lean it; pressure sets how much paint it pulls, with Strength and
+  Pressure response settings.
+- "Wet canvas uses gravity" setting: wet paint runs toward whichever edge the
+  tablet tilts down.
+- Faster hydration of large wet strokes.
 
 Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
 Update with `adb install -r monopaint.apk` to preserve drawings and settings.
-The application ID and signing identity are unchanged from MonoPaint 0.7.
-Android version code 40 allows this release to update 0.7 and earlier builds.
+The application ID and signing identity are unchanged from MonoPaint 0.8.
+Android version code 41 allows this release to update 0.8 and earlier builds.
 
 `SHA256SUMS` contains the APK checksum. This is a signed, non-debuggable release build.

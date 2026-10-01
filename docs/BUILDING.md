@@ -210,14 +210,14 @@ bash scripts/prepare_release.sh
 The script builds, aligns, signs, and verifies `dist/monopaint.apk`, and updates
 its checksum and version. Update `dist/RELEASE_NOTES.md`, test the signed APK on
 a Manta, then commit the source and the small signed distribution files together.
-Push `main` and a matching tag, e.g. `v0.8`. The release workflow verifies the
+Push `main` and a matching tag, e.g. `v0.85`. The release workflow verifies the
 checksum and publishes the already-signed APK and checksum as GitHub Release
 assets. It can also be rerun manually from that version's tag.
 
 ```sh
 git push origin main
-git tag -a v0.8 -m 'MonoPaint 0.8'
-git push origin v0.8
+git tag -a v0.85 -m 'MonoPaint 0.85'
+git push origin v0.85
 ```
 
 The checked-in APK allows publishing without exposing the private signing key
