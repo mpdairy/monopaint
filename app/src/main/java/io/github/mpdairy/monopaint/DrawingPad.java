@@ -374,8 +374,11 @@ final class DrawingPad extends View {
         PaintState paint = app.paint;
         ToolSettings settings = app.library.current();
         boolean erasing = paint.eraseMode && settings.supportsEraseMode();
-        if (erasing || !settings.isBrush() || !paint.wetCanvas) dryWet();
-        else if (wet == null) wet = new WetWatercolor(document, paint.wetness);
+        // Brushes paint into a wet canvas; the brush pen brings its own water, which on a
+        // dry canvas wets only where it lands.
+        boolean wets = !erasing && (settings.tool.water || settings.isBrush() && paint.wetCanvas);
+        if (!wets || wet != null && wet.coversCanvas() != paint.wetCanvas) dryWet();
+        if (wets && wet == null) wet = paint.wetCanvas ? new WetWatercolor(document, paint.wetness) : new WetWatercolor(document);
         pointer = event.getPointerId(index);
         getParent().requestDisallowInterceptTouchEvent(true);
         int shade = erasing ? ToneDocument.ERASE : paint.gray;

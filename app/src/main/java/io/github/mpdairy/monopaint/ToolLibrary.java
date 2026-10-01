@@ -95,7 +95,7 @@ final class ToolLibrary {
         return trimmed;
     }
     /** Current preset format. When appending a tool, bump this and extend {@link #toolCount}. */
-    private static final int FORMAT = 0x54535041;
+    private static final int FORMAT = 0x54535043;
     byte[] encode() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
         out.writeInt(FORMAT);
@@ -146,7 +146,7 @@ final class ToolLibrary {
     }
     /** Tools are appended over time; each format version knows how many it stores. */
     private static int toolCount(int version) {
-        return version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8
+        return version >= 0x54535043 ? 12 : version >= 0x54535042 ? 11 : version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8
                 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
     }
     private static void write(DataOutputStream out, ToolSettings settings) throws IOException {

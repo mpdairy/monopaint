@@ -68,7 +68,7 @@ public final class ShapeChecks {
         DataInputStream in=new DataInputStream(new ByteArrayInputStream(library.encode()));
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);
         in.readInt();out.writeInt(0x5453503f);byte[] record=new byte[48];
-        for(int i=0;i<23;i++){in.readFully(record);if(i!=9)out.write(record);in.skipBytes(6);}
+        for(int i=0;i<25;i++){in.readFully(record);if(i<9 || i>11)out.write(record);in.skipBytes(6);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
         for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.skipBytes(6);}
         check(in.read()==-1,"Old format fixture consumes every byte");

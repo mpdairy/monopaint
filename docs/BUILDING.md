@@ -244,7 +244,14 @@ adb -s SERIAL shell am instrument -w -e brushPerfOnly true dev.tilesmile.superno
 Replace `SERIAL` with the device ID from `adb devices`, or omit `-s SERIAL` if
 only one device is connected. It reports warmup-adjusted median replay time and
 raster fingerprints, plus a matched 128px round-brush, eraser, and airbrush
-CPU replay. The
+CPU replay. Wet brush pen replays at 48px and 128px also report stroke processing,
+12 animation frames, and the median of each run's slowest budgeted calculation
+slice. Wet raster hashes are diagnostic: time-budgeted tile grouping can vary
+between runs. The headless wet checks separately verify exact agreement between
+sliced and uninterrupted spread planning, including pen input between slices.
+The brush UI suite checks wet pen input and animation through the direct display,
+without Android redraws, and one-step undo.
+The
 `texture` number in benchmark case metadata is the saved setting; bristle
 texture is currently disabled, so that case must match the solid footprint.
 Timings measure rendering work, not panel latency.

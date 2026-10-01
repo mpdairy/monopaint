@@ -6,8 +6,8 @@ import java.util.Arrays;
 public final class WetWatercolorChecks {
     public static void main(String[] args) throws Exception {
         blendingAndHistory(); dryPaperAndLinework(); dryGaps(); drying(); pausedStrokes(false); pausedStrokes(true);
-        liveStroke(); boundedSlices(); adaptiveBudget(); presets(); gravity();
-        System.out.println("PASS: live wet blending, gravity drift, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
+        liveStroke(); boundedSlices(); adaptiveBudget(); presets(); gravity(); brushPen(false); brushPen(true); wetBrushPen(); flowingSlices();
+        System.out.println("PASS: live wet blending, gravity drift, brush pen seeping and sharp dry edges, wet brush pen ink flow by freshness, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
     }
     private static void check(boolean pass, String message) { if (!pass) throw new AssertionError(message); }
     private static void dab(ToneDocument doc, WetWatercolor wet, int x, int y, int w, int h, int gray) {
@@ -50,6 +50,115 @@ public final class WetWatercolorChecks {
         check(downhill[1] < level[1] && downhill[0] > level[0], "Tilted canvas runs paint downhill, away from uphill");
         check(downhill[1] < 255, "Downhill paint reaches beyond the usual wet margin");
         check(sideways[2] < level[2] && sideways[3] > level[3], "Tilt toward the left runs paint left");
+    }
+    /** Brush pen water dragged out of a dry black block, on dry paper or a wet canvas. */
+    private static void brushPen(boolean wetCanvas) {
+        int light = brushPenTones(wetCanvas, .15f)[0], full = brushPenTones(wetCanvas, 1)[0];
+        check(full < light, "Pressing harder pulls more paint into the water (light " + light + ", full " + full + ")");
+    }
+    /** Wet a spot, let it age, then bridge it to a black block: the ink runs through the fresh bridge and seeps unevenly into the older spot. */
+    private static void wetBrushPen() {
+        ToneDocument doc = new ToneDocument(200, 48);
+        doc.begin(); for (int y = 12; y < 36; y++) for (int x = 0; x < 24; x++) doc.paintTone(x, y, 0); doc.finish();
+        byte[] dry = doc.snapshot();
+        WetWatercolor wet = new WetWatercolor(doc);
+        int[] spot = new int[40 * 24]; Arrays.fill(spot, 0xff000000);
+        doc.begin(); wet.beginStroke(); wet.waterMask(spot, 40, 130, 12, 40, 24, 1, true); wet.finishStroke();
+        for (int frame = 0; frame < 60; frame++) wet.advance(false);
+        check(wet.isAnimating(), "Flowing water is still wet after nine seconds");
+        int[] bridge = new int[8 * 8]; Arrays.fill(bridge, 0xff000000);
+        doc.begin(); wet.beginStroke();
+        for (int x = 2; x <= 128; x += 3) wet.waterMask(bridge, 8, x, 20, 8, 8, 1, true);
+        wet.finishStroke();
+        for (int frame = 0; frame < 7; frame++) wet.advance(false);
+        int early = doc.tone(110, 24);
+        check(early < 240, "Within a second ink runs 90 px through fresh water (" + early + ")");
+        settle(wet);
+        int mid = doc.tone(80, 24), entry = doc.tone(134, 24), far = doc.tone(165, 24);
+        String tones = " (bridge " + mid + ", spot entry " + entry + ", spot far side " + far + ")";
+        check(mid < 230, "Ink runs well along the fresh bridge" + tones);
+        check(entry < 255 && entry < far, "Ink seeps into the older spot but does not even out across it" + tones);
+        check(doc.tone(80, 18) == 255 && doc.tone(150, 10) == 255, "On dry paper the water's edges stay sharp" + tones);
+        check(doc.tone(5, 14) == 0, "Dry paint the pen never touched stays put" + tones);
+        check(doc.tone(10, 24) > 60, "Wetting the ink draws it away, lightening where it was (" + doc.tone(10, 24) + ")");
+        // Clear water on white paper changes nothing, so only the bridge is an undo step.
+        check(doc.undo() && Arrays.equals(doc.snapshot(), dry), "One undo removes the bridge and the ink it carried");
+        // Rubbing faded ink never darkens it: water carries paint no darker than its source.
+        ToneDocument faded = new ToneDocument(64, 64);
+        faded.begin(); for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) faded.paintTone(x, y, 160); faded.finish();
+        WetWatercolor rub = new WetWatercolor(faded);
+        int[] dab = new int[16 * 16]; Arrays.fill(dab, 0xff000000);
+        faded.begin(); rub.beginStroke();
+        for (int x = 8; x <= 40; x += 2) rub.waterMask(dab, 16, x, 24, 16, 16, 1, true);
+        int during = faded.tone(30, 32);
+        rub.finishStroke(); settle(rub);
+        int darkest = 255; for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) darkest = Math.min(darkest, faded.tone(x, y));
+        check(during >= 159 && darkest >= 159, "Wetting gray ink leaves it gray (" + during + " while rubbing, darkest " + darkest + ")");
+    }
+    /** Even spread planning must yield; splitting it must not change the fluid result. */
+    private static void flowingSlices() {
+        ToneDocument full = new ToneDocument(160, 64), sliced = new ToneDocument(160, 64);
+        WetWatercolor a = new WetWatercolor(full), b = new WetWatercolor(sliced);
+        int[] mask = new int[140 * 40]; Arrays.fill(mask, 0xff000000);
+        for (ToneDocument doc : new ToneDocument[]{full, sliced}) {
+            doc.begin();
+            for (int y = 8; y < 56; y++) for (int x = 0; x < 32; x++) doc.paintTone(x, y, 40);
+            doc.finish(); doc.begin();
+        }
+        a.beginStroke(); b.beginStroke();
+        a.waterMask(mask, 140, 0, 12, 140, 40, .8f, true);
+        b.waterMask(mask, 140, 0, 12, 140, 40, .8f, true);
+        a.finishStroke(); b.finishStroke();
+        byte[] before = sliced.snapshot();
+        b.advance(false, 1, 1, 192);
+        check(b.advancedTiles() == 0 && b.framePending() && Arrays.equals(before, sliced.snapshot()),
+                "Flow planning yields before pixel edits when its deadline expires");
+        for (int frame = 0; frame < 8; frame++) {
+            a.advance(false, 1, Long.MAX_VALUE, 192);
+            while (a.framePending()) a.advance(false, 1, Long.MAX_VALUE, 192);
+            int calls = 0;
+            do {
+                b.advance(false, 1, 1, 192);
+                check(++calls < 10000, "Tiny-budget spread planning makes progress");
+            } while (b.framePending());
+            check(Arrays.equals(full.snapshot(), sliced.snapshot()), "Sliced spread preserves frame " + frame);
+        }
+        byte[] result = sliced.snapshot();
+        check(sliced.undo() && Arrays.equals(before, sliced.snapshot()), "Sliced flowing animation stays one undo step");
+        check(sliced.redo() && Arrays.equals(result, sliced.snapshot()), "Sliced flow redoes exactly");
+        b.advance(false, 1, 1, 192); // Suspend planning, then wake tiles with another stroke.
+        sliced.begin(); b.beginStroke();
+        b.waterMask(mask, 140, 20, 0, 140, 40, 1, true);
+        int calls = 0;
+        do {
+            b.advance(true, 1, 1, 192);
+            check(++calls < 10000, "Pen input between planning slices does not stall the frame");
+        } while (b.framePending());
+        b.finishStroke();
+        check(sliced.undo() && Arrays.equals(result, sliced.snapshot()),
+                "Input that wakes tiles during spread planning remains one undo step");
+    }
+    /** Seeped, beside and untouched tones; checks the shared expectations at any pull. */
+    private static int[] brushPenTones(boolean wetCanvas, float pull) {
+        ToneDocument doc = new ToneDocument(160, 64);
+        doc.begin(); for (int y = 16; y < 48; y++) for (int x = 10; x < 50; x++) doc.paintTone(x, y, 0); doc.finish();
+        byte[] dry = doc.snapshot();
+        WetWatercolor wet = wetCanvas ? new WetWatercolor(doc, 65) : new WetWatercolor(doc);
+        doc.begin(); wet.beginStroke();
+        int[] mask = new int[8 * 16]; Arrays.fill(mask, 0xff000000);
+        for (int x = 40; x <= 110; x += 3) wet.waterMask(mask, 8, x, 24, 8, 16, pull, false);
+        wet.finishStroke(); settle(wet);
+        int seeped = doc.tone(80, 32), beyond = doc.tone(80, 22), untouched = doc.tone(20, 32);
+        String tones = " (seeped " + seeped + ", beside " + beyond + ", untouched " + untouched + ")";
+        check(seeped < (wetCanvas || pull < 1 ? 255 : 235) && seeped > 40, "Black seeps into the new water, thinned" + tones);
+        check(doc.tone(105, 32) > seeped, "The pigment thins with distance from the block" + tones);
+        if (wetCanvas) check(pull < 1 || beyond < 255 && doc.tone(45, 20) > 0, "On a wet canvas the water's edges and the block soften" + tones);
+        else {
+            check(beyond == 255 && doc.tone(80, 23) == 255, "On dry paper the water's edge stays sharp" + tones);
+            check(untouched == 0 && doc.tone(45, 20) == 0, "Dry paint the pen never touched stays put" + tones);
+        }
+        check(doc.undo() && Arrays.equals(doc.snapshot(), dry), "One undo removes the stroke and its seeping");
+        return new int[]{seeped, beyond, untouched};
     }
     /** Tones just above, below, left and right of a settled dark dab on a wet canvas. */
     private static int[] gravityTones(float x, float y) {

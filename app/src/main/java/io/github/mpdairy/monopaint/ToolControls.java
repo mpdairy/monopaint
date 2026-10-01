@@ -23,6 +23,7 @@ final class ToolControls {
             case ERASER: eraser(form, textSize); break;
             case SOFTEN: soften(form, textSize); break;
             case AIRBRUSH: airbrush(form); break;
+            case BRUSH_PEN: case WET_BRUSH_PEN: brushPen(form, current, textSize); break;
             case FILL: fill(form, current); break;
             case SHAPES: shapes(form, current); break;
             default: throw new IllegalArgumentException("No controls for " + current.tool);
@@ -69,6 +70,17 @@ final class ToolControls {
         sizes(form, "diameter", 128);
         form.percent("Strength", s -> s.strength, ToolSettings::strength);
         form.hint("Pull shading in the direction you rub. Lower strength blends gently; repeat passes to build it up.");
+    }
+
+    private static void brushPen(SettingsForm form, ToolSettings current, float textSize) {
+        form.footprint(84, textSize);
+        sizes(form, "diameter", 128);
+        form.hint("Upright is the minimum size; lean the pen to widen it.");
+        form.percent("Strength", s -> s.strength, ToolSettings::strength);
+        form.percent("Pressure response", "Pressure", s -> s.pressureResponse, ToolSettings::pressureResponse);
+        form.hint(current.tool.flowing
+                ? "Clear water that stays wet; paint it touches flows through it like ink, evening out fast in fresh water and slowly as it dries. Press harder for more water. Strength sets the most. Lower pressure response gives more with a light touch. Edges stay sharp on a dry canvas."
+                : "Clear water that moves the paint it touches; press harder to pull more. Strength sets the most it pulls. Lower pressure response pulls more with a light touch. Edges stay sharp on a dry canvas.");
     }
 
     private static void airbrush(SettingsForm form) {

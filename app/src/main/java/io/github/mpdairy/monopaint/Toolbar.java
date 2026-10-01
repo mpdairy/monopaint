@@ -22,7 +22,7 @@ import java.util.Map;
  */
 final class Toolbar {
     /** Tools offered in the toolbar, in their default order. */
-    static final ToolSettings.Tool[] TOOLS = {ToolSettings.Tool.BRUSH, ToolSettings.Tool.PENCIL,
+    static final ToolSettings.Tool[] TOOLS = {ToolSettings.Tool.BRUSH, ToolSettings.Tool.BRUSH_PEN, ToolSettings.Tool.PENCIL,
             ToolSettings.Tool.AIRBRUSH, ToolSettings.Tool.FILL, ToolSettings.Tool.SHAPES,
             ToolSettings.Tool.ERASER, ToolSettings.Tool.SOFTEN};
     /** Toolbar entries that are not tools. */
@@ -85,7 +85,10 @@ final class Toolbar {
         java.util.Collections.swap(order, from, to);
         app.prefs.setToolbarOrder(order); rebuildTools();
     }
-    boolean toolVisible(ToolSettings.Tool tool) { return app.prefs.toolbarItemVisible(tool.name()); }
+    /** Tools left out of {@link #TOOLS}, such as the unfinished wet brush pen, are never shown or kept selected. */
+    boolean toolVisible(ToolSettings.Tool tool) {
+        return java.util.Arrays.asList(TOOLS).contains(tool) && app.prefs.toolbarItemVisible(tool.name());
+    }
     /** Shows or hides an entry. At least one tool stays visible; returns false if refused. */
     boolean setVisible(String key, boolean visible) {
         if (!visible && isTool(key)) {

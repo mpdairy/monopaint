@@ -19,7 +19,7 @@ final class PressureStroke implements DrawingStroke {
     private final Paint paint = new Paint();
     private final int[] pixels;
     private final RectF footprint = new RectF();
-    private float previousX, previousY, previousRadius, previousAngle;
+    private float previousX, previousY, previousRadius, previousAngle, previousPull;
     private boolean started;
 
     PressureStroke(ToneDocument document, int maximum, int gray) {
@@ -66,30 +66,31 @@ final class PressureStroke implements DrawingStroke {
         // Limit interpolation work for malformed input outside the owned canvas.
         x = Math.max(-maximum, Math.min(document.width + maximum, x));
         y = Math.max(-maximum, Math.min(document.height + maximum, y));
-        float radius = settings.diameter(pressure) / 2;
-        float angle = settings.tilt && settings.head != ToolSettings.Head.ROUND
-                ? BrushDirection.resolve(tiltX,tiltY,settings.angle,started?previousAngle:settings.angle) : settings.angle;
+        float radius = settings.diameter(pressure, tiltX, tiltY) / 2, pull = settings.pull(pressure);
+        // A flat edge lies across the lean; a brush pen's long side runs along it, like a pencil's.
+        float angle = settings.followsTilt()
+                ? BrushDirection.resolve(tiltX,tiltY,settings.tool.water ? -90 : settings.angle,started?previousAngle:settings.angle) : settings.angle;
         float turn = started ? BrushDirection.delta(previousAngle,angle) : 0;
         // Tilt supplies heading only; pressure alone selects the head size.
         if (!started) {
-            previousX = x; previousY = y; previousRadius = radius; previousAngle = angle;
+            previousX = x; previousY = y; previousRadius = radius; previousAngle = angle; previousPull = pull;
             started = true;
         }
         double travel = Math.hypot(x - previousX, y - previousY)
                 + Math.abs(Math.toRadians(turn)) * BrushStamp.extent(settings,Math.max(radius,previousRadius));
-        if (settings.tilt && settings.head != ToolSettings.Head.ROUND)
+        if (settings.followsTilt())
             travel += Math.abs(radius-previousRadius);
         float spacing = settings.head == ToolSettings.Head.FLAT ? Math.max(.5f,settings.flatHeight(Math.min(radius,previousRadius)*2)*.2f)
-                : Math.max(.5f, Math.min(radius, previousRadius) * .4f * settings.headAspectRatio());
+                : Math.max(.5f, BrushStamp.minor(settings, Math.min(radius, previousRadius)) * .4f);
         int steps = Math.max(1, (int)Math.ceil(travel / spacing));
         if(batchFlat && steps>1) batch(x,y,radius,turn,steps);
         else for (int i = 1; i <= steps; i++) {
             float t = (float)i / steps;
             dab(previousX + (x - previousX) * t, previousY + (y - previousY) * t,
-                    previousRadius + (radius - previousRadius) * t, previousAngle + turn * t);
+                    previousRadius + (radius - previousRadius) * t, previousAngle + turn * t, previousPull + (pull - previousPull) * t);
         }
         // Keep the head frame continuous across the 180-degree boundary.
-        previousX = x; previousY = y; previousRadius = radius; previousAngle += turn;
+        previousX = x; previousY = y; previousRadius = radius; previousAngle += turn; previousPull = pull;
     }
     /** Dry flat stamps are idempotent: union them before copying pixels into the document. */
     private void batch(float x,float y,float radius,float turn,int steps) {
@@ -119,10 +120,10 @@ final class PressureStroke implements DrawingStroke {
             }
             int cropX=Math.max(0,(int)Math.floor(l)-1),cropY=Math.max(0,(int)Math.floor(t)-1);
             int w=Math.min(side,(int)Math.ceil(r)+1)-cropX,h=Math.min(side,(int)Math.ceil(bottom)+1)-cropY;
-            if(w>0 && h>0)applyMask(left+cropX,top+cropY,cropX,cropY,w,h);
+            if(w>0 && h>0)applyMask(left+cropX,top+cropY,cropX,cropY,w,h,1);
         }
     }
-    private void dab(float x, float y, float radius, float angle) {
+    private void dab(float x, float y, float radius, float angle, float pull) {
         float extent = BrushStamp.extent(settings, radius);
         int left = (int)Math.floor(x - extent) - 1, top = (int)Math.floor(y - extent) - 1;
         int w = Math.min(side, (int)Math.ceil(x + extent) + 1 - left);
@@ -142,11 +143,12 @@ final class PressureStroke implements DrawingStroke {
             if(w<=0||h<=0)return;
             left+=cropX;top+=cropY;
         }
-        applyMask(left,top,cropX,cropY,w,h);
+        applyMask(left,top,cropX,cropY,w,h,pull);
     }
-    private void applyMask(int left,int top,int cropX,int cropY,int w,int h) {
+    private void applyMask(int left,int top,int cropX,int cropY,int w,int h,float pull) {
         mask.getPixels(pixels, 0, w, cropX, cropY, w, h);
         if(erasing || settings.tool==ToolSettings.Tool.ERASER) document.eraseMask(pixels,w,left,top,w,h);
+        else if (wet != null && settings.tool.water) wet.waterMask(pixels, w, left, top, w, h, pull, settings.tool.flowing);
         else if (wet != null) wet.paintMask(pixels, w, left, top, w, h, gray, transparent);
         else if (transparent) document.transparentMask(pixels, w, left, top, w, h, gray);
         else if (settings.tool == ToolSettings.Tool.FLAT_WASH)

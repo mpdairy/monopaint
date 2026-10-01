@@ -285,12 +285,7 @@ final class NativePen {
     // Confirmed in the tablet's libinputreader cookPointerData implementation.
     // PWInputPoint exposes named getTiltX/getTiltY accessors. This is not stock
     // Android's radians + azimuth encoding.
-    static float inclination(float tx, float ty) {
-        if (!Float.isFinite(tx) || !Float.isFinite(ty) || Math.abs(tx) > 90 || Math.abs(ty) > 90) return 0;
-        double x = Math.tan(Math.toRadians(Math.min(89.9, Math.abs(tx))));
-        double y = Math.tan(Math.toRadians(Math.min(89.9, Math.abs(ty))));
-        return (float)Math.toDegrees(Math.atan(Math.hypot(x,y)));
-    }
+    static float inclination(float tx, float ty) { return BrushDirection.inclination(tx, ty); }
 
     static float diameter(int maximum, float pressure, float tx, float ty, boolean tilt) {
         if (!Float.isFinite(pressure)) pressure = 0;

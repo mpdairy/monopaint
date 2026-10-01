@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="32" android:viewportHeight="32">
+    <!-- The brush pen, upper right, above a spreading drop. -->
+    <group android:rotation="45" android:pivotX="16" android:pivotY="16" android:translateX="4" android:translateY="-4">
+        <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineJoin="round" android:pathData="M14,3 L18,3 L18,13 L14,13 Z" />
+        <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineJoin="round" android:pathData="M14.5,13 L17.5,13 L17.5,15.5 L14.5,15.5 Z" />
+        <path android:fillColor="#000000" android:strokeColor="#000000" android:strokeWidth="1.2" android:strokeLineJoin="round" android:pathData="M14.5,15.5 L17.5,15.5 C18,19 17,22 16,25 C15,22 14,19 14.5,15.5 Z" />
+    </group>
+    <path android:fillColor="#00000000" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineJoin="round" android:pathData="M3,26 C3,22 8,21 10,23 C12,21 16,23 14,26 C13,29 5,30 3,26 Z" />
+</vector>

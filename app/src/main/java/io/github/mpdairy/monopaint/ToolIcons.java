@@ -17,6 +17,8 @@ final class ToolIcons {
             case ERASER: return R.drawable.ic_eraser;
             case SOFTEN: return R.drawable.ic_soften;
             case BRUSH: return R.drawable.ic_brush;
+            case BRUSH_PEN: return R.drawable.ic_brush_pen;
+            case WET_BRUSH_PEN: return R.drawable.ic_wet_brush_pen;
             default: throw new IllegalArgumentException("No icon for " + tool);
         }
     }

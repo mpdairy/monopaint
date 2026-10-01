@@ -5,8 +5,40 @@ import java.util.Arrays;
 
 public final class ToolChecks {
     public static void main(String[] args) throws Exception {
-        gradientSettings(); presets(); favoriteIsolation(); favoriteNumbers(); flatHeight(); wideFlat(); customEdits(); presetDragOrder(); legacyPresets(); pressureResponse(); brushHeads(); tiltDirection(); sizeRanges(); fills(); tolerantFills(); softErase(); soften(); directionalBlend(); stumpStrength(); pencil();
-        System.out.println("PASS: preset CRUD/order/recall/persistence, bounded four-connected fill/cancel, soft eraser falloff, unbiased soften/edges, logical pencil texture/cap");
+        gradientSettings(); presets(); favoriteIsolation(); favoriteNumbers(); flatHeight(); wideFlat(); customEdits(); presetDragOrder(); legacyPresets(); pressureResponse(); brushHeads(); tiltDirection(); sizeRanges(); fills(); tolerantFills(); softErase(); soften(); directionalBlend(); stumpStrength(); pencil(); brushPenMigration();
+        System.out.println("PASS: preset CRUD/order/recall/persistence, brush pen migration, bounded four-connected fill/cancel, soft eraser falloff, unbiased soften/edges, logical pencil texture/cap");
+    }
+    private static void brushPenMigration() throws Exception {
+        // Ten tools before the brush pen, eleven before the wet brush pen.
+        brushPenMigration(0x54535041, 10); brushPenMigration(0x54535042, 11);
+        ToolSettings wetPen=ToolSettings.defaults(ToolSettings.Tool.WET_BRUSH_PEN);
+        check(wetPen.tool.water && wetPen.tool.flowing && !ToolSettings.Tool.BRUSH_PEN.flowing && wetPen.pull(.45f)==1,"The wet brush pen lays fully fresh flowing water at full pressure");
+    }
+    private static void brushPenMigration(int version, int tools) throws Exception {
+        ToolLibrary library=new ToolLibrary();library.select(ToolSettings.Tool.AIRBRUSH);library.edit(library.current().strength(72));library.add("Spray");
+        java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
+        in.readInt();out.writeInt(version);byte[] record=new byte[54];
+        for(int i=0;i<25;i++){in.readFully(record);if(i<tools || i>=12)out.write(record);}
+        out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
+        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);}
+        check(in.read()==-1,"Previous format fixture consumes every byte");
+        ToolLibrary restored=ToolLibrary.decode(bytes.toByteArray());
+        check(restored.current().equals(library.current()) && restored.activeId().equals(library.activeId()),"Previous format retains the selected favorite");
+        check(restored.builtin(ToolSettings.Tool.BRUSH_PEN).equals(ToolSettings.defaults(ToolSettings.Tool.BRUSH_PEN)),"Migration adds a default Brush pen");
+        restored.select(ToolSettings.Tool.BRUSH_PEN);restored.edit(restored.current().size(40));
+        check(ToolLibrary.decode(restored.encode()).builtin(ToolSettings.Tool.BRUSH_PEN).maximum==40,"Brush pen settings persist");
+        ToolSettings pen=ToolSettings.defaults(ToolSettings.Tool.BRUSH_PEN);
+        check(pen.diameter(.1f,0,0)==pen.minimum && pen.diameter(.45f,0,0)==pen.minimum,"An upright brush pen stays at its minimum size at any pressure");
+        check(pen.diameter(.1f,70,0)==pen.maximum && pen.diameter(.1f,30,0)>pen.minimum && pen.diameter(.1f,30,0)<pen.maximum,"Leaning widens the brush pen up to its maximum");
+        ToolSettings strong=pen.strength(100);
+        check(strong.pull(.45f)==1 && strong.pull(0)>0 && strong.pull(.25f)<1,"Pressure sets the brush pen's pull");
+        check(pen.pull(.45f)<strong.pull(.45f) && pen.strength(30).pull(.45f)<pen.pull(.45f),"Strength sets the most the brush pen pulls");
+        check(strong.pressureResponse(0).pull(.1f)>strong.pull(.1f) && strong.pull(.1f)>strong.pressureResponse(100).pull(.1f),"Lower response pulls more with a light touch");
+        check(strong.pressureResponse(50).pull(.25f)==.15f+.85f*.5f,"The middle response is linear");
+        check(!pen.supportsEraseMode(),"Clear water has no erase mode");
+        check(pen.followsTilt() && pen.leanMinor(pen.maximum,pen.minimum)==pen.minimum+(pen.maximum-pen.minimum)*.28f && pen.leanMinor(pen.minimum,pen.minimum)==pen.minimum,
+                "A leaning brush pen stretches along its lean like a pencil: wide sideways, thin along the lean, round upright");
     }
     private static void gradientSettings() throws Exception {
         ToolLibrary library=new ToolLibrary();library.select(ToolSettings.Tool.FILL);
@@ -32,7 +64,7 @@ public final class ToolChecks {
         java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
         java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
         in.readInt();out.writeInt(0x5453503d);byte[] record=new byte[47];
-        for(int i=0;i<23;i++){in.readFully(record);if(i!=8 && i!=9)out.write(record);in.readUnsignedByte();in.skipBytes(6);}
+        for(int i=0;i<25;i++){in.readFully(record);if(i<8 || i>11)out.write(record);in.readUnsignedByte();in.skipBytes(6);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
         for(int i=0;i<count;i++) {
             out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.readUnsignedByte();in.skipBytes(6);

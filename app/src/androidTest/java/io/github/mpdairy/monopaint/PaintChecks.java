@@ -115,6 +115,7 @@ final class PaintChecks {
                 brushHeadUi(test,current,report);
                 favoriteUi(test,current,report);
                 adaptiveWetReplay(test,current,report);
+                flowingWetReplay(test,current,report);
                 longStroke(test,current,report,false);
                 longStroke(test,current,report,true);
                 wetWatercolorUi(test,current,report);
@@ -443,6 +444,43 @@ final class PaintChecks {
                 call(pad,"dryWet",new Class<?>[0]);
             });
         }
+    }
+    private static void flowingWetReplay(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
+        DrawingPad pad = activity.pad;
+        ToneDocument doc = new ToneDocument(((ToneDocument)field(pad,"document")).width, ((ToneDocument)field(pad,"document")).height);
+        doc.begin();
+        for (int y = 100; y < 400; y++) for (int x = 80; x < 250; x++) doc.paintTone(x, y, 40);
+        doc.finish();
+        byte[] before = doc.snapshot();
+        onMain(test, () -> {
+            pad.replace(doc);
+            activity.library = new ToolLibrary();
+            activity.library.select(ToolSettings.Tool.WET_BRUSH_PEN);
+            activity.library.edit(ToolSettings.defaults(ToolSettings.Tool.WET_BRUSH_PEN).size(128).minimum(128));
+            activity.paint.wetCanvas = false; activity.paint.eraseMode = false;
+            pad.renderDirty(); pad.present();
+        });
+        test.waitForIdleSync(); SystemClock.sleep(100);
+        check(field(pad, "direct") != null, "Wet brush pen uses the direct display");
+        int draws = (Integer)field(pad, "drawCount");
+        long start = SystemClock.uptimeMillis();
+        onMain(test, () -> event(pad, start, MotionEvent.ACTION_DOWN, 120, 220, .8f));
+        for (int i = 1; i <= 40; i++) {
+            final int x = 120 + i * 10;
+            onMain(test, () -> event(pad, start, MotionEvent.ACTION_MOVE, x, 220, .8f));
+            SystemClock.sleep(12);
+        }
+        onMain(test, () -> event(pad, start, MotionEvent.ACTION_UP, 520, 220, 0));
+        SystemClock.sleep(1500);
+        onMain(test, () -> {
+            check(pad.wet != null && pad.wet.strokePixels() > 40000, "Wide flowing pen wets its full path");
+            check(!Arrays.equals(before, doc.snapshot()), "Flowing water moves the existing ink");
+            check((Integer)get(pad, "drawCount") == draws && get(pad, "direct") != null,
+                    "Flowing pen and its animation retain direct presentation without Android redraws");
+            pad.dryWet();
+            check(doc.undo() && Arrays.equals(before, doc.snapshot()), "Flowing pen and animation undo together");
+        });
+        report.append("Wet brush pen: real input and animation use direct e-ink with no Android redraws; ink moves and one undo restores the page.\n");
     }
     /** One long held stroke with a large brush: the pen must keep up to the end, wet canvas or not. */
     private static void longStroke(Instrumentation test, PaintActivity activity, StringBuilder report, boolean wetCanvas) throws Exception {

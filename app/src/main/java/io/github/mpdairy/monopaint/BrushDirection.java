@@ -23,6 +23,17 @@ final class BrushDirection {
         // Keep signed lean here: a head has 180-degree symmetry, a push does not.
         return (float)Math.max(0,Math.min(1,-(x*dx+y*dy)/(lean*distance)));
     }
+    /** Degrees the pen leans from upright; 0 without a reading. */
+    static float inclination(float tiltX, float tiltY) {
+        if (!Float.isFinite(tiltX) || !Float.isFinite(tiltY) || Math.abs(tiltX) > 90 || Math.abs(tiltY) > 90) return 0;
+        double x = Math.tan(Math.toRadians(Math.min(89.9, Math.abs(tiltX))));
+        double y = Math.tan(Math.toRadians(Math.min(89.9, Math.abs(tiltY))));
+        return (float)Math.toDegrees(Math.atan(Math.hypot(x,y)));
+    }
+    /** How far a tool broadens with tilt: 0 near upright to 1 at 65 degrees and beyond. */
+    static float lean(float tiltX, float tiltY) {
+        return Math.max(0, Math.min(1, (inclination(tiltX, tiltY) - 5) / 60));
+    }
     static float normalize(float angle) { return (angle % 180 + 180) % 180; }
     static float delta(float from, float to) {
         // Both heads are symmetric: 179 -> 1 is a two-degree turn, not 178.

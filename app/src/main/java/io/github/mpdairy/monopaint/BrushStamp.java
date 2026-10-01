@@ -10,17 +10,23 @@ final class BrushStamp {
         return settings.head == ToolSettings.Head.FLAT
                 ? (float)Math.hypot(radius, settings.flatHeight(radius*2)/2) : radius;
     }
+    /** Half the head's short side for a head {@code radius} long. Brush pens stretch along their lean like a pencil. */
+    static float minor(ToolSettings settings, float radius) {
+        if (settings.tool.water) return settings.leanMinor(radius * 2, settings.minimum) / 2;
+        if (settings.head == ToolSettings.Head.ROUND) return radius;
+        return settings.head == ToolSettings.Head.FLAT ? settings.flatHeight(radius*2)/2 : Math.max(.75f, radius * settings.headAspectRatio());
+    }
     static void draw(Canvas canvas, Paint paint, float x, float y, float radius, ToolSettings settings) {
         draw(canvas,paint,x,y,radius,settings,settings.angle,null);
     }
     static void draw(Canvas canvas, Paint paint, float x, float y, float radius, ToolSettings settings, float angle,
                      RectF footprint) {
-        if (settings.head == ToolSettings.Head.ROUND) {
+        if (settings.head == ToolSettings.Head.ROUND && !settings.tool.water) {
             if (footprint != null) footprint.set(x-radius,y-radius,x+radius,y+radius);
             canvas.drawCircle(x, y, radius, paint);
             return;
         }
-        float minor = settings.head == ToolSettings.Head.FLAT ? settings.flatHeight(radius*2)/2 : Math.max(.75f, radius * settings.headAspectRatio());
+        float minor = minor(settings, radius);
         // Subpixel-thin ellipses can contain no raster pixel centers at all.
         // Keep the smallest heads visible without changing the legacy round tip.
         if (radius < 1) {

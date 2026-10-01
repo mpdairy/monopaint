@@ -29,17 +29,24 @@ final class ToolSettings {
         WET_WATERCOLOR("Wet watercolor (experimental)", Kind.BRUSH),
         FLAT_WASH("Flat wash", Kind.BRUSH),
         AIRBRUSH("Airbrush", Kind.COLORED),
-        SHAPES("Shapes", Kind.COLORED);
+        SHAPES("Shapes", Kind.COLORED),
+        BRUSH_PEN("Brush pen", Kind.WATER),
+        WET_BRUSH_PEN("Wet brush pen", Kind.FLOWING_WATER);
 
         final String label;
         /** Brushes share brush heads, wet canvas and transparent paint; they display as one Brush tool. */
         final boolean brush;
         /** Tools that apply the selected color can erase with their own footprint instead. */
         final boolean erasable;
+        /** Lays down its own clear water, wet canvas or not. Tilt sets its size; pressure its pull. */
+        final boolean water;
+        /** Its water stays wet and carries ink like ink in water, faster where the water is fresher. */
+        final boolean flowing;
         Tool(String label, Kind kind) {
-            this.label = label; brush = kind == Kind.BRUSH; erasable = kind != Kind.COLORLESS;
+            this.label = label; brush = kind == Kind.BRUSH; erasable = kind == Kind.BRUSH || kind == Kind.COLORED;
+            flowing = kind == Kind.FLOWING_WATER; water = kind == Kind.WATER || flowing;
         }
-        private enum Kind { BRUSH, COLORED, COLORLESS }
+        private enum Kind { BRUSH, COLORED, COLORLESS, WATER, FLOWING_WATER }
     }
     enum Head {
         ROUND("Round"), FLAT("Flat"), FILBERT("Filbert");
@@ -81,14 +88,18 @@ final class ToolSettings {
         this.gradient=gradient; this.tool = tool; this.head = head; this.angle = angle; this.bristles = bristles; this.headThickness = headThickness; this.minimum = minimum; this.maximum = maximum; this.tip = Math.max(minimum,Math.min(tip,maximum));
         this.softness = softness; this.soft = softness > 0; this.tilt = tilt; this.hardness = hardness; this.tolerance = tolerance; this.strength = strength;
         this.pressureResponse = pressureResponse;
-        pressureExponent = Math.pow(2, pressureResponse / 50.0);
+        // Brushes span linear (0) to quartic (100). The brush pen's pull centers on
+        // linear instead, so low settings respond to a light touch (square root at 25).
+        pressureExponent = tool.water ? Math.pow(2, (pressureResponse - 50) / 25.0) : Math.pow(2, pressureResponse / 50.0);
     }
     private ToolSettings(Values v) {
         this(v.tool, v.minimum, v.maximum, v.tip, v.softness, v.tilt, v.hardness, v.tolerance, v.strength, v.pressureResponse,
                 v.head, v.angle, v.bristles, v.headThickness, v.gradient, v.shape, v.filled, v.outlineWidth);
     }
     static ToolSettings defaults(Tool tool) {
-        ToolSettings settings=new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : 64, 3, 70, tool == Tool.PENCIL, 40);
+        ToolSettings settings=new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : tool.water ? 48 : 64, 3, 70, tool == Tool.PENCIL, 40);
+        // A light touch should already move paint: the pen's curve starts gentle.
+        if (tool.water) return settings.minimum(8).pressureResponse(25).strength(tool.flowing ? 100 : 85);
         return tool==Tool.FILL?settings.gradient(Gradient.FLAT):settings;
     }
 
@@ -155,14 +166,33 @@ final class ToolSettings {
         if (tool == Tool.FILL) return gradient == Gradient.FLAT ? "Flat fill" : gradient.label + " gradient";
         return label();
     }
-    float diameter(float pressure) {
+    /** The measured .05–.45 pen pressure range as 0–1. */
+    private static float travel(float pressure) {
         if(!Float.isFinite(pressure)) pressure=0;
-        float p=Math.max(0,Math.min(1,(pressure-.05f)/.40f));
+        return Math.max(0,Math.min(1,(pressure-.05f)/.40f));
+    }
+    float diameter(float pressure) {
+        float p=travel(pressure);
         // Keep the measured .05–.45 pressure range reachable at every response.
         // Light touch is linear; 50 preserves the original square; firm is quartic.
         if (!isBrush() || pressureResponse == DEFAULT_PRESSURE_RESPONSE)
             return minimum+(maximum-minimum)*p*p;
         return minimum+(maximum-minimum)*(float)Math.pow(p, pressureExponent);
+    }
+    /** Whether the head turns with the pen's tilt: shaped brushes that follow tilt, and the brush pens. */
+    boolean followsTilt() { return tool.water || tilt && head != Head.ROUND; }
+    /**
+     * A leaning tip stretches along its lean, like a tilted pencil lead: the footprint's
+     * short side when its long side is {@code major} and the upright tip is {@code upright}.
+     */
+    float leanMinor(float major, float upright) { return Math.max(minimum, upright + (major - upright) * .28f); }
+    /** Stroke size for a pen sample; for the brush pens, the long side, which grows as the pen leans whatever the pressure. */
+    float diameter(float pressure, float tiltX, float tiltY) {
+        return tool.water ? minimum + (maximum - minimum) * BrushDirection.lean(tiltX, tiltY) : diameter(pressure);
+    }
+    /** How strongly brush pen water pulls paint along, 0–1: pressure through the response curve, scaled by strength. */
+    float pull(float pressure) {
+        return strength / 100f * (.15f + .85f * (float)Math.pow(travel(pressure), pressureExponent));
     }
     boolean supportsEraseMode() { return tool.erasable; }
     boolean isBrush() { return tool.brush; }

@@ -23,10 +23,10 @@ final class ToolStroke implements DrawingStroke {
         float p=Math.max(0,Math.min(1,(pressure-.05f)/.40f));
         float diameter=settings.diameter(pressure), minor=diameter,angle=0;
         if(settings.tool==ToolSettings.Tool.PENCIL) {
-            float lean=settings.tilt?Math.max(0,Math.min(1,(NativePen.inclination(tx,ty)-5)/60)):0;
+            float lean=settings.tilt?BrushDirection.lean(tx,ty):0;
             float tip=settings.minimum+(settings.tip-settings.minimum)*p;
             diameter=Math.max(settings.minimum,tip+(settings.maximum-tip)*lean*(.25f+.75f*p));
-            minor=Math.max(settings.minimum,tip+(diameter-tip)*.28f);
+            minor=settings.leanMinor(diameter,tip);
             if(Float.isFinite(tx)&&Float.isFinite(ty)&&Math.abs(tx)<=90&&Math.abs(ty)<=90)
                 angle=(float)Math.atan2(Math.tan(Math.toRadians(ty)),Math.tan(Math.toRadians(tx)));
         }
