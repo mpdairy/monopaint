@@ -721,6 +721,8 @@ final class DrawingPad extends View {
     }
     private void scheduleWet(int delayMillis) {
         if (wet != null && wet.isAnimating() && app.resumed && hasWindowFocus() && !app.loading && !navigating) {
+            // Start reading the tilt now, so it is ready when the paint first moves.
+            app.canvasGravity.listen(true);
             if (!wetScheduled) { wetScheduled = true; postDelayed(wetStep, delayMillis); }
         }
     }
@@ -729,12 +731,15 @@ final class DrawingPad extends View {
     }
     private void advanceWet() {
         wetScheduled = false;
-        if (wet == null || !app.resumed || !hasWindowFocus() || app.loading || navigating) return;
+        if (wet == null || !app.resumed || !hasWindowFocus() || app.loading || navigating) {
+            app.canvasGravity.listen(false); return;
+        }
         boolean drawing = stroke != null;
         long budget = wetBudget.nanos(drawing, wet.strokePixels(), wet.activePixels(), SystemClock.uptimeMillis());
         // Submit the pen's outstanding pixels before adding more display work.
         if (budget == 0 || !pending.isEmpty()) { scheduleWet(16); return; }
         long start = System.nanoTime();
+        app.canvasGravity.apply(wet);
         wetChanged |= wet.advance(drawing, wetBudget.tiles(budget, drawing), budget / 2, drawing ? 96 : 192);
         long computed = System.nanoTime();
         renderDirty();
@@ -748,11 +753,15 @@ final class DrawingPad extends View {
         wetSliceCount++;
         wetBudget.completed(finished - start, wet.advancedTiles(), drawing, SystemClock.uptimeMillis());
         if (wet.isAnimating()) scheduleWet();
-        else if (wetChanged && stroke == null) { wetChanged = false; app.recovery(); }
+        else {
+            app.canvasGravity.listen(false);
+            if (wetChanged && stroke == null) { wetChanged = false; app.recovery(); }
+        }
     }
     /** Stops wet blending, leaving the paint as it is. */
     void dryWet() {
         cancelWetCallback();
+        app.canvasGravity.listen(false);
         wet = null;
         if (wetChanged) { wetChanged = false; app.recovery(); }
     }

@@ -74,6 +74,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     DrawingPad pad;
     Toolbar toolbar;
     RotationPrompt rotationPrompt;
+    CanvasGravity canvasGravity;
     ShadePicker shadePicker;
     WetnessBar wetnessBar;
     ToolButton wetButton, opaqueButton, transparentButton, eyedropperButton, eraseButton;
@@ -139,6 +140,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         setContentView(previewFrame);
         applyToolboxSide(); updatePages();
         rotationPrompt = new RotationPrompt(this, rotateButton);
+        canvasGravity = new CanvasGravity(this);
         pad.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (l != ol || t != ot || r != or || b != ob) { pad.disconnectDisplay(); pad.post(pad::connectDisplay); }
         });

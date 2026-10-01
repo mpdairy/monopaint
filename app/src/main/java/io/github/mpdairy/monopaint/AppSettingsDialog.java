@@ -13,7 +13,7 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.util.ArrayList;
 
-/** The Settings dialog: drawing hand, rotation, sizes, Nomad simulation and toolbar contents. */
+/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, Nomad simulation and toolbar contents. */
 final class AppSettingsDialog {
     private final PaintActivity app;
     private final PaintPreferences prefs;
@@ -41,6 +41,11 @@ final class AppSettingsDialog {
         textSizes.getChildAt(0).setContentDescription("Medium settings text");
         textSizes.getChildAt(1).setContentDescription("Large settings text");
         content.addView(textSizes);
+        CheckBox gravity = new CheckBox(app);
+        gravity.setText("Wet canvas uses gravity"); gravity.setContentDescription("Wet canvas uses gravity");
+        gravity.setChecked(prefs.wetGravity());
+        gravity.setOnCheckedChangeListener((button, checked) -> prefs.setWetGravity(checked));
+        content.addView(gravity);
         CheckBox nomad = new CheckBox(app);
         nomad.setText("Nomad Simulation Mode"); nomad.setContentDescription("Nomad Simulation Mode");
         nomad.setChecked(app.nomadMode());

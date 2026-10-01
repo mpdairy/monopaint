@@ -26,6 +26,9 @@ final class PaintPreferences {
     void setLargeSettingsText(boolean value) { setFlag("large_settings_text", value); }
     boolean nomadMode() { return flag("nomad_mode", false); }
     void setNomadMode(boolean value) { setFlag("nomad_mode", value); }
+    /** Wet paint runs toward whichever page edge the tablet tilts down. */
+    boolean wetGravity() { return flag("wet_gravity", false); }
+    void setWetGravity(boolean value) { setFlag("wet_gravity", value); }
     boolean navigationLocked() { return flag("navigation_locked", true); }
     void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
     /** Whether the user has picked a shape, so Shapes shows that shape's icon. */

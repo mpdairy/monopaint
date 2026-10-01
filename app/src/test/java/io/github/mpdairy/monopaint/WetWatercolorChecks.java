@@ -6,8 +6,8 @@ import java.util.Arrays;
 public final class WetWatercolorChecks {
     public static void main(String[] args) throws Exception {
         blendingAndHistory(); dryPaperAndLinework(); dryGaps(); drying(); pausedStrokes(false); pausedStrokes(true);
-        liveStroke(); boundedSlices(); adaptiveBudget(); presets();
-        System.out.println("PASS: live wet blending, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
+        liveStroke(); boundedSlices(); adaptiveBudget(); presets(); gravity();
+        System.out.println("PASS: live wet blending, gravity drift, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
     }
     private static void check(boolean pass, String message) { if (!pass) throw new AssertionError(message); }
     private static void dab(ToneDocument doc, WetWatercolor wet, int x, int y, int w, int h, int gray) {
@@ -43,6 +43,21 @@ public final class WetWatercolorChecks {
         check(doc.redo() && Arrays.equals(doc.snapshot(), mixed) && !doc.canRedo(), "Animated stroke redoes to its final appearance");
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DocumentCodec.write(bytes, doc.width, doc.height, doc.snapshot());
         check(Arrays.equals(DocumentCodec.read(new ByteArrayInputStream(bytes.toByteArray())).snapshot(), mixed), "Save/load retains blended tones without transient water");
+    }
+    private static void gravity() {
+        int[] level = gravityTones(0, 0), downhill = gravityTones(0, 1), sideways = gravityTones(-.7f, 0);
+        check(level[0] == level[1], "Flat canvas spreads evenly up and down");
+        check(downhill[1] < level[1] && downhill[0] > level[0], "Tilted canvas runs paint downhill, away from uphill");
+        check(downhill[1] < 255, "Downhill paint reaches beyond the usual wet margin");
+        check(sideways[2] < level[2] && sideways[3] > level[3], "Tilt toward the left runs paint left");
+    }
+    /** Tones just above, below, left and right of a settled dark dab on a wet canvas. */
+    private static int[] gravityTones(float x, float y) {
+        ToneDocument doc = new ToneDocument(128, 128);
+        WetWatercolor wet = new WetWatercolor(doc, 100);
+        wet.setGravity(x, y);
+        dab(doc, wet, 56, 56, 16, 16, 0); settle(wet);
+        return new int[]{doc.tone(64, 51), doc.tone(64, 76), doc.tone(51, 64), doc.tone(76, 64)};
     }
     private static void dryPaperAndLinework() {
         ToneDocument doc = new ToneDocument(67, 53);

@@ -115,6 +115,8 @@ final class PaintChecks {
                 brushHeadUi(test,current,report);
                 favoriteUi(test,current,report);
                 adaptiveWetReplay(test,current,report);
+                longStroke(test,current,report,false);
+                longStroke(test,current,report,true);
                 wetWatercolorUi(test,current,report);
                 return;
             }
@@ -441,6 +443,62 @@ final class PaintChecks {
                 call(pad,"dryWet",new Class<?>[0]);
             });
         }
+    }
+    /** One long held stroke with a large brush: the pen must keep up to the end, wet canvas or not. */
+    private static void longStroke(Instrumentation test, PaintActivity activity, StringBuilder report, boolean wetCanvas) throws Exception {
+        Object pad = field(activity,"pad"); View view = (View)pad;
+        // A full page, not the small page an earlier replay may have left.
+        ToneDocument doc = new ToneDocument(view.getWidth(), view.getHeight());
+        onMain(test, () -> {
+            call(pad,"dryWet",new Class<?>[0]);
+            call(pad,"replace",new Class<?>[]{ToneDocument.class},doc);
+            set(activity,"library",new ToolLibrary()); TestAccess.setMaximum(activity,102);
+            set(get(activity,"paint"),"gray",30); set(get(activity,"paint"),"wetCanvas",wetCanvas); set(get(activity,"paint"),"wetness",100);
+            set(get(activity,"paint"),"transparentPaint",false); set(get(activity,"paint"),"eraseMode",false);
+        });
+        test.waitForIdleSync();
+        // Pen events arrive on a fixed schedule whether or not the app keeps up,
+        // so lag is how long after its due time each event is handled.
+        int events = 2000, windows = 4, intervalMs = 4;
+        long[] pen = new long[events], lag = new long[events];
+        float cx = view.getWidth()/2f, cy = view.getHeight()/2f;
+        long start = SystemClock.uptimeMillis();
+        onMain(test, () -> event(view,start,MotionEvent.ACTION_DOWN,cx,cy,.45f));
+        onMain(test, () -> check(get(pad,"stroke") != null && (get(pad,"wet") != null) == wetCanvas, "Long stroke starts on the chosen canvas"));
+        onMain(test, () -> set(pad,"wetSliceCount",0));
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        long first = SystemClock.uptimeMillis() + 20;
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(events);
+        for (int i=0;i<events;i++) {
+            final int sample = i; double t = i*.005;
+            final float x = cx+(float)(Math.sin(t*1.3)*cx*.8), y = cy+(float)(Math.sin(t*.7)*cy*.8);
+            final long due = first + (long)i*intervalMs;
+            main.postAtTime(() -> {
+                long begin = System.nanoTime();
+                lag[sample] = SystemClock.uptimeMillis() - due;
+                // Like real input, the event carries the time the pen made it.
+                event(view,start,due,MotionEvent.ACTION_MOVE,x,y,.45f,MotionEvent.TOOL_TYPE_STYLUS);
+                pen[sample] = System.nanoTime()-begin;
+                done.countDown();
+            }, due);
+        }
+        check(done.await(120, java.util.concurrent.TimeUnit.SECONDS), "Long stroke replay completes");
+        StringBuilder line = new StringBuilder("Long stroke ("+events+" events every "+intervalMs+"ms, size 102, "+(wetCanvas?"wet":"normal")+" canvas):");
+        for (int w=0; w<windows; w++) {
+            int from = w*events/windows, to = (w+1)*events/windows;
+            long[] p = Arrays.copyOfRange(pen,from,to), r = Arrays.copyOfRange(lag,from,to);
+            Arrays.sort(p); Arrays.sort(r);
+            line.append(String.format(java.util.Locale.US," [%d-%d pen_p95=%.2fms lag_p50=%dms lag_max=%dms]",
+                    from,to,p[(int)(p.length*.95)]/1e6,r[r.length/2],r[r.length-1]));
+        }
+        int[] seeping = new int[1];
+        onMain(test, () -> seeping[0] = (Integer)get(pad,"wetSliceCount"));
+        line.append(" seep_slices_while_held=").append(seeping[0]).append(" (CPU, not panel latency).\n");
+        report.append(line);
+        onMain(test, () -> { event(view,start,MotionEvent.ACTION_UP,cx,cy,0); call(pad,"dryWet",new Class<?>[0]); });
+        test.waitForIdleSync();
+        long[] late = Arrays.copyOfRange(lag,events*(windows-1)/windows,events); Arrays.sort(late);
+        check(late[late.length/2] <= 30, "The end of a long "+(wetCanvas?"wet":"normal")+" stroke keeps up with the pen: "+line);
     }
     private static void saveScreenshot(Instrumentation test, String name) throws Exception {
         Bitmap screen=test.getUiAutomation().takeScreenshot();check(screen!=null,"Can capture brush UI");
@@ -1568,9 +1626,12 @@ final class PaintChecks {
         event(view,start,action,x,y,pressure,MotionEvent.TOOL_TYPE_STYLUS);
     }
     private static void event(View view, long start, int action, float x, float y, float pressure, int tool) {
+        event(view,start,SystemClock.uptimeMillis(),action,x,y,pressure,tool);
+    }
+    private static void event(View view, long start, long time, int action, float x, float y, float pressure, int tool) {
         MotionEvent.PointerProperties properties = new MotionEvent.PointerProperties(); properties.id=0; properties.toolType=tool;
         MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords(); coords.x=x; coords.y=y; coords.pressure=pressure;
-        MotionEvent event = MotionEvent.obtain(start,SystemClock.uptimeMillis(),action,1,
+        MotionEvent event = MotionEvent.obtain(start,time,action,1,
                 new MotionEvent.PointerProperties[]{properties},new MotionEvent.PointerCoords[]{coords},0,0,1,1,0,0,
                 tool == MotionEvent.TOOL_TYPE_STYLUS ? InputDevice.SOURCE_STYLUS : InputDevice.SOURCE_TOUCHSCREEN,0);
         view.dispatchTouchEvent(event); event.recycle();

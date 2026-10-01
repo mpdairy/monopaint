@@ -19,6 +19,8 @@ final class WetWatercolor {
     private boolean canContinue;
     private final boolean wholeCanvas;
     private float wetness = 1;
+    /** Downhill direction in page axes, length 0 (flat) to 1 (upright). */
+    private float gravityX, gravityY;
     private int strokePixels, frameRemaining, advancedTiles;
 
     WetWatercolor(ToneDocument document) {
@@ -35,6 +37,9 @@ final class WetWatercolor {
         tiles = new Tile[columns * ((document.height + SIDE - 1) / SIDE)];
     }
     void setWetness(int amount) { wetness = Math.max(0, Math.min(100, amount)) / 100f; }
+    void setGravity(float x, float y) { gravityX = x; gravityY = y; }
+    /** Wet reach beyond a stamp: paint can run further downhill before it dries. */
+    private int margin(float downhill) { return 8 + Math.round(24 * Math.max(0, downhill)); }
     void beginStroke() {
         canContinue = false;
         strokePixels = 0;
@@ -46,7 +51,9 @@ final class WetWatercolor {
     void paintMask(int[] mask, int stride, int x, int y, int w, int h, int gray, boolean transparent) {
         // Rehydrate the local neighborhood lazily: existing drawing is pigment too.
         // The whole canvas is eligible, without scanning/allocating it on a toggle.
-        if (wholeCanvas) hydrate(x - 8, y - 8, x + w + 8, y + h + 8);
+        int marginLeft = margin(-gravityX), marginTop = margin(-gravityY);
+        int marginRight = margin(gravityX), marginBottom = margin(gravityY);
+        if (wholeCanvas) hydrate(x - marginLeft, y - marginTop, x + w + marginRight, y + h + marginBottom);
         for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
             int px = x + col, py = y + row;
             if ((mask[row * stride + col] >>> 24) == 0 || px < 0 || py < 0
@@ -82,23 +89,33 @@ final class WetWatercolor {
             wake(tile);
         }
         // Adjacent old washes participate even when the new stamp only touches their edge.
-        int left = Math.max(0, x - 8) / SIDE, top = Math.max(0, y - 8) / SIDE;
-        int right = Math.min(document.width - 1, x + w + 8) / SIDE;
-        int bottom = Math.min(document.height - 1, y + h + 8) / SIDE;
+        int left = Math.max(0, x - marginLeft) / SIDE, top = Math.max(0, y - marginTop) / SIDE;
+        int right = Math.min(document.width - 1, x + w + marginRight) / SIDE;
+        int bottom = Math.min(document.height - 1, y + h + marginBottom) / SIDE;
         for (int ty = top; ty <= bottom; ty++) for (int tx = left; tx <= right; tx++) {
             Tile tile = tiles[ty * columns + tx];
             if (tile != null) wake(tile);
         }
     }
     private void hydrate(int left, int top, int right, int bottom) {
-        for (int y = Math.max(0, top); y < Math.min(document.height, bottom); y++)
-            for (int x = Math.max(0, left); x < Math.min(document.width, right); x++) {
-                int key = y / SIDE * columns + x / SIDE, i = y % SIDE * SIDE + x % SIDE;
-                Tile tile = tiles[key];
-                if (tile == null) tiles[key] = tile = new Tile(x / SIDE * SIDE, y / SIDE * SIDE);
-                if (!tile.wet.get(i)) {
-                    markWet(tile, i); tile.base[i] = (byte)255;
-                    tile.pigment[i] = tile.target[i] = 255 - document.tone(x, y);
+        left = Math.max(0, left); top = Math.max(0, top);
+        right = Math.min(document.width, right); bottom = Math.min(document.height, bottom);
+        if (left >= right || top >= bottom) return;
+        // Successive stamps overlap almost entirely. Skip tiles that are already
+        // fully wet instead of revisiting each of their pixels on every stamp.
+        for (int ty = top / SIDE; ty <= (bottom - 1) / SIDE; ty++)
+            for (int tx = left / SIDE; tx <= (right - 1) / SIDE; tx++) {
+                Tile tile = tiles[ty * columns + tx];
+                if (tile == null) tiles[ty * columns + tx] = tile = new Tile(tx * SIDE, ty * SIDE);
+                else if (tile.wetPixels == PIXELS) continue;
+                int x0 = Math.max(left, tile.x), x1 = Math.min(right, tile.x + SIDE);
+                int y0 = Math.max(top, tile.y), y1 = Math.min(bottom, tile.y + SIDE);
+                for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+                    int i = (y - tile.y) * SIDE + x - tile.x;
+                    if (!tile.wet.get(i)) {
+                        markWet(tile, i); tile.base[i] = (byte)255;
+                        tile.pigment[i] = tile.target[i] = 255 - document.tone(x, y);
+                    }
                 }
             }
     }
@@ -138,6 +155,10 @@ final class WetWatercolor {
         batch.clear();
         int count = Math.min(maxTiles, frameRemaining);
         int left = 0, top = 0, right = 0, bottom = 0;
+        // Each pixel draws more from uphill neighbors than downhill ones, so pigment
+        // drifts with gravity. The weights average 1, keeping total flow unchanged.
+        float fromLeft = 1 + gravityX, fromRight = 1 - gravityX;
+        float fromAbove = 1 + gravityY, fromBelow = 1 - gravityY;
         for (int t = 0; t < count; t++) {
             Tile tile = active.peekFirst();
             int l = t == 0 ? tile.x : Math.min(left, tile.x);
@@ -151,8 +172,8 @@ final class WetWatercolor {
             batch.add(active.removeFirst());
             for (int i = tile.wet.nextSetBit(0); i >= 0; i = tile.wet.nextSetBit(i + 1)) {
                 float value = tile.pigment[i];
-                float neighbors = neighbor(tile, i, -1, 0, value) + neighbor(tile, i, 1, 0, value)
-                        + neighbor(tile, i, 0, -1, value) + neighbor(tile, i, 0, 1, value);
+                float neighbors = fromLeft * neighbor(tile, i, -1, 0, value) + fromRight * neighbor(tile, i, 1, 0, value)
+                        + fromAbove * neighbor(tile, i, 0, -1, value) + fromBelow * neighbor(tile, i, 0, 1, value);
                 float flow = wholeCanvas ? wetness : 1;
                 tile.next[i] = value * (1 - .55f * flow) + neighbors * (flow / 30f) + tile.target[i] * (.15f * flow);
             }
