@@ -19,11 +19,11 @@ Some old identifiers deliberately remain stable:
   keeping existing drawings and recovery data readable.
 - Historical research notes and old release artifacts retain their original names.
 
-The checked-in `dist/Mattelier.apk`, checksum, version, and release notes describe
-the previous release. They are not a MonoPaint build. Before publishing the first
-MonoPaint release, run the release script below, update the release notes, and
-remove the superseded `dist/Mattelier.apk` and its `.gitignore` exception. The
-workflow requires a freshly prepared `dist/monopaint.apk` and matching checksum.
+The checked-in `dist/monopaint.apk`, checksum, version, and release notes describe
+the current release. Before publishing an update, run the release script below
+and update the release notes. The workflow requires a freshly prepared
+`dist/monopaint.apk` and matching checksum. Increase Android's `versionCode` for
+every release, independently of the user-facing `versionName`.
 
 ## Development checks
 
@@ -210,14 +210,14 @@ bash scripts/prepare_release.sh
 The script builds, aligns, signs, and verifies `dist/monopaint.apk`, and updates
 its checksum and version. Update `dist/RELEASE_NOTES.md`, test the signed APK on
 a Manta, then commit the source and the small signed distribution files together.
-Push `main` and a matching tag, e.g. `v0.38`. The release workflow verifies the
+Push `main` and a matching tag, e.g. `v0.7`. The release workflow verifies the
 checksum and publishes the already-signed APK and checksum as GitHub Release
 assets. It can also be rerun manually from that version's tag.
 
 ```sh
 git push origin main
-git tag -a v0.38 -m 'MonoPaint 0.38'
-git push origin v0.38
+git tag -a v0.7 -m 'MonoPaint 0.7'
+git push origin v0.7
 ```
 
 The checked-in APK allows publishing without exposing the private signing key

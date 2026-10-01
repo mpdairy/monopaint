@@ -8,7 +8,6 @@ core.*
 *.keystore
 *.jks
 *.apk
-!dist/Mattelier.apk
 !dist/monopaint.apk
 .env
 .env.*

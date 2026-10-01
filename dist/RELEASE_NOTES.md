@@ -1,15 +1,21 @@
-Mattelier's first public release for Supernote Manta.
+MonoPaint 0.7 brings the expanded drawing workflow to Supernote Manta.
 
-- Pressure-sensitive brush with a Light touch → Firm touch response slider.
-- Textured tilt pencil, gradual eraser, flood fill, and blending stump.
-- Dotted grayscale shading, custom tools, multi-page drawings, and undo/redo.
-- Instant tool/shade selection without the extra delayed Android repaint.
-- Visible dashed separator between standard and custom tools.
+- Round, Flat, and Filbert brushes, wet-canvas blending, and pressure-controlled airbrush.
+- Layers with visibility, opacity, ordering, and undoable clearing.
+- Flat, linear, and circular fills; shape tools with live previews and center-anchored circles.
+- Eraser color for brushes, pencil, airbrush, shapes, and fills.
+- Zoom and pan, custom tool settings, palette editing, and configurable toolbar.
+- Faster page turns and a scrolling page-thumbnail overview.
+- Nomad Simulation Mode on Manta, compact page controls, and improved settings scrolling.
+- Temporary rotation suggestions with immediate press feedback.
 
-Download **Mattelier.apk** below and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
-Use `adb install -r` to update an existing installation; don't uninstall first.
-The app name is now Mattelier; the application ID and signing identity are preserved.
+Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
+Update with `adb install -r monopaint.apk` to preserve drawings and settings.
+The application ID and signing identity are unchanged from Mattelier 0.26.
+Android version code 39 allows this release to update development builds through 0.38.
 
-Tested on Supernote Manta. Nomad and other tablets are not verified. This is an
-early app: no layers, zoom/pan, or in-app image export yet; uninstalling deletes
-private drawings. `SHA256SUMS` contains the APK checksum.
+Existing drawings remain readable. Newly saved layered drawings require this
+version or newer. Actual Nomad hardware support remains unverified; simulation
+mode previews the smaller layout on Manta.
+
+`SHA256SUMS` contains the APK checksum. This is a signed, non-debuggable release build.
