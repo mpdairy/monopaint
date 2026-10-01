@@ -356,11 +356,7 @@ final class OrientationChecks {
         View palette=(View)get(activity,"paletteFrame"), pad=(View)get(activity,"pad"), tools=(View)get(activity,"landscapeTools");
         LinearLayout root=(LinearLayout)get(activity,"root");
         check(root.indexOfChild(palette)==(right ? 1 : 0),"Header is on the non-drawing-hand side");
-        if (right) check(tools.getBottom()<=pad.getTop(),"Left-handed tools stay at the top in both landscape directions");
-        else {
-            boolean top=(Integer)get(activity,"appRotation")==Surface.ROTATION_270;
-            check(top ? tools.getBottom()<=pad.getTop() : tools.getTop()>=pad.getBottom(),"Right-handed tool rail retains its original tablet edge");
-        }
+        check(tools.getBottom()<=pad.getTop(),"Tools stay at the top for both hands and both landscape directions");
         menuCorner(activity,right);
         shadeMarker(activity);
         int menuY=layoutY(root,(View)get(activity,"menuButton"));
@@ -386,12 +382,10 @@ final class OrientationChecks {
     private static void menuCorner(PaintActivity activity,boolean right) throws Exception {
         View root=(View)get(activity,"root"), menu=(View)get(activity,"menuButton"), rotate=(View)get(activity,"rotateButton");
         float[] center=layoutPoint(root,menu,menu.getWidth()/2f,menu.getHeight()/2f);
-        float[] rotateCenter=layoutPoint(root,rotate,rotate.getWidth()/2f,rotate.getHeight()/2f);
         float half=menu.getWidth()/2f;
         check(Math.abs(center[0]-(right ? root.getWidth()-half : half))<1
                 && Math.abs(center[1]-half)<1,"Hamburger occupies the upper outer corner for each drawing hand");
-        if ((Boolean)get(activity,"landscape")) check(rotateCenter[1]>center[1],"Rotate suggestion sits below the landscape hamburger");
-        else check(right ? rotateCenter[0]<center[0] : rotateCenter[0]>center[0],"Rotate suggestion sits inward of the portrait hamburger");
+        check(rotate.getParent()!=get(activity,"menuControls"),"Rotation suggestion occupies no header space");
     }
     private static void shadeMarker(PaintActivity activity) throws Exception {
         View shade=(View)get(activity,"shadePicker"), root=(View)get(activity,"root"), pad=(View)get(activity,"pad");

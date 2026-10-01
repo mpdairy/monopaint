@@ -28,11 +28,14 @@ static void span(Raster *r,int y,int left,int right,int paint) {
     uint32_t *out=(uint32_t *)(r->pixels+(size_t)y*r->stride);
     int offset=y*r->width;
     for(int x=left;x<right;x++) {
-        int value=paint?r->shade:255;
-        for(int layer=paint?r->active+1:0;layer<r->count;layer++) {
-            if(!r->visible[layer])continue;
-            int a=r->alpha[layer][offset+x];
-            if(a)value=(r->tones[layer][offset+x]*a+value*(255-a)+127)/255;
+        int opaque=paint && r->shade>=0 && r->visible[r->active]==100;
+        int value=opaque?r->shade:255;
+        for(int layer=opaque?r->active+1:0;layer<r->count;layer++) {
+            if(!r->visible[layer] || (paint && r->shade<0 && layer==r->active))continue;
+            int replacement=paint && layer==r->active;
+            int a=((replacement?255:r->alpha[layer][offset+x])*r->visible[layer]+50)/100;
+            int tone=replacement?r->shade:r->tones[layer][offset+x];
+            if(a)value=(tone*a+value*(255-a)+127)/255;
         }
         out[x]=r->logical?0xff000000u|(uint32_t)value*0x010101u
                 :(uint32_t)r->dots[value*64+(y&7)*8+(x&7)];
@@ -61,7 +64,7 @@ Java_io_github_mpdairy_monopaint_ShapePreview_nativeApply(JNIEnv *env,jclass cla
     int count=(*env)->GetArrayLength(env,tones);
     if(AndroidBitmap_getInfo(env,display,&info)!=ANDROID_BITMAP_RESULT_SUCCESS
             || info.format!=ANDROID_BITMAP_FORMAT_RGBA_8888 || count<1 || count>MAX_LAYERS
-            || active<0 || active>=count || shade<0 || shade>255
+            || active<0 || active>=count || shade< -1 || shade>255
             || (*env)->GetArrayLength(env,alpha)!=count || (*env)->GetArrayLength(env,visible)!=count
             || (*env)->GetArrayLength(env,previous)!=(int)info.height*4
             || (*env)->GetArrayLength(env,next)!=(int)info.height*4

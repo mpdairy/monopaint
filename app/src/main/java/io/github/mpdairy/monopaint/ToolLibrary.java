@@ -69,7 +69,8 @@ final class ToolLibrary {
         for (Preset preset : presets) {
             ToolSettings candidate = preset.settings.asBrush();
             if (candidate.tool == type.tool && candidate.head == type.head
-                    && (type.tool != ToolSettings.Tool.SHAPES || candidate.shape == type.shape)) number++;
+                    && (type.tool != ToolSettings.Tool.SHAPES || candidate.shape == type.shape)
+                    && (type.tool != ToolSettings.Tool.FILL || candidate.gradient == type.gradient)) number++;
             if (preset.id.equals(id)) return number;
         }
         throw new IllegalArgumentException("Preset no longer exists");
@@ -95,7 +96,7 @@ final class ToolLibrary {
     }
     byte[] encode() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
-        out.writeInt(0x54535040);
+        out.writeInt(0x54535041);
         for (ToolSettings settings : builtins) write(out, settings);
         for (ToolSettings settings : builtins) if (settings.isBrush())
             for (ToolSettings remembered : heads[settings.tool.ordinal()]) write(out, remembered);
@@ -108,7 +109,7 @@ final class ToolLibrary {
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
             int version = in.readInt();
-            if (version < 0x54535031 || version > 0x54535040) throw new IOException("Unknown preset format");
+            if (version < 0x54535031 || version > 0x54535041) throw new IOException("Unknown preset format");
             ToolLibrary library = new ToolLibrary();
             int builtinCount = version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
             for (int index = 0; index < builtinCount; index++) {

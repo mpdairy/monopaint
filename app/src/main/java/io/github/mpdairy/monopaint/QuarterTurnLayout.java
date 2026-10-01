@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 final class QuarterTurnLayout extends ViewGroup {
     private int turn;
     private int laidOutTurn;
+    private int maxWidth = Integer.MAX_VALUE, maxHeight = Integer.MAX_VALUE;
     Runnable afterLayout;
 
     QuarterTurnLayout(Context context) { super(context); }
@@ -18,7 +19,20 @@ final class QuarterTurnLayout extends ViewGroup {
         requestLayout();
     }
 
+    void setMaximumSize(int width, int height) {
+        maxWidth = width; maxHeight = height; requestLayout();
+    }
+
+    private int cappedSpec(int spec, int maximum) {
+        if (maximum == Integer.MAX_VALUE) return spec;
+        int size = MeasureSpec.getMode(spec) == MeasureSpec.UNSPECIFIED ? maximum
+                : Math.min(maximum,MeasureSpec.getSize(spec));
+        return MeasureSpec.makeMeasureSpec(size,MeasureSpec.getMode(spec) == MeasureSpec.EXACTLY
+                ? MeasureSpec.EXACTLY : MeasureSpec.AT_MOST);
+    }
+
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
+        widthSpec = cappedSpec(widthSpec,maxWidth); heightSpec = cappedSpec(heightSpec,maxHeight);
         View child = getChildAt(0);
         boolean swap = Math.abs(turn) == 90;
         child.measure(swap ? heightSpec : widthSpec, swap ? widthSpec : heightSpec);

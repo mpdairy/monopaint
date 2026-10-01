@@ -851,8 +851,9 @@ final class PaintChecks {
                 Bitmap selected=controlBitmap(pencil);
                 android.graphics.Rect marker=(android.graphics.Rect)call(pencil,"markerArea",new Class<?>[0]);
                 android.graphics.Rect changed=SelectionFeedback.difference(baseline[0],selected);
-                check(!changed.isEmpty() && marker.contains(changed),"Instant tool selection changes only the corner dot, leaving border and icon intact");
-                check(pencil.isSelected(),"Instant dot retains accessible selected state");
+                check(!changed.isEmpty() && marker.contains(changed),"Instant tool selection stays within the toolbar button");
+                check(changed.width()>pencil.getWidth()/2 && changed.height()>pencil.getHeight()/2,"Selection outlines the whole tool");
+                check(pencil.isSelected(),"Instant box retains accessible selected state");
                 selected.recycle();findButton(activity,"Brush").performClick();
             });
             check(feedback.submitted>requests,"Control-only direct requests accepted");

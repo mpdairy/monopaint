@@ -19,16 +19,19 @@ final class ToneDocument {
     private int sprayBaseKey=-1;
     private final ArrayList<Layer> layers = new ArrayList<>();
     private int active;
+    private long revision;
+    long revision() { return revision; }
     static final class Layer {
         String name;
         boolean visible;
+        int opacity=100;
         byte[] tones, alpha;
         boolean shared;
         Layer(String name, boolean visible, byte[] tones, byte[] alpha) {
             this.name=name; this.visible=visible; this.tones=tones; this.alpha=alpha;
         }
         // Saves own immutable array references. Only a subsequently edited layer is copied.
-        Layer copy() { shared=true; return new Layer(name,visible,tones,alpha); }
+        Layer copy() { shared=true; Layer copy=new Layer(name,visible,tones,alpha); copy.opacity=opacity; return copy; }
     }
     static final class Snapshot {
         final int width, height, active;
@@ -43,7 +46,14 @@ final class ToneDocument {
     int activeLayer() { return active; }
     String layerName(int index) { return layers.get(index).name; }
     boolean layerVisible(int index) { return layers.get(index).visible; }
+    int layerOpacity(int index) { return layers.get(index).opacity; }
+    void setLayerOpacity(int index,int value) {
+        idle(); if(value<0||value>100) throw new IllegalArgumentException("Invalid layer opacity");
+        if(layers.get(index).opacity==value)return;
+        StackState old=new StackState(this); layers.get(index).opacity=value; stackEdit(old);
+    }
     private void writable() {
+        revision++;
         Layer layer=layers.get(active);
         if(layer.shared) {
             layer.tones=layer.tones.clone(); layer.alpha=layer.alpha.clone(); layer.shared=false;
@@ -52,7 +62,8 @@ final class ToneDocument {
     }
     private void idle() { if(editing) throw new IllegalStateException("Finish the current gesture first"); }
     void selectLayer(int index) {
-        idle(); Layer layer=layers.get(index); active=index; tones=layer.tones; alpha=layer.alpha;
+        idle(); Layer layer=layers.get(index); if(active!=index)revision++;
+        active=index; tones=layer.tones; alpha=layer.alpha;
     }
     void addLayer() {
         idle(); if(layers.size()>=MAX_LAYERS) throw new IllegalStateException("Each page can have up to "+MAX_LAYERS+" layers.");
@@ -81,6 +92,7 @@ final class ToneDocument {
         StackState old=new StackState(this); layers.get(active).name=name; stackEdit(old);
     }
     private void stackEdit(StackState old) {
+        revision++;
         addEdit(new Edit(old,new StackState(this))); markAllDirty();
     }
     private void markAllDirty() { left=0; top=0; right=width; bottom=height; }
@@ -93,7 +105,7 @@ final class ToneDocument {
         int i=y*width+x, result=255;
         for(int n=0;n<layers.size();n++) {
             Layer layer=layers.get(n); if(!layer.visible) continue;
-            int a=layer.alpha[i]&255;
+            int a=((layer.alpha[i]&255)*layer.opacity+50)/100;
             result=((layer.tones[i]&255)*a+result*(255-a)+127)/255;
         }
         return result;
@@ -225,11 +237,15 @@ final class ToneDocument {
         int result=Math.round(coverage*(1-Math.max(0,Math.min(1,strength))));
         if(result<opacity(x,y)) setPixel(x,y,tones[i]&255,result);
     }
-    void paintTone(int x,int y,int gray) { setPixel(x,y,gray,255); }
-    /** Opaque scanline for geometric shapes; capture undo tiles once, then fill contiguous pixels. */
+    /** Transparent color endpoint for fills and shapes; shades remain 0–255. */
+    static final int ERASE = -1;
+    void paintTone(int x,int y,int gray) { paintTone(x,y,gray,255); }
+    /** Replace pigment and coverage; transparent fill endpoints must not paint white. */
+    void paintTone(int x,int y,int gray,int coverage) { setPixel(x,y,gray,coverage); }
+    /** Paint or erase a scanline for geometric shapes; capture undo tiles once, then fill contiguous pixels. */
     void paintSpan(int x, int end, int y, int gray) {
         if(!editing) throw new IllegalStateException("No active gesture");
-        if(gray<0 || gray>255) throw new IllegalArgumentException("Invalid pixel");
+        if(gray<ERASE || gray>255) throw new IllegalArgumentException("Invalid pixel");
         x=Math.max(0,x);end=Math.min(width,end);
         if(y<0 || y>=height || x>=end) return;
         writable();
@@ -238,8 +254,8 @@ final class ToneDocument {
             int key=rowKey+column;
             if(!captured[key]) { before.put(key,copyTile(key));captured[key]=true; }
         }
-        Arrays.fill(tones,y*width+x,y*width+end,(byte)gray);
-        Arrays.fill(alpha,y*width+x,y*width+end,(byte)255);
+        Arrays.fill(tones,y*width+x,y*width+end,(byte)(gray==ERASE?255:gray));
+        Arrays.fill(alpha,y*width+x,y*width+end,(byte)(gray==ERASE?0:255));
         left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,end);bottom=Math.max(bottom,y+1);
     }
     /** Restore only pixels removed by a resizing preview, keeping its original undo capture. */
@@ -356,6 +372,18 @@ final class ToneDocument {
         }
         return finish();
     }
+    /** Clear the current page, including hidden layers, as one structural undo step. */
+    boolean clearAllLayers() {
+        idle(); boolean marked=false;
+        for(Layer layer:layers)for(byte a:layer.alpha)if(a!=0) {marked=true;break;}
+        if(!marked)return false;
+        StackState old=new StackState(this);
+        for(int i=0;i<layers.size();i++) {
+            Layer prior=layers.get(i),blank=new Layer(prior.name,prior.visible,paper(width,height),new byte[width*height]);
+            blank.opacity=prior.opacity; layers.set(i,blank);
+        }
+        selectLayer(active); stackEdit(old); return true;
+    }
     void cancel() {
         if (!editing) return;
         for (Map.Entry<Integer, byte[]> tile : before.entrySet()) {
@@ -370,7 +398,7 @@ final class ToneDocument {
         if (editing) throw new IllegalStateException("Finish the current gesture first");
         if (source.isEmpty()) return false;
         Edit edit = source.removeLast();
-        if(edit.layer==null) { (forward?edit.next:edit.previous).restore(this); markAllDirty(); }
+        if(edit.layer==null) { (forward?edit.next:edit.previous).restore(this); revision++; markAllDirty(); }
         else {
             selectLayer(layers.indexOf(edit.layer));
             for (TileEdit tile : edit.tiles) restoreTile(tile.key, forward ? tile.after : tile.before);
@@ -414,15 +442,16 @@ final class ToneDocument {
         final ArrayList<Layer> layers;
         final String[] names;
         final boolean[] visible;
+        final int[] opacity;
         final int active;
         StackState(ToneDocument doc) {
             layers=new ArrayList<>(doc.layers); active=doc.active;
-            names=new String[layers.size()]; visible=new boolean[layers.size()];
-            for(int i=0;i<layers.size();i++) { names[i]=layers.get(i).name; visible[i]=layers.get(i).visible; }
+            names=new String[layers.size()]; visible=new boolean[layers.size()]; opacity=new int[layers.size()];
+            for(int i=0;i<layers.size();i++) { names[i]=layers.get(i).name; visible[i]=layers.get(i).visible; opacity[i]=layers.get(i).opacity; }
         }
         void restore(ToneDocument doc) {
             doc.layers.clear(); doc.layers.addAll(layers);
-            for(int i=0;i<layers.size();i++) { layers.get(i).name=names[i]; layers.get(i).visible=visible[i]; }
+            for(int i=0;i<layers.size();i++) { layers.get(i).name=names[i]; layers.get(i).visible=visible[i]; layers.get(i).opacity=opacity[i]; }
             doc.selectLayer(active);
         }
     }

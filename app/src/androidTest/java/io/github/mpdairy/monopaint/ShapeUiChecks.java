@@ -24,6 +24,15 @@ final class ShapeUiChecks {
         run(test,report,perfOnly,false);
     }
     static void run(Instrumentation test,StringBuilder report,boolean perfOnly,boolean pickerOnly) throws Exception {
+        run(test,report,perfOnly,pickerOnly,false);
+    }
+    static void run(Instrumentation test,StringBuilder report,boolean perfOnly,boolean pickerOnly,boolean nomadOnly) throws Exception {
+        run(test,report,perfOnly,pickerOnly,nomadOnly,false);
+    }
+    static void run(Instrumentation test,StringBuilder report,boolean perfOnly,boolean pickerOnly,boolean nomadOnly,boolean pagesOnly) throws Exception {
+        run(test,report,perfOnly,pickerOnly,nomadOnly,pagesOnly,false);
+    }
+    static void run(Instrumentation test,StringBuilder report,boolean perfOnly,boolean pickerOnly,boolean nomadOnly,boolean pagesOnly,boolean settingsOnly) throws Exception {
         PaintActivity activity=(PaintActivity)test.startActivitySync(new Intent(test.getTargetContext(),PaintActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         for(int i=0;i<100&&((Boolean)get(activity,"loading")||!activity.hasWindowFocus());i++)SystemClock.sleep(100);
         test.waitForIdleSync();
@@ -35,6 +44,8 @@ final class ShapeUiChecks {
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");
         boolean brushVisible=prefs.getBoolean("tool_visible_BRUSH",true);
         boolean right=prefs.getBoolean("toolbox_right",false),visible=prefs.getBoolean("tool_visible_SHAPES",true);
+        boolean hadShapeChosen=prefs.contains("shape_chosen"),shapeChosen=prefs.getBoolean("shape_chosen",false);
+        boolean nomad=prefs.getBoolean("nomad_mode",false);
         DrawingBook.Snapshot originalPages=original.snapshot();
         byte[] originalPage=DrawingBook.encode(original.current());
         PopupWindow[] dialog={null};
@@ -43,12 +54,18 @@ final class ShapeUiChecks {
                 call(pad,"finishStroke");call(pad,"dryWet");
                 ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
                 set(activity,"eraseMode",false);set(activity,"drawingName","");set(activity,"library",new ToolLibrary());
-                prefs.edit().putBoolean("tool_visible_SHAPES",true).putBoolean("tool_visible_BRUSH",pickerOnly||brushVisible).apply();
+                prefs.edit().putBoolean("shape_chosen",true).putBoolean("tool_visible_SHAPES",true).putBoolean("tool_visible_BRUSH",pickerOnly||brushVisible).apply();
                 call(activity,"rebuildTools");
                 Map<?,?> buttons=(Map<?,?>)get(activity,"selectionButtons");
                 ((View)buttons.get("tool:SHAPES")).performClick();
                 check(((ToolLibrary)get(activity,"library")).current().tool==ToolSettings.Tool.SHAPES,"Sidebar selects Shapes");
             });
+            if(settingsOnly){SettingsUiChecks.run(test,activity,report);return;}
+            if(pagesOnly){PageNavigationChecks.run(test,activity,report);return;}
+            if(nomadOnly) {
+                main(test,() -> call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(new ToneDocument(640,720))));
+                NomadUiChecks.run(test,activity,report);return;
+            }
             if(pickerOnly) {
                 main(test,() -> call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(new ToneDocument(640,720))));
                 ToolPickerChecks.run(test,activity,report);return;
@@ -60,8 +77,9 @@ final class ShapeUiChecks {
                     prefs.edit().putBoolean("toolbox_right",hand).apply();
                     call(activity,"requestQuarter",new Class<?>[]{int.class},turn);call(activity,"applyToolboxSide");
                     set(activity,"gray",70);
-                    dialog[0]=(PopupWindow)call(activity,"settings");
                 });
+                test.waitForIdleSync();
+                main(test,() -> dialog[0]=(PopupWindow)call(activity,"settings"));
                 test.waitForIdleSync();SystemClock.sleep(100);
                 View decor=dialog[0].getContentView();
                 tap(test,find(decor,"Rectangle shape"));tap(test,find(decor,"Filled shape"));
@@ -111,7 +129,8 @@ final class ShapeUiChecks {
                 pen(test,pad,MotionEvent.ACTION_DOWN,down,240,280);pen(test,pad,MotionEvent.ACTION_MOVE,down,340,400);
                 pen(test,pad,MotionEvent.ACTION_UP,down,340,400);
                 main(test,() -> {
-                    check(doc.opacity(300,340)==0&&doc.tone(300,282)==70&&doc.tone(358,340)==70,"Zoomed circle keeps equal axes and empty center");
+                    check(doc.opacity(240,280)==0&&doc.tone(394,280)==70&&doc.tone(85,280)==70
+                            &&doc.tone(240,125)==70&&doc.tone(240,434)==70,"Zoomed circle uses pen-down center and Euclidean radius");
                     assertRendered(pad,doc);
                     check(doc.undo(),"Zoom shape undo");call(pad,"fitPage");
                     ToolLibrary tools=(ToolLibrary)get(activity,"library");tools.edit(tools.current().shape(ToolSettings.Shape.LINE).filled(true).outlineWidth(1));
@@ -165,9 +184,13 @@ final class ShapeUiChecks {
         } finally {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();
+                android.app.AlertDialog overview=(android.app.AlertDialog)get(activity,"pageOverview");if(overview!=null)overview.dismiss();
+                call(activity,"closePagePanel");call(activity,"setNomadMode",new Class<?>[]{boolean.class},nomad);
                 android.widget.PopupWindow picker=(android.widget.PopupWindow)get(activity,"toolPicker");if(picker!=null)picker.dismiss();
                 call(pad,"finishStroke");call(pad,"dryWet");
-                set(activity,"drawingName",name);set(activity,"library",library);set(activity,"eraseMode",erase);set(activity,"gray",gray);set(activity,"maximum",maximum);
+                set(activity,"drawingName",name);set(activity,"library",library);
+                if(hadShapeChosen)prefs.edit().putBoolean("shape_chosen",shapeChosen).apply();else prefs.edit().remove("shape_chosen").apply();
+                set(activity,"eraseMode",erase);set(activity,"gray",gray);set(activity,"maximum",maximum);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 prefs.edit().putBoolean("toolbox_right",right).putBoolean("tool_visible_SHAPES",visible).putBoolean("tool_visible_BRUSH",brushVisible).apply();
                 call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");call(activity,"rebuildTools");
@@ -260,7 +283,7 @@ final class ShapeUiChecks {
         main(test,() -> {
             check(get(pad,"shapeStroke")==null&&!(Boolean)get(pad,"shapeFrameScheduled"),"Continuous pen-up fully completes");
             ToneDocument doc=(ToneDocument)get(pad,"document");assertRendered(pad,doc);
-            check(doc.opacity(720,720)==0&&doc.opacity(720,102)>0,"Continuous circle has final dimensions");
+            check(doc.opacity(100,100)==0&&doc.opacity(1118,1338)>0,"Continuous circle retains its center and final radius");
             int frames=(Integer)get(pad,"shapeFrameCount")-first[0];
             report.append("Continuous 125 Hz circle input: ").append(frames).append(" preview frames for 120 moves; pen-up-to-idle ").append(tail).append(" ms.\n");
             check(doc.undo(),"Continuous gesture commits once");call(pad,"renderAll");
@@ -293,20 +316,14 @@ final class ShapeUiChecks {
         try { ((View)pad).onTouchEvent(event); } finally { event.recycle(); }
     }
     private static void tap(Instrumentation test,View view)throws Exception {
-        check(view!=null,"Setting exists");float[] point={view.getWidth()/2f,view.getHeight()/2f};
-        main(test,() -> PanelCoordinates.fromView(view).mapPoints(point));long down=SystemClock.uptimeMillis();
-        for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {
-            MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,point[0],point[1],0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-            try{check(test.getUiAutomation().injectInputEvent(event,true),"Setting tapped");}finally{event.recycle();}
-        }
-        test.waitForIdleSync();
+        ToolPickerChecks.tap(test,view);
     }
     private static View find(View view,String name) {
         if(name.contentEquals(view.getContentDescription()==null?"":view.getContentDescription()))return view;
         if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){View found=find(((ViewGroup)view).getChildAt(i),name);if(found!=null)return found;}
         return null;
     }
-    private static void pen(Instrumentation test,Object pad,int action,long down,float x,float y) throws Exception {
+    static void pen(Instrumentation test,Object pad,int action,long down,float x,float y) throws Exception {
         float[] point={x,y};main(test,() -> {((Matrix)get(pad,"pageToView")).mapPoints(point);PanelCoordinates.fromView((View)pad).mapPoints(point);});
         MotionEvent.PointerProperties prop=new MotionEvent.PointerProperties();prop.id=0;prop.toolType=MotionEvent.TOOL_TYPE_STYLUS;
         MotionEvent.PointerCoords coords=new MotionEvent.PointerCoords();coords.x=point[0];coords.y=point[1];coords.pressure=.45f;coords.size=.1f;

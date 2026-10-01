@@ -3,7 +3,8 @@ package io.github.mpdairy.monopaint;
 import java.util.Arrays;
 
 public final class GradientFillChecks {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        transparentEndpoints();
         for(ToolSettings.Gradient type:ToolSettings.Gradient.values()) {
         for(int[] axis:new int[][]{{2,3,8,3},{3,2,3,8},{2,2,8,8},{8,8,2,2},{5,5,5,5}}) {
             ToneDocument doc=new ToneDocument(12,12);
@@ -49,6 +50,35 @@ public final class GradientFillChecks {
         check(interrupted.opacity(250,250)==0&&interrupted.canRedo(),"Cancel partial recoloring");
         }
         System.out.println("PASS: linear and circular gradients, endpoints, zero length, stable regions, tolerance, layers, previews, undo/redo, cancellation");
+    }
+    private static void transparentEndpoints() throws Exception {
+        for(ToolSettings.Gradient type:ToolSettings.Gradient.values()) {
+            ToneDocument doc=new ToneDocument(17,9);
+            doc.begin();for(int y=0;y<9;y++)doc.paintSpan(0,17,y,24);doc.finish();
+            doc.addLayer();doc.begin();for(int y=0;y<9;y++)doc.paintSpan(0,17,y,160);doc.finish();
+            byte[] original=DrawingBook.encode(doc);
+            for(int first:new int[]{80,ToneDocument.ERASE}) {
+                FloodFill fill=new FloodFill(doc,4,4,first,0,4,4,12,4,ToneDocument.ERASE,type);
+                complete(fill);
+                check(doc.opacity(12,4)==0&&doc.compositeTone(12,4)==24,"Erase endpoint reveals lower layer");
+                if(first==80)check(doc.opacity(8,4)==128&&doc.compositeTone(8,4)==52,"Fade interpolates coverage, not white pigment");
+                fill.secondShade(220);complete(fill);
+                check(doc.opacity(12,4)==255&&doc.tone(12,4)==220,"Recolor restores coverage after erase preview");
+                if(first==ToneDocument.ERASE)check(doc.opacity(4,4)==0&&doc.opacity(8,4)==128,"Transparent first endpoint");
+                fill.secondShade(ToneDocument.ERASE);fill.advance(1);fill.cancel();
+                check(Arrays.equals(original,DrawingBook.encode(doc)),"Partial transparent preview cancels exactly");
+            }
+            FloodFill fill=new FloodFill(doc,4,4,80,0,4,4,12,4,ToneDocument.ERASE,type);
+            complete(fill);check(fill.finish(),"Transparent gradient commits");
+            byte[] result=DrawingBook.encode(doc);
+            check(doc.undo()&&Arrays.equals(original,DrawingBook.encode(doc)),"Transparent gradient undo");
+            check(doc.redo()&&Arrays.equals(result,DrawingBook.encode(doc)),"Transparent gradient redo");doc.undo();
+            fill=new FloodFill(doc,4,4,ToneDocument.ERASE,0);complete(fill);fill.finish();
+            check(doc.opacity(0,0)==0&&doc.opacity(16,8)==0&&doc.compositeTone(8,4)==24,"Solid erase fill clears selected layer");
+            doc.undo();doc.begin();doc.paintSpan(8,9,0,0);doc.finish();
+            fill=new FloodFill(doc,8,0,ToneDocument.ERASE,0);complete(fill);fill.finish();
+            check(doc.opacity(8,0)==0&&doc.opacity(7,0)==255,"Erase fill respects region boundary");
+        }
     }
     private static void complete(FloodFill fill) { while(!fill.advance(31)) {} }
     private static void check(boolean value,String message) { if(!value) throw new AssertionError(message); }

@@ -5,7 +5,7 @@ import java.util.Arrays;
 
 public final class ShapeChecks {
     public static void main(String[] args) throws Exception {
-        incrementalPreviews();
+        centeredCircles(); incrementalPreviews();
         for(ToolSettings.Shape shape:ToolSettings.Shape.values()) for(boolean filled:new boolean[]{false,true}) {
             ToneDocument doc=new ToneDocument(160,160);
             doc.begin();doc.paintTone(30,30,91);doc.finish();doc.addLayer();
@@ -26,7 +26,7 @@ public final class ShapeChecks {
             check(Arrays.equals(result,doc.snapshot()),"Cancel restores preview "+shape);
             doc.selectLayer(0);check(doc.tone(30,30)==91,"Underlying layer unchanged");
         }
-        for(ToolSettings.Shape shape:new ToolSettings.Shape[]{ToolSettings.Shape.SQUARE,ToolSettings.Shape.CIRCLE}) {
+        for(ToolSettings.Shape shape:new ToolSettings.Shape[]{ToolSettings.Shape.SQUARE}) {
             for(int sx:new int[]{-1,1}) for(int sy:new int[]{-1,1}) {
                 ToneDocument doc=new ToneDocument(160,160);
                 ShapeStroke stroke=new ShapeStroke(doc,ToolSettings.defaults(ToolSettings.Tool.SHAPES).shape(shape).filled(true),0,80,80);
@@ -76,6 +76,29 @@ public final class ShapeChecks {
         check(restored.current().equals(library.current()) && restored.activeId().equals(library.activeId()),"Previous version retains selected favorite");
         check(restored.builtin(ToolSettings.Tool.SHAPES).equals(ToolSettings.defaults(ToolSettings.Tool.SHAPES)),"Migration adds default Shapes");
         System.out.println("PASS: five shapes, solid/outline, resize preview, layer isolation, white coverage, undo/redo, cancellation, constraints, clipping, settings, favorites and previous-format migration");
+    }
+    private static void centeredCircles() {
+        for(boolean filled:new boolean[]{false,true}) {
+            ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.SHAPES).shape(ToolSettings.Shape.CIRCLE).filled(filled).outlineWidth(4);
+            byte[] reference=null;
+            for(int sx:new int[]{-1,1})for(int sy:new int[]{-1,1}) {
+                ToneDocument doc=new ToneDocument(160,160);
+                ShapeStroke stroke=new ShapeStroke(doc,settings,40,80,80);
+                stroke.preview(80+sx*30,80+sy*40);stroke.finish(); // 3–4–5 diagonal means radius 50.
+                check(doc.opacity(80,80)==(filled?255:0),"Pen-down stays the filled/hollow center");
+                for(int[] point:new int[][]{{32,80},{127,80},{80,32},{80,127}})
+                    check(doc.tone(point[0],point[1])==40,"Radius extends equally in every direction");
+                check(doc.opacity(29,80)==0&&doc.opacity(130,80)==0,"Radius is Euclidean distance to the pen");
+                if(reference==null)reference=doc.snapshot();else check(Arrays.equals(reference,doc.snapshot()),"Equal radii in all quadrants give identical circles");
+                check(doc.undo()&&!doc.canUndo()&&doc.redo(),"Centered circle commits as one undo");
+            }
+            ToneDocument doc=new ToneDocument(160,160);ShapeStroke stroke=new ShapeStroke(doc,settings,0,80,80);
+            stroke.preview(130,80);byte[] horizontal=doc.snapshot();stroke.preview(80,130);
+            check(Arrays.equals(horizontal,doc.snapshot()),"Horizontal and vertical drags use the same radius");
+            stroke.preview(80,80);check(doc.opacity(127,80)==0,"Returning to center removes the preview");
+            check(!stroke.finish()&&!doc.canUndo(),"Zero-radius circle adds no mark or history");
+        }
+        System.out.println("PASS: center-anchored circles, Euclidean radius, horizontal/vertical/diagonal drags, all quadrants, filled/outline, shrinking to zero and one-step undo");
     }
     private static void incrementalPreviews() throws Exception {
         java.util.Random random=new java.util.Random(8231);

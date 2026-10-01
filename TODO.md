@@ -6,7 +6,8 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
 ## Requested features
 
 - [x] **Consistent side-opening tool settings — implemented; hands-on acceptance pending.**
-  Every drawing tool and custom preset selects on the first tap; tapping the
+  After the first-use Shapes choice, every tool and custom preset selects on
+  the first tap; tapping the
   selected entry again opens its choices/current settings beside the icon.
   Brush and Shapes icons reflect their selected variant in both toolbar sections
   and update live after edits. Custom presets retain independent settings and
@@ -18,28 +19,59 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   This replaces the oversized 18–24 sp readability follow-up. Panels fit either
   toolbar side and every rotation. Filled shapes still use one solid shade.
 
-- [ ] **Layer opacity.** Add a per-layer 0–100% opacity control in Layers,
-  defaulting to 100%, that fades the whole layer without changing its marks.
-  Useful for fading a sketch under finished ink, softening shading, or making
-  a reference layer less distracting. Remember opacity with the drawing.
-  Backlog idea only; do not implement yet.
+- [x] **Layer opacity — implemented; hands-on acceptance pending.** Layers has a
+  0–100% opacity slider for the selected layer, applied on release. New and older
+  layers default to 100%. Opacity fades the whole layer without changing its
+  marks, persists with the drawing, and supports undo/redo. Shape previews,
+  zoom, page thumbnails, and ordinary drawing use the same faded composition.
 
-- [ ] **Nomad-sized preview on Manta.** Add a temporary preview that lays out
-  the whole app inside a 1404 × 1872 px area of the Manta, leaving the rest blank,
-  to try the Nomad's smaller painting space, sidebar, settings, and rotated
-  layouts. Preserve physical control and brush sizes rather than shrinking a
-  screenshot; verify the Nomad's Android UI density when matching controls.
-  Both screens are 300 PPI, and the A6 X2 Nomad and A5 X2 Manta share the
-  Core X2 motherboard (RK3566, 4 GB RAM), making this useful for layout testing.
-  Separately investigate adapting the Manta-specific direct e-ink screen checks;
-  actual Nomad pen latency and refresh behavior still need testing on a Nomad.
-  References: [screen specs](https://supernote.com/pages/help-me-choose-supernote)
-  and [shared motherboard](https://supernote.com/products/supernote-motherboards).
-  Backlog idea only; do not implement yet.
+- [x] **First-use Shapes chooser — implemented; hands-on acceptance pending.**
+  The default Shapes tool shows the combined square-and-circle icon until a
+  shape is chosen. Its first tap opens the chooser directly. Choosing a shape
+  reveals its settings and remembers the choice; later taps follow normal
+  select-then-settings behavior. Custom shapes retain their own icons/settings.
 
-- [ ] **Clear button dropdown.** Tapping Clear opens a dropdown with two
-  options: **Clear current layer** and **Clear all layers**. Backlog idea only;
-  do not implement yet.
+- [x] **Flood Fill chooser like Brushes and Shapes — implemented; hands-on acceptance pending.**
+  The side popout offers Flat fill, Linear gradient, and Circular gradient icons.
+  Flat has no settings or instructions and fills on tap or drag. Each gradient
+  shows tolerance and brief direction instructions. The selected icon follows
+  the type in both regular and custom tools; older gradient settings persist.
+
+- [x] **Nomad-sized preview on Manta — implemented; hands-on acceptance pending.**
+  Settings → **Nomad Simulation Mode** centers the live app in a 1404 × 1872 px area,
+  with black margins. The setting persists and defaults
+  off. Controls keep their physical size; the app lays out within the smaller
+  area in every rotation and drawing hand. Existing pages fit without changing
+  their dimensions or marks; switching modes preserves the drawing and page.
+  Tool/file panels and settings stay within the preview. Nomad now has a square
+  Pages icon with a fast-opening anchored panel for previous/next and Add page;
+  Wet canvas and its strength slider stay beside the color controls. Header
+  groups fit their icons, and the floating rotation prompt uses no header space;
+  the color bar takes all reclaimed space. Page arrows and Add page give
+  immediate fast press feedback before loading in both modes; Manta remains
+  expanded.
+  Manta uses Android density 300; Nomad Android UI density
+  still needs measurement before claiming an exact match to native Nomad controls.
+  Both screens are 300 PPI: [screen specs](https://supernote.com/pages/help-me-choose-supernote).
+
+- [x] **Temporary corner rotation prompt — hands-on acceptance pending.**
+  Appears in the corner diagonally opposite the hamburger after a stable turn,
+  with its icon facing the suggested orientation. Expires after five seconds; a shake can recall the
+  pending orientation. Steady sensor updates do not repeatedly reopen it.
+  Works inside either full-screen Manta or the centered Nomad preview.
+  Pressing the prompt gives immediate fast-path feedback before the app turns.
+
+- [ ] **Actual Nomad display support.** The native fast display guard currently
+  requires the Manta's 1920 × 2560 buffer, stride 1920 and buffer size 4915200.
+  Preview mode retains that verified Manta path. Supporting a real Nomad needs
+  its driver buffer/stride/ABI checked, plus physical pen latency and refresh
+  tests; changing the Android model-name check would not establish support
+  (the connected Manta itself reports “Supernote Nomad”). Separate future work.
+
+- [x] **Clear button dropdown — implemented; hands-on acceptance pending.**
+  Clear offers Clear current layer and Clear all layers. Both are one undoable
+  edit on the current page. Clear all includes hidden layers while retaining
+  layer names, order, visibility, opacity, and selection.
 
 - [x] **Palette tool in the sidebar — complete and user-accepted.** The rounded
   painter's palette icon opens a two-column swatch editor beside its icon,
@@ -71,6 +103,8 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
 - [x] **Basic shapes tool — complete and user-accepted.** Shapes
   in the sidebar offers Line, Rectangle, Square, Oval, and Circle. Drag to size
   a live preview; lift to commit. Square and Circle keep equal dimensions.
+  Circle now uses pen-down as its center and drag distance as its radius
+  (implemented 2026-10-01; hands-on acceptance pending).
   Outline uses a 1–128 px width and leaves the interior empty; Filled uses one
   solid current shade with no separate outline color. Shapes affect only the
   selected layer and support one-step undo/redo. Interrupted previews cancel.

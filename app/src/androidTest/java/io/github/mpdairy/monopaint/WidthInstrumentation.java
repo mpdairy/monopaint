@@ -22,7 +22,8 @@ import java.util.concurrent.TimeUnit;
 public final class WidthInstrumentation extends Instrumentation {
     private boolean displayProbeOnly, paletteOnly, palettePerfOnly;
     private boolean paintOnly, shapesOnly, shapesPerfOnly;
-    private boolean brushOnly, pickerOnly;
+    private boolean settingsOnly, brushOnly, pickerOnly, nomadOnly, pagesOnly;
+    boolean rotationPromptOnly;
     private boolean brushPerfOnly;
     private boolean storageOnly;
     private boolean orientationOnly, layersOnly, toolbarOnly, gradientOnly, airbrushOnly, eraseOnly, zoomOnly;
@@ -46,7 +47,12 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onCreate(Bundle args) {
         super.onCreate(args);
         displayProbeOnly = args != null && "true".equals(args.getString("displayProbeOnly"));
+        settingsOnly = args != null && "true".equals(args.getString("settingsOnly"));
         pickerOnly = args != null && "true".equals(args.getString("pickerOnly"));
+        nomadOnly = args != null && "true".equals(args.getString("nomadOnly"));
+        rotationPromptOnly = args != null && "true".equals(args.getString("rotationPromptOnly"));
+        nomadOnly |= rotationPromptOnly;
+        pagesOnly = args != null && "true".equals(args.getString("pagesOnly"));
         shapesPerfOnly = args != null && "true".equals(args.getString("shapesPerfOnly"));
         shapesOnly = args != null && "true".equals(args.getString("shapesOnly"));
         paintOnly = args != null && "true".equals(args.getString("paintOnly"));
@@ -67,9 +73,12 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
+        if (settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
-                if (pickerOnly) ShapeUiChecks.run(this,report,false,true);
+                if (settingsOnly) ShapeUiChecks.run(this,report,false,false,false,false,true);
+                else if (pagesOnly) ShapeUiChecks.run(this,report,false,false,false,true);
+                else if (nomadOnly) ShapeUiChecks.run(this,report,false,false,true);
+                else if (pickerOnly) ShapeUiChecks.run(this,report,false,true);
                 else if (shapesPerfOnly) ShapeUiChecks.run(this,report,true);
                 else if (shapesOnly) ShapeUiChecks.run(this,report);
                 else if (palettePerfOnly) PaletteUiChecks.run(this,report,true);

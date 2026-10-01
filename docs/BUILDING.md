@@ -43,14 +43,49 @@ adb shell am instrument -w -e paintOnly true dev.tilesmile.supernote.paint.test/
 
 These checks use a temporary drawing and restore the original drawing and tool
 settings. They exercise the Manta-specific display path and require a Manta.
-Use `-e layersOnly true` for layer controls in every rotation and drawing hand,
-brush/eraser isolation, and eight full-resolution layers with autosave. The suite
+Use `-e settingsOnly true` for the fixed Shapes icon, simplified hand controls,
+Nomad Simulation Mode placement/toggle, and the persistent settings scroll rail.
+It verifies pen/finger dragging to both ends and arrow scrolling in all four
+rotations, both text sizes, and full-screen/simulated Nomad layouts. The suite
+restores the original session; `settings-scroll.png` captures the smaller layout.
+Use `-e layersOnly true` for layer controls, opacity slider input and one-step
+undo, and both Clear dropdown scopes in every rotation and drawing hand,
+eye-icon visibility toggles, brush/eraser isolation, and eight full-resolution layers with autosave. The suite
 uses a temporary book, restores the original session, and saves `layers-*.png`
 screenshots in the test app cache.
 Use `-e storageOnly true` for focused Android storage checks in a disposable cache
 directory: nested folders, repeat saves, overwrite protection, Save As copies,
 failed saves, recovery destinations, and interrupted-save backup restoration.
 These checks do not open or change the user's canvas.
+Use `-e nomadOnly true` for the Nomad mode Settings toggle, its saved preference,
+exact centered 1404 × 1872 viewport, unchanged control sizes, Manta fast display,
+screen-coordinate stylus placement and undo, inert margins, file/tool/settings
+panel bounds, and returning to the full screen. Checks cover all four rotations
+and both drawing hands, use a temporary drawing, then verify restoration of
+every original page and layer. It also checks the compact Pages button and
+reclaimed color-bar width, wet controls retained beside the color bar, no hidden
+rotation-button gap, synchronous popup presentation,
+real pen presses acknowledged through the fast path before page work, retained
+page artwork, previous/next boundaries, one blank page per Add press, outside
+dismissal, Back, and fast canvas reconnection. Page checks also verify native
+full-page raster agreement with the calibrated Java renderer, direct artwork
+submission with the popup open, page counters updated through normal Android
+redraw without direct e-ink submissions, and report page-turn CPU timings at Nomad and
+Manta canvas sizes. These timings do not measure physical panel latency.
+Page navigation covers both
+Nomad and expanded Manta controls in all eight rotation/hand combinations.
+The page-number thumbnail grid checks cover pen selection, current-page highlighting,
+background previews, dismissal, restored canvas drawing, and scrolling a 100-page book.
+Use `-e pagesOnly true` to run just the page navigation and thumbnail grid checks,
+with the same original-session restoration.
+Screenshots `nomad-0.png` through `nomad-3.png`, `nomad-settings.png`, and
+`nomad-pages.png` are saved in the target app cache. The suite also verifies
+the transient rotation prompt at the new physical orientation’s bottom-left
+corner in both modes, every target direction and both hands: five-second
+expiry, no repeat while stationary, shake recall, fast pressed feedback before
+touch-to-rotate, cleared press state on dismissal, unchanged
+color width, and canvas reconnection. `rotation-new-landscape.png` captures the
+portrait-bottom-right / new-landscape-bottom-left example.
 Use `-e zoomOnly true` for the default/saved navigation lock, fast lock feedback,
 locked pinch/pan rejection with pen drawing retained, pinch-to-fit, no Zoom panel
 or hold reset, the toolbar percentage, single-finger
@@ -76,7 +111,9 @@ Use `-e eraseOnly true` for the eraser color selector in all four rotations and
 both drawing hands, real pen layer reveal, exact Round/Flat/Filbert footprints,
 pencil and soft airbrush erasing, undo, wet/transparent painting settings, favorites,
 saved selection, same-shade return to painting, eyedropper accept/cancel, and
-retained standalone eraser behavior. It restores the original book and settings
+retained standalone eraser behavior. It also checks shape and solid-fill erasing,
+both gradient types with either transparent endpoint, cancellation, and native
+shape previews against the committed composite. It restores the original book and settings
 and saves `erase-mode.png` in the target app cache.
 Use `-e shapesOnly true` for Shapes toolbar selection, actual settings taps in all
 four orientations and both hands, live preview/shrink, final pen-up placement,
@@ -219,10 +256,14 @@ adb shell am instrument -w -e pickerOnly true dev.tilesmile.supernote.paint.test
 adb shell am start -n dev.tilesmile.supernote.paint/io.github.mpdairy.monopaint.PaintActivity
 ```
 
-Covers every drawing tool: first-tap selection without a popup, second-tap
+Covers every drawing tool, including first-use Shapes with its combined icon and
+persistent first choice; subsequent first-tap selection without a popup, second-tap
 settings, matching options and live variant icons in both toolbar sections,
 settings persistence, brush-head memory, outside dismissal without drawing, and
 panel bounds in all four orientations with both toolbar positions. Also checks
 the Medium/Large settings text preference against tool panels and Layers,
 Zoom lock toggles without a panel or changing the drawing tool, and
 custom-tool creation, independent editing, and deletion.
+
+Layered page format TSM3 adds a checked 0–100 opacity byte per layer. TSM1 and
+TSM2 remain readable with opacity 100%; new opacity pages need this build or newer.

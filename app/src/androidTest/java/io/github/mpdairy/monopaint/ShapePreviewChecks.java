@@ -12,12 +12,13 @@ final class ShapePreviewChecks {
         for(int layer=0;layer<4;layer++) {
             byte[] tones=new byte[width*height],alpha=new byte[tones.length];
             for(int i=0;i<tones.length;i++){tones[i]=(byte)((i*13+layer*70)%256);alpha[i]=(byte)((i+layer)%5==0?0:layer==0?255:91);}
-            layers.add(new ToneDocument.Layer("Layer "+layer,layer!=3,tones,alpha));
+            ToneDocument.Layer entry=new ToneDocument.Layer("Layer "+layer,layer!=3,tones,alpha);
+            entry.opacity=layer==0?100:layer==1?37:63;layers.add(entry);
         }
         ToneDocument base=new ToneDocument(width,height,layers,1);
         float[][] points={{120,105},{90,80},{10,20},{160,-40},{-20,130},{67.25f,54.75f},{103,12}};
         for(ToolSettings.Shape kind:ToolSettings.Shape.values())for(boolean filled:new boolean[]{false,true})
-                for(boolean logical:new boolean[]{false,true})for(int shade:new int[]{0,70,255}) {
+                for(boolean logical:new boolean[]{false,true})for(int shade:new int[]{ToneDocument.ERASE,0,70,255}) {
             ToneDocument doc=copy(base);
             ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.SHAPES).shape(kind).filled(filled).outlineWidth(7);
             Bitmap display=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
@@ -42,11 +43,14 @@ final class ShapePreviewChecks {
                 if(!doc.undo() || !Arrays.equals(original,DrawingBook.encode(doc)))throw new AssertionError("Commit must undo exactly once");
             } finally {display.recycle();}
         }
-        report.append("PASS: Native preview/commit/cancel matches all five shapes, both modes, black/gray/white, raw/dithered rasters, clipped reversals and hidden/translucent upper layers; document unchanged while held.\n");
+        report.append("PASS: Native preview/commit/cancel matches all five shapes, both modes, erase/black/gray/white, raw/dithered rasters, clipped reversals and hidden/translucent upper layers; document unchanged while held.\n");
     }
     private static ToneDocument copy(ToneDocument source) {
         ToneDocument.Snapshot snapshot=source.layerSnapshot();ArrayList<ToneDocument.Layer> layers=new ArrayList<>();
-        for(ToneDocument.Layer layer:snapshot.layers)layers.add(new ToneDocument.Layer(layer.name,layer.visible,layer.tones.clone(),layer.alpha.clone()));
+        for(ToneDocument.Layer layer:snapshot.layers) {
+            ToneDocument.Layer copy=new ToneDocument.Layer(layer.name,layer.visible,layer.tones.clone(),layer.alpha.clone());
+            copy.opacity=layer.opacity;layers.add(copy);
+        }
         return new ToneDocument(source.width,source.height,layers,snapshot.active);
     }
     private static int[] pixels(ToneDocument doc,boolean logical) {

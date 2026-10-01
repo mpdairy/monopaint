@@ -28,38 +28,49 @@ pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 Tap **Layers** (the stacked sheets in the toolbar) to open the
 layer panel beside the tools. **Add layer** makes a transparent layer above the
 selected one. Tap a layer name to select it and return to drawing. The top row
-is the topmost layer; **Show** toggles visibility, and **Move up / Move down**
+is the topmost layer; the **eye icon** toggles visibility in place (crossed out
+when hidden), keeping the panel open. **Move up / Move down**
 changes which marks cover others. You can rename or delete the selected layer.
-Undo also reverses layer changes and restores deleted artwork.
+**Opacity** fades the selected layer from 100% to 0% when you release its slider,
+without changing the original marks. Undo also reverses layer changes and
+restores deleted artwork.
 
-All tools, including flood fill, wet blending, and **Clear layer**, affect only
+All tools, including flood fill, wet blending, and **Clear current layer**, affect only
 the selected layer. The eraser reveals layers underneath; opaque white paint
 covers them. Show a hidden layer before drawing on it. A simple starting point
 is a sky on the bottom layer, scenery above, and details on top.
 
-Layers, visibility, and the selected layer save separately for every page.
+**Clear** opens a dropdown with **Clear current layer** and **Clear all layers**.
+Clear all includes hidden layers on the current page and keeps the layer setup.
+Either action is restored by one Undo.
+
+Layers, opacity, visibility, and the selected layer save separately for every page.
 Existing drawings open unchanged as **Layer 1**. New saves use a layered page
 format that older app versions cannot read. PNG exports combine visible layers.
 
-Select **Fill**, then tap it again to open its settings beside the icon and
-choose **Linear** or **Circular**. The choice is remembered for each tool or preset.
+Select **Fill**, then tap it again for a side popout with **Flat fill**,
+**Linear gradient**, and **Circular gradient** icons. The selected type and icon
+are remembered for each tool or preset. Flat fill has no settings or instructions;
+each gradient shows tolerance and brief direction instructions.
 
-With **Fill** selected:
-
-- Tap for solid fill.
-- Drag a line for gradient, then choose a second color. For Circular, drag from
-  the center to the outer edge.
+- **Flat fill:** tap or drag to fill a region with the current shade.
+- **Linear gradient:** drag along the gradient, then choose a second color.
+- **Circular gradient:** drag from the center to the outer edge, then choose a second color.
+- Tapping with either gradient selected still makes a solid fill.
 
 The direction line stays visible until you begin choosing the second color.
 Hold and slide on the color bar, or use the eyedropper, to preview it. Lift to finish. Undo reverses the whole fill. Fill uses the selected
-layer and its tolerance.
+layer; Flat uses an exact tone match, while gradients use their saved tolerance. The eraser swatch clears a solid fill region; for gradients,
+choose it as either endpoint to fade between the other color and transparency.
 
-Select **Shapes**, then tap it again to open its choices and current settings
-beside the toolbar. Choose **Line**, **Rectangle**, **Square**, **Oval**, or **Circle**.
-Its toolbar icon always shows the selected shape, including in saved shortcuts. Tap × or outside the panel to close it.
+The default **Shapes** icon shows a square and circle until your first choice;
+its first tap opens the chooser. Later, select Shapes and tap it again to open
+its choices and current settings beside the toolbar. Choose **Line**, **Rectangle**, **Square**, **Oval**, or **Circle**.
+After choosing, its toolbar icon shows the selected shape, including in saved shortcuts. Tap × or outside the panel to close it.
 Drag on the canvas to size the live preview; lift to finish. The preview follows
 the latest pen position and commits to the layer only when you lift. Squares and circles
-keep equal width and height in any drag direction. **Outline** leaves the inside
+keep equal width and height in any drag direction. Circle starts at the pen-down
+point as its center; dragging sets the radius by your distance from that point. **Outline** leaves the inside
 empty, with a **1–128 px** width; **Filled** paints one solid shape in the current
 color. Lines always use the width setting. Shapes paint opaquely on the selected
 layer, including white, and each shape is one undo action. Leaving an unfinished
@@ -74,12 +85,15 @@ paint on the selected layer, including white. Select the eraser color for soft
 erasing with the same diameter and flow. Airbrush uses its own flow and does not use brush wetness or the
 opaque/transparent brush modes. Each spray stroke is one undo action.
 
-Every drawing tool and custom shortcut uses the same interaction: tap to select,
+After the first Shapes choice, every drawing tool and custom shortcut uses the same interaction: tap to select,
 then tap the selected tool again to open its settings beside the icon. The first
 selection leaves the canvas ready to draw. Brush settings show Round / Flat /
 Filbert choices with the current controls underneath; Shapes works the same way.
-Both regular and custom icons follow the selected brush tip or shape immediately.
+Both regular and custom icons follow the selected brush tip, shape, or fill type immediately.
 Changing a shortcut preserves the regular tool's separate settings and icon.
+Main Settings has a persistent scroll handle with grip marks and arrows whenever
+there is more content. Drag the handle or tap its arrows to reach every toolbar
+entry, including with Large text and Nomad Simulation Mode.
 Panels fit either toolbar side in all four rotations. Tap × or outside to close.
 **Add to Toolbar** saves a custom tool, and its settings save automatically when
 edited. Favorites keep their settings separate from the regular tools. Matching
@@ -98,6 +112,30 @@ Zoom has no settings panel and retains the selected drawing tool or shortcut.
 **Large**. Tool panels, Layers, Palette, and the main settings use the same size
 choice, with bold control labels and plain helper text. Panels omit redundant
 tool-name headings. Text size is independent of the sidebar icon size.
+
+**Menu → Settings → Nomad Simulation Mode**, just above the Toolbar list, lets you try a smaller painting space on Manta.
+This option appears only on Supernote hardware with the Manta's 1920 × 2560 physical panel;
+an old saved simulation preference is ignored on other devices.
+It centers the live app in a **1404 × 1872 px** area with black margins.
+Controls keep their size, and existing drawings fit the
+smaller view without changing their saved dimensions or marks. It works in
+every app rotation and drawing-hand layout, remembers your choice, and starts
+off by default. Turn it off to return to the full screen. Wet canvas and its
+strength slider stay beside the color controls. Header groups fit their icons without spare gaps; the
+rotation prompt floats in a corner and never takes header space.
+Nomad mode replaces the expanded page selector with one square **Pages** icon,
+freeing space for the color bar. Tap Pages for previous/next, the current page count, and Add page
+in a fast-opening panel below or beside the icon. It stays open for repeated
+page changes; tap outside or press Back to close it. Previous/next and Add page
+show an immediate dark press outline in both Nomad and full-screen Manta modes,
+before page loading starts. Manta keeps its page controls expanded.
+Tap the page numbers in either layout to open a scrolling grid of page thumbnails.
+The current page is highlighted; tap a thumbnail to jump there, or Close/Back to
+return without changing pages. Previews load in the background.
+Page turns reuse unchanged compressed pages and render the full-quality artwork
+natively through the fast display path, including underneath the open Pages panel.
+This is a size preview on Manta; actual Nomad display behavior and Android UI
+density remain unverified.
 
 **Menu → Settings → Toolbar** shows each tool's icon with a visibility checkbox
 and up/down arrows. Show, hide, or reorder Brush, Pencil, Airbrush, Fill, Shapes, Eraser, Blending
@@ -162,12 +200,12 @@ On a wet canvas, transparent white acts as clear water and blends existing paint
 The color bar's marker indicates the selected shade; there is no extra preview square.
 
 Tap the **eraser beside the white end of the color bar** to erase with the current
-brush head, pencil, or airbrush. The color marker moves under the eraser icon.
+brush head, pencil, airbrush, shape, or flood fill. The color marker moves under the eraser icon.
 Erasing reveals the layers underneath and keeps your tool's shape, size, pressure,
 and other settings. Tap a shade, even the one previously selected, or accept an
 eyedropper sample to paint again. Wet paint settles before erasing; wetness and
 transparency settings are retained for painting. The mode follows supported tools
-and favorites and survives reopening the app. Fill, Blending stump, and the
+and favorites and survives reopening the app. Blending stump and the
 standalone Eraser return to their usual behavior and disable the eraser color.
 The standalone **Eraser** and saved eraser favorites remain available.
 
@@ -191,22 +229,25 @@ is bounded to keep the pen responsive; this is grayscale blending, not fluid phy
 Tool, shade, wetness, and paint mode selections always use instant e-ink feedback.
 Controls fall back to ordinary display refresh when direct feedback is unavailable.
 
-Turn the tablet and hold it at the new angle briefly: a **rotation-arrows button
-beside the file menu** appears. Tap it to accept the suggested orientation.
-Turning alone never rotates the page. Turn back toward portrait to get a return
-suggestion. A flat tablet has no reliable gravity direction; **Menu → Settings →
-Turn to landscape / Turn to portrait** also works without a sensor suggestion.
+Turn the tablet and hold it at the new angle briefly: a **rotation-arrows button**
+appears in the corner diagonally opposite the **hamburger menu**, with its icon
+turned toward the suggested orientation. It disappears after five seconds; a shake recalls a pending rotation.
+Pressing it shows an immediate fast-path outline before applying the suggested
+orientation. Turning alone never rotates the
+page, and a steady orientation does not repeatedly show the prompt. Turn back
+toward portrait to get a return suggestion. A flat tablet has no reliable
+gravity direction; **Menu → Settings → Turn to landscape / Turn to portrait**
+also works without a sensor suggestion.
 
 **Settings → Drawing hand** places the controls opposite your hand. Right-handed
 mode uses a left tool rail in portrait; in landscape the former top toolbar goes
 on the left, with the menu and undo controls at the top and page controls at the
-bottom. In right-handed mode, the tools keep their original tablet edge with
-upright icons: turning the right edge down puts them along the top; turning the
-left edge down puts them along the bottom. Left-handed mode puts the side toolbar
-on the right and keeps the tools at the top in either landscape direction.
-The file menu stays in the outer top corner, with the rotation suggestion beside
-it toward the other controls. Its menu opens directly below the hamburger in
-every orientation. Existing Toolbox side preferences carry over.
+bottom. Left-handed mode puts that side toolbar on the right. Drawing tools stay
+across the top in either landscape direction for both drawing hands.
+The file menu stays in the outer top corner. The temporary rotation prompt
+nestles in the diagonally opposite corner, keeping it clear of the hamburger. The file menu
+opens directly below the hamburger in every orientation. Existing Toolbox side
+preferences carry over.
 The artwork stays fixed relative to the tablet, like a sheet of paper; only the
 controls turn upright. Changing your drawing hand also leaves the artwork's
 orientation unchanged. Rotation keeps the page, tools, and undo history, fitting
@@ -214,7 +255,8 @@ the whole page into the available canvas. Android itself stays locked to portrai
 the app draws its controls and settings sideways. All four app orientations use
 the same fast Manta e-ink drawing path. Normal-size pages submit their original
 bitmap directly, without rotating a full image for each pen update. Instant
-selection dots also work with rotated controls, and the landscape shade strip
+selection boxes also work with rotated toolbar controls. Layer buttons show a quick
+press outline, and the Layers toolbar box stays on while its panel is open. The landscape shade strip
 keeps white at the top and black at the bottom, with its black selection marker
 on the inner edge facing the canvas for either drawing hand.
 

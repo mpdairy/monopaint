@@ -30,7 +30,18 @@ final class ToolPickerChecks {
                 SharedPreferences.Editor edit=prefs.edit().putBoolean("large_settings_text",false);
                 for(String tool:extra)edit.putBoolean("tool_visible_"+tool,true);
                 edit.apply();call(activity,"rebuildTools");
+                if(get(activity,"toolPicker")!=null)((PopupWindow)get(activity,"toolPicker")).dismiss();
             });
+        main(test,() -> {prefs.edit().putBoolean("shape_chosen",false).apply();call(activity,"refreshToolSelection");});
+        View shapes=(View)((Map<?,?>)get(activity,"selectionButtons")).get("tool:SHAPES");
+        check((Integer)get(shapes,"iconResource")==R.drawable.ic_shapes,"Unchosen Shapes uses combined icon");
+        tap(test,shapes);
+        PopupWindow first=(PopupWindow)get(activity,"toolPicker");
+        check(first!=null&&first.isShowing(),"First Shapes tap opens chooser");
+        check(find(first.getContentView(),"Shape outline width")==null,"Unchosen Shapes shows choices first");
+        tap(test,find(first.getContentView(),"Line shape"));
+        check(prefs.getBoolean("shape_chosen",false),"Explicit first choice persists even for Line");
+        tap(test,find(first.getContentView(),"Close shapes"));
         for(int rotation=0;rotation<4;rotation++)for(boolean right:new boolean[]{false,true}) {
             final int quarter=rotation;
             main(test,() -> {
@@ -125,6 +136,18 @@ final class ToolPickerChecks {
         if(original.containsKey(key))edit.putBoolean(key,(Boolean)original.get(key));else edit.remove(key);
     }
     private static void genericControls(Instrumentation test,PaintActivity activity,View panel,String tool,ToolLibrary library)throws Exception {
+        if(tool.equals("FILL")) {
+            tap(test,find(panel,"Flat fill"));
+            check(find(panel,"Tolerance")==null,"Flat fill has no settings");
+            main(test,() -> {
+                ViewGroup choices=(ViewGroup)find(panel,"Fill choices");
+                for(int i=0;i<choices.getChildCount();i++) {
+                    View choice=choices.getChildAt(i);
+                    check(choice.getTop()==0&&choice.getBottom()<=choices.getHeight(),"Multi-line fill choices fit without clipping");
+                }
+            });
+            tap(test,find(panel,"Linear gradient"));
+        }
         String control=tool.equals("AIRBRUSH")?"Flow":tool.equals("ERASER")?"Softness":tool.equals("SOFTEN")?"Strength":tool.equals("PENCIL")?"Hardness":"Tolerance";
         check(find(panel,control)!=null&&find(panel,control).isShown(),tool+" exposes its controls immediately");
         main(test,() -> {
@@ -259,7 +282,7 @@ final class ToolPickerChecks {
         Bitmap bitmap=test.getUiAutomation().takeScreenshot();
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(activity.getCacheDir(),name))) {bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}finally{bitmap.recycle();}
     }
-    private static void tap(Instrumentation test,View view)throws Exception {
+    static void tap(Instrumentation test,View view)throws Exception {
         check(view!=null,"Touch target exists");float[] point=new float[2];
         main(test,() -> {
             check(view.isShown()&&view.isAttachedToWindow()&&view.getWidth()>0&&view.getHeight()>0,"Touch target is laid out: "+view.getContentDescription());

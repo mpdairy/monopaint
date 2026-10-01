@@ -61,6 +61,7 @@ public final class PaintActivity extends Activity {
     private DrawingBook book;
     private LinearLayout root, body, palette, headerControls, leftHeader, rightHeader, menuControls;
     private QuarterTurnLayout paletteFrame, orientationFrame;
+    private NomadPreviewLayout previewFrame;
     private ScrollView toolScroll;
     private HorizontalScrollView landscapeTools;
     private OrientationEventListener orientationSensor;
@@ -71,13 +72,32 @@ public final class PaintActivity extends Activity {
     private int suggestedQuarter = RotationSuggestion.NONE;
     private int lastSensorDegrees = OrientationEventListener.ORIENTATION_UNKNOWN;
     private final Runnable rotationCheck = () -> suggestRotation(lastSensorDegrees);
-    private android.widget.ImageButton rotateButton;
+    private final Runnable rotationExpiry = () -> suggestRotation(lastSensorDegrees);
+    private android.hardware.SensorManager shakeSensors;
+    private long lastShake;
+    private final android.hardware.SensorEventListener shakeListener=new android.hardware.SensorEventListener() {
+        @Override public void onAccuracyChanged(android.hardware.Sensor sensor,int accuracy) {}
+        @Override public void onSensorChanged(android.hardware.SensorEvent event) {
+            float x=event.values[0],y=event.values[1],z=event.values[2];
+            long now=SystemClock.uptimeMillis();
+            if(x*x+y*y+z*z>465 && now-lastShake>1500) {lastShake=now;shakeRotationSuggestion();}
+        }
+    };
+    private PageActionButton rotateButton;
     private boolean landscape;
     private boolean toolboxRight;
     private int toolbarTurn;
     private android.widget.ImageButton menuButton, previousPage, nextPage, addPage;
     private TextView pageNumber;
+    private AlertDialog pageOverview;
+    private PageActionButton pagesButton;
+    private QuarterTurnLayout pagePanel;
+    private TextView popupPageNumber;
+    private PageActionButton popupPrevious, popupNext, popupAdd;
+    private final Rect pagePanelBounds=new Rect();
+    private boolean pageActionPending;
     private final SelectionFeedback selectionFeedback = new SelectionFeedback();
+    private final SelectionFeedback layerFeedback = new SelectionFeedback();
     private final java.util.Map<String, ToolButton> selectionButtons = new java.util.LinkedHashMap<>();
     private int gray, maximum;
     private boolean resumed, loading = true, destroyed, saving;
@@ -120,12 +140,12 @@ public final class PaintActivity extends Activity {
         palette = new LinearLayout(this);
         leftHeader = new LinearLayout(this); rightHeader = new LinearLayout(this);
         rightHeader.setGravity(android.view.Gravity.END);
-        // Balance the color controls with the spare space beside page navigation.
-        palette.addView(leftHeader, new LinearLayout.LayoutParams(dp(240), dp(48)));
+        // Size each control group to its contents; the shade strip gets all spare space.
+        palette.addView(leftHeader, new LinearLayout.LayoutParams(-2, dp(48)));
         LinearLayout colors = new LinearLayout(this);
         palette.addView(colors, new LinearLayout.LayoutParams(0, dp(48), 1));
-        palette.addView(rightHeader, new LinearLayout.LayoutParams(dp(240), dp(48)));
-        android.widget.ImageButton files=new HeaderImageButton();menuButton=files;
+        palette.addView(rightHeader, new LinearLayout.LayoutParams(-2, dp(48)));
+        android.widget.ImageButton files=new PageActionButton(true);menuButton=files;
         files.setImageResource(R.drawable.ic_menu);files.setBackgroundColor(Color.WHITE);
         files.setContentDescription("File menu");
         files.setOnClickListener(v -> {
@@ -136,19 +156,23 @@ public final class PaintActivity extends Activity {
         menuControls.addView(files,new LinearLayout.LayoutParams(dp(48),dp(48)));
         headerAction(menuControls, "Undo", R.drawable.ic_undo, () -> { pad.dryWet(); if (pad.document.undo()) { pad.renderDirty(); pad.present(); recovery(); } });
         headerAction(menuControls, "Redo", R.drawable.ic_redo, () -> { pad.dryWet(); if (pad.document.redo()) { pad.renderDirty(); pad.present(); recovery(); } });
-        headerAction(menuControls, "Clear layer", R.drawable.ic_clear, this::clearDrawing);
-        rotateButton = new HeaderImageButton();
-        rotateButton.setImageResource(R.drawable.ic_rotate); rotateButton.setBackgroundColor(Color.WHITE);
+        clearButton=headerAction(menuControls, "Clear", R.drawable.ic_clear, this::clearDrawing);
+        rotateButton = createPageAction("Rotate",R.drawable.ic_rotate,this::acceptRotation,false);
+        android.graphics.drawable.GradientDrawable rotationBackground=new android.graphics.drawable.GradientDrawable();
+        rotationBackground.setColor(Color.WHITE);rotationBackground.setStroke(dp(2),Color.BLACK);rotationBackground.setCornerRadius(dp(8));
+        rotateButton.setBackground(rotationBackground);rotateButton.setStateListAnimator(null);
         rotateButton.setVisibility(View.INVISIBLE);
-        rotateButton.setOnClickListener(v -> acceptRotation());
-        menuControls.addView(rotateButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
         leftHeader.addView(menuControls);
         headerControls=new LinearLayout(this);
         previousPage=pageButton("Previous page",R.drawable.ic_previous,() -> changePage(book.index()-1));
-        pageNumber=new PageLabel();pageNumber.setTextSize(15);pageNumber.setTypeface(null,android.graphics.Typeface.BOLD);
+        pageNumber=new PageLabel();pageNumber.setOnClickListener(v -> showPageOverview());
+        pageNumber.setTextSize(15);pageNumber.setTypeface(null,android.graphics.Typeface.BOLD);
         pageNumber.setGravity(android.view.Gravity.CENTER);headerControls.addView(pageNumber,new LinearLayout.LayoutParams(dp(76),dp(48)));
         nextPage=pageButton("Next page",R.drawable.ic_chevron,() -> changePage(book.index()+1));
         addPage=pageButton("Add page",R.drawable.ic_new,this::addPage);
+        pagesButton=new PageActionButton(true);pagesButton.setImageResource(R.drawable.ic_pages);
+        pagesButton.setContentDescription("Pages");
+        pagesButton.setOnClickListener(v -> {if(!busy())showPagePanel();});
         wetButton = paintModeButton(colors, "Wet canvas", R.drawable.ic_water_drop, () -> setWetCanvas(!wetCanvas));
         wetButton.iconHalf = 18;
         wetButton.iconOffset = 8; wetButton.markerLeft = true;
@@ -167,8 +191,12 @@ public final class PaintActivity extends Activity {
         colors.addView(shadePicker, new LinearLayout.LayoutParams(0, dp(48), 1));
         eraseButton = paintModeButton(colors, "Erase with current tool", R.drawable.ic_eraser, () -> {
             if (busy() || !library.current().supportsEraseMode()) return;
-            pad.finishStroke(); setPickingShade(false); pad.dryWet();
-            setEraseMode(!eraseMode); preferences();
+            boolean gradient=pad.hasGradient();
+            if(!gradient) pad.finishStroke();
+            setPickingShade(false); pad.dryWet();
+            setEraseMode(gradient || !eraseMode);
+            if(gradient) { pad.previewGradient(ToneDocument.ERASE); pad.applyGradient(); }
+            preferences();
         });
         eraseButton.markerBelow = true;
         transparentButton = paintModeButton(colors, "Transparent paint", R.drawable.ic_transparent, () -> setTransparentPaint(true));
@@ -193,7 +221,12 @@ public final class PaintActivity extends Activity {
         orientationFrame.afterLayout = () -> {
             pad.disconnectDisplay(); pad.updateViewport(); pad.post(pad::connectDisplay);
         };
-        setContentView(orientationFrame);
+        previewFrame = new NomadPreviewLayout(this);
+        previewFrame.addView(orientationFrame);
+        previewFrame.setRotationHint(rotateButton,menuButton,dp(48),dp(8));
+        previewFrame.afterLayout=() -> pad.post(pad::connectDisplay);
+        previewFrame.setEnabledPreview(nomadMode());
+        setContentView(previewFrame);
         applyToolboxSide();updatePages();
         orientationSensor = new OrientationEventListener(this, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) {
             @Override public void onOrientationChanged(int degrees) {
@@ -205,6 +238,7 @@ public final class PaintActivity extends Activity {
                     rotateButton.postDelayed(rotationCheck,RotationSuggestion.HOLD_MS);
             }
         };
+        shakeSensors=(android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
         pad.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> {
             if (l != ol || t != ot || r != or || b != ob) {pad.disconnectDisplay();pad.post(pad::connectDisplay);}
         });
@@ -226,40 +260,133 @@ public final class PaintActivity extends Activity {
         }));
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-    private void headerAction(LinearLayout parent, String name, int icon, Runnable action) {
+    private View headerAction(LinearLayout parent, String name, int icon, Runnable action) {
         ToolButton control = (ToolButton) button(parent, name, icon, action);
         control.headerIcon = true;
         control.iconOnly(icon);
         control.setBackgroundColor(Color.WHITE);
         control.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
+        return control;
     }
     private android.widget.ImageButton pageButton(String name,int icon,Runnable action) {
-        android.widget.ImageButton button=new HeaderImageButton();button.setImageResource(icon);
-        button.setBackgroundColor(Color.WHITE);button.setContentDescription(name);
-        button.setOnClickListener(v -> {if(!busy()){setPickingShade(false);action.run();}});headerControls.addView(button,new LinearLayout.LayoutParams(dp(40),dp(48)));return button;
+        PageActionButton button=createPageAction(name,icon,action,true);
+        headerControls.addView(button,new LinearLayout.LayoutParams(dp(40),dp(48)));return button;
+    }
+    private PageActionButton createPageAction(String name,int icon,Runnable action,boolean header) {
+        PageActionButton button=new PageActionButton(header);button.setImageResource(icon);button.setContentDescription(name);
+        button.setOnClickListener(v -> {
+            if(busy() || pageActionPending)return;
+            button.feedback(true);pageActionPending=true;
+            // Submit the press before page work or the full orientation change.
+            button.post(() -> {
+                try {if(resumed && !destroyed && button.isAttachedToWindow()) {setPickingShade(false);action.run();}}
+                finally {pageActionPending=false;button.releaseLater();}
+            });
+        });return button;
     }
     private void updatePages() {
         if(pageNumber==null)return;int count=book==null?1:book.count(),index=book==null?0:book.index();
-        pageNumber.setText((index+1)+" / "+count);pageNumber.setContentDescription("Page "+(index+1)+" of "+count);
-        previousPage.setEnabled(book!=null&&index>0);nextPage.setEnabled(book!=null&&index+1<count);
-        addPage.setEnabled(book!=null&&count<DrawingBook.MAX_PAGES);
-        previousPage.setAlpha(previousPage.isEnabled()?1:.3f);nextPage.setAlpha(nextPage.isEnabled()?1:.3f);
+        // Text and enabled states use Android's next frame. Artwork is already
+        // submitted by showPage; updating the counter must not add an e-ink flash.
+        updatePageRow(pageNumber,previousPage,nextPage,addPage,index,count);
+        if(pagesButton!=null)pagesButton.setContentDescription("Pages. Page "+(index+1)+" of "+count);
+        if(pagePanel!=null)updatePageRow(popupPageNumber,popupPrevious,popupNext,popupAdd,index,count);
+    }
+    private void updatePageRow(TextView label,View previous,View next,View add,int index,int count) {
+        label.setText((index+1)+" / "+count);label.setContentDescription("Page "+(index+1)+" of "+count+". Show all pages");
+        previous.setEnabled(book!=null&&index>0);next.setEnabled(book!=null&&index+1<count);
+        add.setEnabled(book!=null&&count<DrawingBook.MAX_PAGES);
+        previous.setAlpha(previous.isEnabled()?1:.3f);next.setAlpha(next.isEnabled()?1:.3f);
+        add.setAlpha(add.isEnabled()?1:.3f);
     }
     private void replaceBook(DrawingBook replacement) {
         if(replacement==null){pad.replace(null);return;}
         pad.finishStroke();book=replacement;pad.showPage(book.current());updatePages();
     }
     private void changePage(int index) {
-        if(busy()||index<0||index>=book.count())return;pad.finishStroke();
+        if(busy()||index<0||index>=book.count())return;pad.finishStroke();pad.dryWet();
         try {book.select(index);pad.showPage(book.current());updatePages();recovery();}
         catch(java.io.IOException error){message("Could not open page: "+error.getMessage());}
     }
     private void addPage() {
-        if(busy())return;pad.finishStroke();
+        if(busy())return;pad.finishStroke();pad.dryWet();
         try {book.addPage();pad.showPage(book.current());updatePages();recovery();}
         catch(java.io.IOException error){message("Could not add page: "+error.getMessage());}
     }
+    private void showPagePanel() {
+        if(pagePanel!=null){closePagePanel();return;}
+        if(busy())return;
+        closePaletteEditor();hideGradientHint();setPickingShade(false);
+        if(filePopup!=null)filePopup.dismiss();
+        if(layersPopup!=null)layersPopup.dismiss();
+        if(toolPicker!=null)toolPicker.dismiss();
+        pad.finishStroke();pad.dryWet();pad.disconnectDisplay();
+        LinearLayout row=new LinearLayout(this);row.setPadding(dp(4),dp(4),dp(4),dp(4));
+        android.graphics.drawable.GradientDrawable border=new android.graphics.drawable.GradientDrawable();
+        border.setColor(Color.WHITE);border.setStroke(dp(1),Color.BLACK);row.setBackground(border);
+        popupPrevious=createPageAction("Previous page",R.drawable.ic_previous,() -> changePage(book.index()-1),false);
+        popupNext=createPageAction("Next page",R.drawable.ic_chevron,() -> changePage(book.index()+1),false);
+        popupAdd=createPageAction("Add page",R.drawable.ic_new,this::addPage,false);
+        popupPageNumber=new TextView(this);popupPageNumber.setTextSize(15);popupPageNumber.setTextColor(Color.BLACK);
+        popupPageNumber.setOnClickListener(v -> showPageOverview());
+        popupPageNumber.setTypeface(null,android.graphics.Typeface.BOLD);popupPageNumber.setGravity(android.view.Gravity.CENTER);
+        row.addView(popupPrevious,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        row.addView(popupPageNumber,new LinearLayout.LayoutParams(dp(76),dp(48)));
+        row.addView(popupNext,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        row.addView(popupAdd,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        updatePageRow(popupPageNumber,popupPrevious,popupNext,popupAdd,book.index(),book.count());
+        QuarterTurnLayout panel=new QuarterTurnLayout(this);panel.setTurn(appTurn());panel.addView(row);
+        Matrix inverse=new Matrix();PanelCoordinates.fromView(root).invert(inverse);
+        android.graphics.RectF anchor=new android.graphics.RectF(0,0,pagesButton.getWidth(),pagesButton.getHeight());
+        PanelCoordinates.fromView(pagesButton).mapRect(anchor);inverse.mapRect(anchor);
+        // Sum rounded child pixels: at density 300, dp(56) is one pixel shorter
+        // than dp(48)+2*dp(4), which clips buttons and disables direct feedback.
+        int width=3*dp(48)+dp(76)+2*dp(4),height=dp(48)+2*dp(4);
+        float left=landscape?(toolboxRight?anchor.left-width:anchor.right):anchor.right-width;
+        float top=landscape?anchor.bottom-height:anchor.bottom;
+        left=Math.max(0,Math.min(left,root.getWidth()-width));top=Math.max(0,Math.min(top,root.getHeight()-height));
+        android.graphics.RectF bounds=new android.graphics.RectF(left,top,left+width,top+height);
+        PanelCoordinates.fromView(root).mapRect(bounds);
+        PanelCoordinates.fromView(previewFrame).invert(inverse);inverse.mapRect(bounds);bounds.roundOut(pagePanelBounds);
+        pagePanel=panel;
+        // Lay out the real touch targets synchronously, then submit only their
+        // bounded pixels through the same fast path as toolbar selection.
+        selectionFeedback.update(previewFrame,new Rect(pagePanelBounds),() -> previewFrame.showPanel(panel,pagePanelBounds));
+    }
+    private void closePagePanel() {
+        if(pagePanel==null)return;
+        Rect bounds=new Rect(pagePanelBounds);pagePanel=null;
+        selectionFeedback.update(previewFrame,bounds,previewFrame::hidePanel);
+        pagePanelBounds.setEmpty();popupPageNumber=null;popupPrevious=null;popupNext=null;popupAdd=null;
+        pad.post(pad::connectDisplay);
+    }
+    private void showPageOverview() {
+        if(busy() || pageOverview!=null)return;
+        closePagePanel();closePaletteEditor();hideGradientHint();setPickingShade(false);
+        if(filePopup!=null)filePopup.dismiss();
+        if(layersPopup!=null)layersPopup.dismiss();
+        if(toolPicker!=null)toolPicker.dismiss();
+        pad.finishStroke();pad.dryWet();pad.disconnectDisplay();
+        DrawingBook source=book;
+        PageOverview grid=new PageOverview(this,source.snapshot(),appRotation);
+        // Bound the scrolling content in app coordinates, including rotated Nomad mode.
+        grid.setLayoutParams(new android.widget.FrameLayout.LayoutParams(-1,
+                Math.max(dp(120),Math.min(dp(540),root.getHeight()-dp(180)))));
+        android.widget.FrameLayout content=new android.widget.FrameLayout(this);content.addView(grid);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Pages").setView(content)
+                .setNegativeButton("Close",null).create();
+        pageOverview=dialog;
+        grid.setOnItemClickListener((parent,view,index,id) -> {
+            dialog.dismiss();
+            if(book==source && index!=book.index())changePage(index);
+        });
+        dialog.setOnDismissListener(unused -> {
+            grid.close();if(pageOverview==dialog)pageOverview=null;pad.post(pad::connectDisplay);
+        });
+        dialog.show();compactDialog(dialog,600);grid.setSelection(source.index());
+    }
     private void applyToolboxSide() {
+        closePagePanel();
         closePaletteEditor();
         if (filePopup != null) filePopup.dismiss();
         if (layersPopup != null) layersPopup.dismiss();
@@ -289,9 +416,8 @@ public final class PaintActivity extends Activity {
         toolRail.setOrientation(landscape ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         if (landscape) {
             landscapeTools.addView(toolRail,new android.widget.FrameLayout.LayoutParams(-2,-1));
-            // Left-handed tools stay at the top in either landscape direction.
-            boolean toolsAtTop = right || appRotation == Surface.ROTATION_270;
-            body.addView(landscapeTools,toolsAtTop ? 0 : body.getChildCount(),new LinearLayout.LayoutParams(-1,dp(64)));
+            // Both drawing hands keep tools above the canvas in either landscape direction.
+            body.addView(landscapeTools,0,new LinearLayout.LayoutParams(-1,dp(64)));
         } else {
             toolScroll.addView(toolRail,new android.widget.FrameLayout.LayoutParams(-1,-2));
             body.addView(toolScroll,right ? body.getChildCount() : 0,new LinearLayout.LayoutParams(dp(64),-1));
@@ -299,9 +425,6 @@ public final class PaintActivity extends Activity {
         pad.setLayoutParams(new LinearLayout.LayoutParams(landscape ? -1 : 0,landscape ? 0 : -1,1));
         ((android.view.ViewGroup)menuControls.getParent()).removeView(menuControls);
         boolean menuAtEnd = !landscape && right;
-        // Reclaim the page-side gap as well as the wetness slider's blank tail.
-        // Keep the full menu width when it occupies the right-hand corner.
-        rightHeader.setLayoutParams(new LinearLayout.LayoutParams(dp(menuAtEnd ? 240 : 216), dp(48)));
         // Keep Undo/Redo beside the outer-corner menu for either drawing hand.
         if ((menuControls.indexOfChild(menuButton) == 0) == menuAtEnd) {
             java.util.ArrayList<View> controls = new java.util.ArrayList<>();
@@ -309,14 +432,19 @@ public final class PaintActivity extends Activity {
             menuControls.removeAllViews();
             for (View control : controls) menuControls.addView(control);
         }
-        ((android.view.ViewGroup)headerControls.getParent()).removeView(headerControls);
+        detach(headerControls);detach(pagesButton);
+        boolean nomad=nomadMode();
         LinearLayout menuSide = menuAtEnd ? rightHeader : leftHeader;
         LinearLayout pageSide = menuAtEnd ? leftHeader : rightHeader;
-        menuSide.addView(menuControls,new LinearLayout.LayoutParams(dp(240),dp(48)));
-        pageSide.addView(headerControls);
+        menuSide.addView(menuControls,new LinearLayout.LayoutParams(-2,dp(48)));
+        if(nomad)pageSide.addView(pagesButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        else pageSide.addView(headerControls);
         rebuildTools();
         invalidateHeader(palette);
         pad.updateViewport(); pad.invalidate(); pad.post(pad::connectDisplay);
+    }
+    private void detach(View view) {
+        if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);
     }
     private void invalidateHeader(View view) {
         view.invalidate();
@@ -329,19 +457,50 @@ public final class PaintActivity extends Activity {
         return (4 - appRotation) % 4;
     }
     private void suggestRotation(int degrees) {
-        if (!resumed || !hasWindowFocus()) { hideRotationSuggestion(); return; }
-        int next = rotationSuggestion.update(degrees,currentQuarter(),SystemClock.uptimeMillis());
-        if (next == suggestedQuarter) return;
+        if (!resumed || !hasWindowFocus() || pagePanel!=null || busy() || pad.pointer!=-1 || pad.navigating) { dismissRotationSuggestion(); return; }
+        long now=SystemClock.uptimeMillis();
+        int next = rotationSuggestion.update(degrees,currentQuarter(),now);
+        rotateButton.removeCallbacks(rotationExpiry);
+        if(next==suggestedQuarter) {
+            if(next!=RotationSuggestion.NONE)rotateButton.postDelayed(rotationExpiry,Math.max(1,rotationSuggestion.remaining(now)));
+            return;
+        }
         suggestedQuarter = next;
         String label = next % 2 == 1 ? "Rotate to landscape" : "Rotate to portrait";
         rotateButton.setContentDescription(label);
-        rotateButton.setVisibility(next == RotationSuggestion.NONE ? View.INVISIBLE : View.VISIBLE);
+        setRotationSuggestionVisible(next != RotationSuggestion.NONE);
+        if(next!=RotationSuggestion.NONE)rotateButton.postDelayed(rotationExpiry,Math.max(1,rotationSuggestion.remaining(now)));
+    }
+    private void setRotationSuggestionVisible(boolean visible) {
+        if(previewFrame==null || (rotateButton.getVisibility()==View.VISIBLE)==visible)return;
+        if(visible) {
+            // Turn the glyph toward the suggested orientation; its corner follows the hamburger.
+            int rotation=(4-suggestedQuarter)%4;
+            previewFrame.turnRotationHint(rotation==3?-90:rotation*90);
+            pad.disconnectDisplay();
+        }
+        Rect area=new Rect(rotateButton.getLeft(),rotateButton.getTop(),rotateButton.getRight(),rotateButton.getBottom());
+        selectionFeedback.update(previewFrame,area,() -> {
+            rotateButton.setVisibility(visible?View.VISIBLE:View.INVISIBLE);
+            if(!visible)rotateButton.feedback(false);
+        });
+        if(!visible && pad!=null)pad.post(pad::connectDisplay);
+    }
+    private void shakeRotationSuggestion() {
+        if(!resumed || !hasWindowFocus() || pagePanel!=null || busy())return;
+        rotationSuggestion.shake(lastSensorDegrees,currentQuarter(),SystemClock.uptimeMillis());
+        suggestRotation(lastSensorDegrees);
+    }
+    private void dismissRotationSuggestion() {
+        rotationSuggestion.dismiss();suggestedQuarter=RotationSuggestion.NONE;
+        if(rotateButton!=null){rotateButton.removeCallbacks(rotationExpiry);setRotationSuggestionVisible(false);}
     }
     private void hideRotationSuggestion() {
         rotationSuggestion.reset(); suggestedQuarter = RotationSuggestion.NONE;
         if (rotateButton != null) {
             rotateButton.removeCallbacks(rotationCheck);
-            rotateButton.setVisibility(View.INVISIBLE);
+            rotateButton.removeCallbacks(rotationExpiry);
+            setRotationSuggestionVisible(false);
         }
     }
     private void acceptRotation() {
@@ -366,10 +525,22 @@ public final class PaintActivity extends Activity {
     }
     private int appTurn() { return appRotation == Surface.ROTATION_270 ? -90 : appRotation*90; }
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        if(rotateButton!=null && rotateButton.getVisibility()==View.VISIBLE && event.getActionMasked()==MotionEvent.ACTION_DOWN) {
+            float[] point={event.getRawX(),event.getRawY()};Matrix inverse=new Matrix();
+            PanelCoordinates.fromView(rotateButton).invert(inverse);inverse.mapPoints(point);
+            if(point[0]<0 || point[1]<0 || point[0]>=rotateButton.getWidth() || point[1]>=rotateButton.getHeight())dismissRotationSuggestion();
+        }
         if(dismissingPaletteTouch) {
             if(event.getActionMasked()==MotionEvent.ACTION_UP || event.getActionMasked()==MotionEvent.ACTION_CANCEL)
                 dismissingPaletteTouch=false;
             return true;
+        }
+        if(pagePanel!=null && event.getActionMasked()==MotionEvent.ACTION_DOWN) {
+            float[] point={event.getRawX(),event.getRawY()};Matrix inverse=new Matrix();
+            PanelCoordinates.fromView(pagePanel).invert(inverse);inverse.mapPoints(point);
+            if(point[0]<0 || point[1]<0 || point[0]>=pagePanel.getWidth() || point[1]>=pagePanel.getHeight()) {
+                closePagePanel();dismissingPaletteTouch=true;return true;
+            }
         }
         if(paletteEditor!=null && event.getActionMasked()==MotionEvent.ACTION_DOWN) {
             float[] point={event.getRawX(),event.getRawY()};Matrix inverse=new Matrix();
@@ -384,11 +555,42 @@ public final class PaintActivity extends Activity {
         try { return super.dispatchTouchEvent(event); }
         finally { physicalPenEvent=previous; }
     }
-    private final class HeaderImageButton extends android.widget.ImageButton {
-        HeaderImageButton() { super(PaintActivity.this); }
+    private final class PageActionButton extends android.widget.ImageButton {
+        private final boolean header;
+        private boolean feedbackPressed;
+        private final Paint pressPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Runnable releaseFeedback=() -> feedback(false);
+        PageActionButton(boolean header) {
+            super(PaintActivity.this);this.header=header;
+            setBackgroundColor(Color.WHITE);setStateListAnimator(null);setElevation(0);
+            pressPaint.setColor(Color.BLACK);pressPaint.setStyle(Paint.Style.STROKE);pressPaint.setStrokeWidth(dp(3));
+        }
+        void feedback(boolean pressed) {
+            removeCallbacks(releaseFeedback);
+            if(feedbackPressed==pressed)return;
+            selectionFeedback.update(this,new Rect(0,0,getWidth(),getHeight()),() -> feedbackPressed=pressed);
+        }
+        void releaseLater(){removeCallbacks(releaseFeedback);postDelayed(releaseFeedback,200);}
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN && isEnabled() && !busy() && !pageActionPending)feedback(true);
+            else if(action==MotionEvent.ACTION_CANCEL)feedback(false);
+            else if(action==MotionEvent.ACTION_MOVE && (event.getX()<0 || event.getY()<0 || event.getX()>=getWidth() || event.getY()>=getHeight()))feedback(false);
+            boolean handled=super.onTouchEvent(event);
+            if(action==MotionEvent.ACTION_UP)releaseLater();
+            return handled;
+        }
+        @Override public boolean performClick() {
+            if(!isEnabled() || busy() || pageActionPending)return false;
+            feedback(true);boolean handled=super.performClick();releaseLater();return handled;
+        }
         @Override protected void onDraw(Canvas canvas) {
-            canvas.save(); canvas.rotate(-toolbarTurn,getWidth()/2f,getHeight()/2f);
-            super.onDraw(canvas); canvas.restore();
+            canvas.save();if(header)canvas.rotate(-toolbarTurn,getWidth()/2f,getHeight()/2f);
+            super.onDraw(canvas);canvas.restore();
+            if(feedbackPressed)canvas.drawRoundRect(dp(3),dp(3),getWidth()-dp(3),getHeight()-dp(3),dp(4),dp(4),pressPaint);
+        }
+        @Override protected void onDetachedFromWindow() {
+            removeCallbacks(releaseFeedback);feedbackPressed=false;super.onDetachedFromWindow();
         }
     }
     private final class PageLabel extends TextView {
@@ -407,6 +609,7 @@ public final class PaintActivity extends Activity {
         }
     }
     private AlertDialog appSettings() {
+        closePagePanel();
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(20),dp(8),dp(20),dp(8));
         TextView label=new TextView(this);label.setText("Drawing hand");content.addView(label);
         android.widget.RadioGroup sides=new android.widget.RadioGroup(this);sides.setOrientation(LinearLayout.HORIZONTAL);
@@ -415,9 +618,6 @@ public final class PaintActivity extends Activity {
         sides.addView(left,new LinearLayout.LayoutParams(0,dp(48),1));sides.addView(right,new LinearLayout.LayoutParams(0,dp(48),1));
         sides.check(preferences.getBoolean("toolbox_right",false)?right.getId():left.getId());content.addView(sides);
         sides.setOnCheckedChangeListener((group,id) -> {preferences.edit().putBoolean("toolbox_right",id==right.getId()).apply();applyToolboxSide();});
-        TextView placement = new TextView(this);
-        placement.setTag("hint");placement.setText("Tools sit opposite your drawing hand. Left-handed landscape tools stay at the top.");
-        content.addView(placement);
         Button manualRotation = new Button(this);
         manualRotation.setText(landscape ? "Turn to portrait" : "Turn to landscape");
         content.addView(manualRotation);
@@ -437,18 +637,45 @@ public final class PaintActivity extends Activity {
         mediumText.setContentDescription("Medium settings text");largeText.setContentDescription("Large settings text");
         textSizes.addView(mediumText,new LinearLayout.LayoutParams(0,dp(48),1));textSizes.addView(largeText,new LinearLayout.LayoutParams(0,dp(48),1));
         textSizes.check(largeSettingsText()?largeText.getId():mediumText.getId());content.addView(textSizes);
+        android.widget.CheckBox nomad=new android.widget.CheckBox(this);
+        nomad.setText("Nomad Simulation Mode");nomad.setContentDescription("Nomad Simulation Mode");
+        nomad.setChecked(nomadMode());
+        if(supportsNomadSimulation())content.addView(nomad);
         TextView toolsLabel=new TextView(this);toolsLabel.setText("Toolbar");content.addView(toolsLabel);
         LinearLayout toolsList=new LinearLayout(this);toolsList.setOrientation(LinearLayout.VERTICAL);
         content.addView(toolsList);renderToolbarSettings(toolsList);
         styleSettings(content);
-        ScrollView scroll=new ScrollView(this);scroll.addView(content);
+        SettingsScroller scroll=new SettingsScroller(this,content);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Settings").setView(scroll).setPositiveButton("Done",null).create();dialog.show();compactDialog(dialog);
+        nomad.setOnCheckedChangeListener((button,checked) -> {dialog.dismiss();setNomadMode(checked);});
         textSizes.setOnCheckedChangeListener((group,id) -> {
             preferences.edit().putBoolean("large_settings_text",id==largeText.getId()).apply();
             stylePanelText(dialog.getWindow().getDecorView());content.requestLayout();
         });
         manualRotation.setOnClickListener(v -> { dialog.dismiss(); requestQuarter(landscape ? 0 : 3); });
         return dialog;
+    }
+    private boolean supportsNomadSimulation() {
+        // The Manta also reports "Supernote Nomad" as its model. Use the physical panel,
+        // independent of app rotation, window size, density, or the simulation itself.
+        android.view.Display.Mode mode=getWindowManager().getDefaultDisplay().getMode();
+        return "Supernote".equalsIgnoreCase(android.os.Build.MANUFACTURER)
+                && Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())==1920
+                && Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())==2560;
+    }
+    private boolean nomadMode() {return supportsNomadSimulation() && preferences.getBoolean("nomad_mode",false);}
+    private void setNomadMode(boolean enabled) {
+        if(busy())return;
+        enabled=enabled && supportsNomadSimulation();
+        closePaletteEditor();hideGradientHint();setPickingShade(false);
+        if(filePopup!=null)filePopup.dismiss();
+        if(layersPopup!=null)layersPopup.dismiss();
+        if(toolPicker!=null)toolPicker.dismiss();
+        pad.finishStroke();pad.dryWet();pad.disconnectDisplay();pad.viewport.reset();
+        preferences.edit().putBoolean("nomad_mode",enabled).apply();
+        previewFrame.setEnabledPreview(enabled);
+        applyToolboxSide();
+        preferences();recovery();
     }
     private boolean largeToolbarIcons() { return preferences.getBoolean("large_toolbar_icons",true); }
     private java.util.ArrayList<String> toolbarOrder() {
@@ -473,7 +700,7 @@ public final class PaintActivity extends Activity {
             LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             row.setPadding(0,dp(4),0,dp(4));list.addView(row,new LinearLayout.LayoutParams(-1,dp(56)));
             CheckBox visible=new CheckBox(this);visible.setText(name);visible.setTextColor(Color.BLACK);visible.setTextSize(15);
-            android.graphics.drawable.Drawable toolIcon=getDrawable(layers ? R.drawable.ic_layers : zoom ? R.drawable.ic_zoom : swatches ? R.drawable.ic_palette : icon(settings));
+            android.graphics.drawable.Drawable toolIcon=getDrawable(layers ? R.drawable.ic_layers : zoom ? R.drawable.ic_zoom : swatches ? R.drawable.ic_palette : settings.tool==ToolSettings.Tool.SHAPES ? R.drawable.ic_shapes : icon(settings));
             toolIcon.setBounds(0,0,dp(28),dp(28));
             visible.setCompoundDrawables(toolIcon,null,null,null);visible.setCompoundDrawablePadding(dp(12));
             visible.setPadding(dp(4),0,dp(8),0);
@@ -509,6 +736,7 @@ public final class PaintActivity extends Activity {
         stylePanelText(list);
     }
     private void fileMenu(View anchor) {
+        closePagePanel();
         String[] names={"New drawing","Open drawing","Save drawing","Save drawing as…","Settings"};
         int[] icons={R.drawable.ic_new,R.drawable.ic_open,R.drawable.ic_save,R.drawable.ic_save,R.drawable.ic_settings};
         if (filePopup != null) filePopup.dismiss();
@@ -557,13 +785,15 @@ public final class PaintActivity extends Activity {
         catch(IllegalStateException | IllegalArgumentException error) { message(error.getMessage()); }
     }
     private Button layerAction(LinearLayout row,String label,Runnable action,boolean enabled) {
-        Button button=new Button(this); button.setText(label); button.setAllCaps(false);
+        ToolButton button=new ToolButton(); button.pressFeedback=layerFeedback;
+        button.setText(label); button.setAllCaps(false);
         button.setTextSize(14); button.setPadding(dp(4),0,dp(4),0);
         button.setContentDescription(label); button.setEnabled(enabled);
         button.setOnClickListener(v -> action.run());
         row.addView(button,new LinearLayout.LayoutParams(0,dp(48),1)); return button;
     }
     private void showLayers(View anchor) {
+        closePagePanel();
         if(busy()) return;
         if(layersPopup!=null) { layersPopup.dismiss(); return; }
         pad.finishStroke(); pad.dryWet();
@@ -587,21 +817,47 @@ public final class PaintActivity extends Activity {
         for(int i=document.layerCount()-1;i>=0;i--) {
             final int index=i; boolean selected=i==document.activeLayer();
             LinearLayout row=new LinearLayout(this); row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            Button name=new Button(this); name.setAllCaps(false); name.setText(document.layerName(i)+(selected?"  ✓":""));
+            ToolButton name=new ToolButton(); name.pressFeedback=layerFeedback;
+            name.setAllCaps(false); name.setText(document.layerName(i)+(selected?"  ✓":""));
             name.setTextSize(15); name.setSingleLine(true); name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             name.setContentDescription(document.layerName(i)+(selected?", selected":"")+", "+(document.layerVisible(i)?"visible":"hidden"));
             name.setTypeface(null,selected?android.graphics.Typeface.BOLD:android.graphics.Typeface.NORMAL);
             markActive(name,selected);
             name.setOnClickListener(v -> { layerChange(() -> document.selectLayer(index)); if(layersPopup!=null) layersPopup.dismiss(); });
             row.addView(name,new LinearLayout.LayoutParams(0,dp(52),1));
-            CheckBox visible=new CheckBox(this); visible.setText("Show"); visible.setTextSize(13);
-            visible.setChecked(document.layerVisible(i)); visible.setContentDescription("Show "+document.layerName(i));
-            visible.setOnCheckedChangeListener((view,checked) -> { layerChange(() -> document.setLayerVisible(index,checked)); refresh.run(); });
-            row.addView(visible,new LinearLayout.LayoutParams(dp(88),dp(52)));
+            ToolButton visible=new ToolButton(); visible.pressFeedback=layerFeedback;visible.iconHalf=16;
+            visible.setBackgroundColor(Color.WHITE);visible.setPadding(dp(10),dp(10),dp(10),dp(10));
+            Runnable updateVisibility=() -> {
+                boolean shown=document.layerVisible(index);
+                visible.iconOnly(shown?R.drawable.ic_layer_visible:R.drawable.ic_layer_hidden);
+                visible.setContentDescription((shown?"Hide ":"Show ")+document.layerName(index));
+                visible.setTooltipText(visible.getContentDescription());
+                name.setContentDescription(document.layerName(index)+(selected?", selected":"")+", "+(shown?"visible":"hidden"));
+            };
+            updateVisibility.run();
+            visible.setOnClickListener(view -> {
+                layerChange(() -> document.setLayerVisible(index,!document.layerVisible(index)));
+                layerFeedback.update(visible,new Rect(0,0,visible.getWidth(),visible.getHeight()),updateVisibility);
+            });
+            row.addView(visible,new LinearLayout.LayoutParams(dp(52),dp(52)));
             items.addView(row,new LinearLayout.LayoutParams(-1,dp(56)));
         }
         TextView active=new TextView(this); active.setText("Editing: "+document.layerName(document.activeLayer()));
         active.setTextSize(14); active.setTextColor(Color.BLACK); active.setPadding(dp(8),dp(8),0,0); rows.addView(active);
+        TextView opacityLabel=new TextView(this);
+        opacityLabel.setText("Opacity\n"+document.layerOpacity(document.activeLayer())+"%");
+        SeekBar opacity=new SeekBar(this);opacity.setContentDescription("Layer opacity");
+        opacity.setMax(100);opacity.setProgress(document.layerOpacity(document.activeLayer()));
+        sliderRow(rows,opacityLabel,opacity,true);
+        opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                opacityLabel.setText("Opacity\n"+value+"%");
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                layerChange(() -> document.setLayerOpacity(document.activeLayer(),bar.getProgress()));
+            }
+        });
         LinearLayout order=new LinearLayout(this); rows.addView(order);
         layerAction(order,"Move up",() -> {layerChange(() -> document.moveLayer(document.activeLayer()+1));refresh.run();},document.activeLayer()+1<document.layerCount());
         layerAction(order,"Move down",() -> {layerChange(() -> document.moveLayer(document.activeLayer()-1));refresh.run();},document.activeLayer()>0);
@@ -641,7 +897,13 @@ public final class PaintActivity extends Activity {
         popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.WHITE));
         popup.setOutsideTouchable(true); popup.setElevation(0); popup.setAnimationStyle(0);
         popup.setInputMethodMode(android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED);
-        popup.setOnDismissListener(() -> {if(layersPopup==popup) layersPopup=null;}); layersPopup=popup;
+        ToolButton trigger=(ToolButton)anchor;
+        selectionFeedback.update(trigger,trigger.markerArea(),() -> trigger.marked=true);
+        popup.setOnDismissListener(() -> {
+            if(layersPopup==popup) layersPopup=null;
+            layerFeedback.close();
+            selectionFeedback.update(trigger,trigger.markerArea(),() -> trigger.marked=false);
+        }); layersPopup=popup;
         popup.showAtLocation(root,android.view.Gravity.TOP|android.view.Gravity.LEFT,Math.round(bounds.left),Math.round(bounds.top));
     }
     private void fileAction(int position) {
@@ -658,7 +920,7 @@ public final class PaintActivity extends Activity {
         button.setOnClickListener(v -> {
             if (busy()) return;
             if (button != eyedropperButton) setPickingShade(false);
-            if(button != eyedropperButton || !pad.hasGradient()) pad.finishStroke();
+            if((button != eyedropperButton && button != eraseButton) || !pad.hasGradient()) pad.finishStroke();
             action.run();
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(60), dp(60));
@@ -696,11 +958,12 @@ public final class PaintActivity extends Activity {
             return settings.head == ToolSettings.Head.FLAT ? R.drawable.ic_brush_flat : R.drawable.ic_brush_filbert;
         }
         if(settings.tool==ToolSettings.Tool.SHAPES)return shapeIcon(settings.shape);
+        if(settings.tool==ToolSettings.Tool.FILL)return fillIcon(settings.gradient);
         return icon(settings.tool);
     }
     private void markActive(Button button, boolean selected) {
         android.graphics.drawable.GradientDrawable active = new android.graphics.drawable.GradientDrawable();
-        boolean outline=selected && !selectionFeedback.enabled;
+        boolean outline=selected && !selectionFeedback.enabled && !(button instanceof ToolButton && ((ToolButton)button).selectionOutline);
         active.setColor(Color.WHITE); active.setStroke(outline ? dp(2) : 1, outline ? Color.BLACK : 0xffaaaaaa); active.setCornerRadius(dp(4));
         button.setBackground(active); button.setSelected(selected);
     }
@@ -708,8 +971,9 @@ public final class PaintActivity extends Activity {
         return library.activeId().isEmpty() ? "tool:" + library.current().tool : library.activeId();
     }
     private void presentTool(ToolButton button,ToolSettings settings,ToolLibrary.Preset preset) {
-        button.iconOnly(icon(settings));
-        if(preset==null)button.setContentDescription(toolDescription(settings));
+        button.iconOnly(preset==null && settings.tool==ToolSettings.Tool.SHAPES && !shapeChosen()?R.drawable.ic_shapes:icon(settings));
+        if(preset==null)button.setContentDescription(settings.tool==ToolSettings.Tool.SHAPES && !shapeChosen()
+                ? "Shapes. Tap to choose a shape." : toolDescription(settings));
         else {
             int number=library.presetNumber(preset.id);
             if(button.presetNumber!=number) {button.presetNumber=number;button.invalidate();}
@@ -735,16 +999,16 @@ public final class PaintActivity extends Activity {
             if (button.marked != active) {
                 selectionFeedback.update(button, button.markerArea(), () -> {
                     button.marked = active;
-                    // Instant mode keeps the border fixed; only the corner dot changes.
-                    if(selectionFeedback.enabled)
-                        button.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
-                    else markActive(button,active);
+                    button.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
                 });
             }
         }
     }
     private final class ToolButton extends Button {
         boolean marked, alwaysDot, markerLeft, markerBelow, headerIcon;
+        boolean selectionOutline, feedbackPressed;
+        SelectionFeedback pressFeedback;
+        private final Runnable releaseFeedback=() -> feedback(false);
         boolean navigationControl;
         int iconHalf = 14, iconOffset, presetNumber;
         String presetId;
@@ -758,8 +1022,32 @@ public final class PaintActivity extends Activity {
             // Flat icon controls have no pressed elevation to animate after a tap.
             setStateListAnimator(null);setElevation(0);
         }
+        private void feedback(boolean pressed) {
+            removeCallbacks(releaseFeedback);
+            if(pressFeedback==null || feedbackPressed==pressed)return;
+            pressFeedback.update(this,new Rect(0,0,getWidth(),getHeight()),() -> feedbackPressed=pressed);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN && isEnabled() && !busy())feedback(true);
+            else if(action==MotionEvent.ACTION_CANCEL || (action==MotionEvent.ACTION_MOVE &&
+                    (event.getX()<0 || event.getY()<0 || event.getX()>=getWidth() || event.getY()>=getHeight())))feedback(false);
+            boolean handled=super.onTouchEvent(event);
+            if(action==MotionEvent.ACTION_UP && pressFeedback!=null && isAttachedToWindow())postDelayed(releaseFeedback,200);
+            return handled;
+        }
+        @Override public boolean performClick() {
+            if(pressFeedback!=null && (!isEnabled() || busy()))return false;
+            feedback(true);
+            boolean handled=super.performClick();
+            if(pressFeedback!=null && isAttachedToWindow())postDelayed(releaseFeedback,200);
+            return handled;
+        }
+        @Override protected void onDetachedFromWindow() {
+            removeCallbacks(releaseFeedback);feedbackPressed=false;super.onDetachedFromWindow();
+        }
         @Override public boolean isSelected() {
-            return settingsArrow != null || alwaysDot ? marked : super.isSelected();
+            return selectionOutline || settingsArrow != null || alwaysDot ? marked : super.isSelected();
         }
         void iconOnly(int resource) {
             if (iconResource == resource) return;
@@ -773,6 +1061,7 @@ public final class PaintActivity extends Activity {
             centerIcon=getDrawable(resource);invalidate();
         }
         Rect markerArea() {
+            if(selectionOutline)return new Rect(0,0,getWidth(),getHeight());
             if (markerBelow) {
                 android.graphics.RectF area = new android.graphics.RectF(getWidth()/2f-dp(3), getHeight()-dp(7),
                         getWidth()/2f+dp(3), getHeight()-dp(1));
@@ -787,7 +1076,7 @@ public final class PaintActivity extends Activity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             if(centerIcon!=null) {
-                int half=dp(iconHalf),x=getWidth()/2+dp(iconOffset),y=getHeight()/2-(caption!=null?dp(9):presetId==null?0:dp(4));
+                int half=dp(iconHalf),x=getWidth()/2+dp(iconOffset),y=getHeight()/2-(caption!=null?dp(9):0);
                 canvas.save();
                 if (headerIcon) canvas.rotate(-toolbarTurn,x,y);
                 centerIcon.setBounds(x-half,y-half,x+half,y+half);centerIcon.draw(canvas);
@@ -821,13 +1110,18 @@ public final class PaintActivity extends Activity {
             }
             if (presetId != null) {
                 markerPaint.setColor(Color.BLACK);
-                int columns=Math.max(1,Math.min(10,(getWidth()-dp(12))/dp(6)));
+                float center=getWidth()/2f+dp(iconOffset);
+                float halfWidth=Math.max(0,Math.min(center,getWidth()-center)-dp(9));
+                int columns=Math.max(1,Math.min(10,1+(int)(2*halfWidth/dp(6))));
                 int rows=(presetNumber+columns-1)/columns;
-                float spacing=Math.min(dp(6),dp(18)/(float)Math.max(1,rows));
-                float radius=Math.min(dp(2),spacing/3);
+                // Keep identification dots below the centered icon and inside its selection box.
+                float bottom=getHeight()-dp(7),top=getHeight()/2f+dp(iconHalf+3);
+                float band=Math.max(1,bottom-top);
+                float spacing=rows>1?Math.min(dp(6),band/(rows-1)):dp(6);
+                float radius=Math.min(dp(2),Math.min(band,spacing/3));
                 for(int i=0;i<presetNumber;i++) {
                     int row=i/columns,count=Math.min(columns,presetNumber-row*columns);
-                    float x=getWidth()/2f+(i%columns-(count-1)/2f)*dp(6);
+                    float x=center+(i%columns-(count-1)/2f)*dp(6);
                     canvas.drawCircle(x,getHeight()-dp(7)-(rows-1-row)*spacing,radius,markerPaint);
                 }
             }
@@ -835,7 +1129,13 @@ public final class PaintActivity extends Activity {
                 int x=getWidth()-dp(10),y=getHeight()/2;
                 settingsArrow.setBounds(x-dp(8),y-dp(10),x+dp(8),y+dp(10));settingsArrow.draw(canvas);
             }
-            if (!marked || (!alwaysDot && !selectionFeedback.enabled)) return;
+            if(feedbackPressed || (selectionOutline && marked)) {
+                markerPaint.setColor(Color.BLACK);markerPaint.setStyle(Paint.Style.STROKE);
+                markerPaint.setStrokeWidth(dp(3));markerPaint.setAntiAlias(true);
+                canvas.drawRoundRect(dp(3),dp(3),getWidth()-dp(3),getHeight()-dp(3),dp(4),dp(4),markerPaint);
+                markerPaint.setStyle(Paint.Style.FILL);markerPaint.setAntiAlias(false);
+            }
+            if (selectionOutline || !marked || (!alwaysDot && !selectionFeedback.enabled)) return;
             if (markerBelow) {
                 // Turn with the upright icon, so the square stays below it for either hand.
                 canvas.save();canvas.rotate(-toolbarTurn,getWidth()/2f,getHeight()/2f);
@@ -954,12 +1254,16 @@ public final class PaintActivity extends Activity {
             source = null;
         }
     }
+    private boolean shapeChosen() {
+        return preferences.getBoolean("shape_chosen",!library.builtin(ToolSettings.Tool.SHAPES).equals(ToolSettings.defaults(ToolSettings.Tool.SHAPES)));
+    }
     private Button toolRow(String key,String name,int icon,Runnable select) {
         ToolButton control=(ToolButton)button(toolRail,name,icon,() -> {
-            if(selectedKey().equals(key)) settings();
+            if(key.equals("tool:SHAPES") && !shapeChosen()) {select.run();settings();}
+            else if(selectedKey().equals(key)) settings();
             else select.run();
         });
-        control.iconOnly(icon);control.settingsArrow=getDrawable(R.drawable.ic_chevron);
+        control.iconOnly(icon);control.settingsArrow=getDrawable(R.drawable.ic_chevron);control.selectionOutline=true;
         if(largeToolbarIcons())control.iconOffset=-4;
         control.setContentDescription(name+". Tap to select; tap again for settings.");
         control.setOnLongClickListener(v -> {
@@ -1029,6 +1333,7 @@ public final class PaintActivity extends Activity {
         }
     }
     private void paletteSettings() {
+        closePagePanel();
         if(paletteEditor!=null) {closePaletteEditor();return;}
         if(busy())return;
         setPickingShade(false);pad.finishStroke();pad.dryWet();pad.disconnectDisplay();
@@ -1309,7 +1614,9 @@ public final class PaintActivity extends Activity {
             if(key.equals("LAYERS")) {
                 if(preferences.getBoolean("tool_visible_LAYERS",true)) {
                     layersButton=button(toolRail,"Layers",R.drawable.ic_layers,() -> showLayers(layersButton));
-                    ((ToolButton)layersButton).iconOnly(R.drawable.ic_layers);markActive(layersButton,false);
+                    ToolButton layers=(ToolButton)layersButton;
+                    layers.iconOnly(R.drawable.ic_layers);layers.selectionOutline=true;layers.pressFeedback=selectionFeedback;
+                    markActive(layersButton,false);
                 }
                 continue;
             }
@@ -1419,10 +1726,24 @@ public final class PaintActivity extends Activity {
         }
         return row;
     }
+    private int fillIcon(ToolSettings.Gradient type) {
+        return type==ToolSettings.Gradient.FLAT?R.drawable.ic_fill:type==ToolSettings.Gradient.LINEAR
+                ?R.drawable.ic_fill_linear:R.drawable.ic_fill_circular;
+    }
+    private LinearLayout fillChoices(ToolSettings settings,java.util.function.Consumer<ToolSettings.Gradient> choose) {
+        LinearLayout row=new LinearLayout(this);row.setBaselineAligned(false);row.setContentDescription("Fill choices");
+        for(ToolSettings.Gradient type:new ToolSettings.Gradient[]{ToolSettings.Gradient.FLAT,ToolSettings.Gradient.LINEAR,ToolSettings.Gradient.CIRCULAR}) {
+            String label=type==ToolSettings.Gradient.FLAT?"Flat fill":type.label+" gradient";
+            Button choice=variantChoice(label,fillIcon(type),settings.gradient==type,() -> choose.accept(type));
+            choice.setContentDescription(label);addVariant(row,choice);
+            choice.getLayoutParams().height=dp(112);
+        }
+        return row;
+    }
     private LinearLayout shapeChoices(ToolSettings settings,java.util.function.Consumer<ToolSettings.Shape> choose) {
         LinearLayout row=new LinearLayout(this);row.setContentDescription("Shape choices");
         for(ToolSettings.Shape shape:ToolSettings.Shape.values()) {
-            Button choice=variantChoice(shape.label,shapeIcon(shape),settings.shape==shape,() -> choose.accept(shape));
+            Button choice=variantChoice(shape.label,shapeIcon(shape),settings.shape==shape && (!library.activeId().isEmpty() || shapeChosen()),() -> choose.accept(shape));
             choice.setContentDescription(shape.label+" shape");addVariant(row,choice);
         }
         return row;
@@ -1494,6 +1815,7 @@ public final class PaintActivity extends Activity {
         return editor;
     }
     private android.widget.PopupWindow showToolPanel() {
+        closePagePanel();
         if(toolPicker!=null)toolPicker.dismiss();
         closePaletteEditor();
         View anchor=selectionButtons.get(selectedKey());
@@ -1551,6 +1873,7 @@ public final class PaintActivity extends Activity {
     private final class ToolSettingsPanel extends SettingsPanel {
         final boolean shapes=library.current().tool==ToolSettings.Tool.SHAPES;
         final boolean brush=library.current().isBrush();
+        final boolean fill=library.current().tool==ToolSettings.Tool.FILL;
         final String presetId=library.activeId();
         ToolSettingsPanel(View anchor) {
             super(anchor,library.current().tool==ToolSettings.Tool.SHAPES?(largeSettingsText()?560:520):(largeSettingsText()?448:400));
@@ -1560,13 +1883,17 @@ public final class PaintActivity extends Activity {
             panel.removeAllViews();
             ToolSettings current=library.current();
             if(shapes || brush) panel.addView(shapes?shapeChoices(current,shape -> {
-                library.edit(library.current().shape(shape));selected();
+                library.edit(library.current().shape(shape));
+                if(presetId.isEmpty())preferences.edit().putBoolean("shape_chosen",true).apply();
+                selected();
             }):headChoices(current,head -> {library.selectHead(head);selected();}));
-            if(shapes || brush) {
+            if(fill)panel.addView(fillChoices(current,type -> {library.edit(library.current().gradient(type));selected();}));
+            if(shapes || brush || (fill && current.gradient!=ToolSettings.Gradient.FLAT)) {
                 View divider=new View(PaintActivity.this);divider.setBackgroundColor(0xffcccccc);
                 LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,dp(1));line.setMargins(dp(2),dp(12),dp(2),0);panel.addView(divider,line);
             }
-            panel.addView(shapes?shapeEditor(this::position):brush?brushEditor():toolEditor());
+            if(!shapes || !presetId.isEmpty() || shapeChosen())
+                panel.addView(shapes?shapeEditor(this::position):brush?brushEditor():toolEditor());
             LinearLayout actions=new LinearLayout(PaintActivity.this);actions.setGravity(android.view.Gravity.END);
             Button save=new Button(PaintActivity.this);save.setAllCaps(false);save.setBackgroundColor(Color.WHITE);
             if(presetId.isEmpty()) {save.setText("Add to Toolbar");save.setContentDescription("Add to Toolbar");}
@@ -1619,7 +1946,7 @@ public final class PaintActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar bar) {}
             @Override public void onStopTrackingTouch(SeekBar bar) {}
         });
-        TextView note=new TextView(this);note.setText("Drag to size · lift to finish");note.setTextColor(Color.BLACK);note.setTag("hint");
+        TextView note=new TextView(this);note.setText(current.shape==ToolSettings.Shape.CIRCLE?"Start at the center · drag to set the radius · lift to finish":"Drag to size · lift to finish");note.setTextColor(Color.BLACK);note.setTag("hint");
         note.setPadding(0,dp(8),0,dp(4));content.addView(note);
         return content;
     }
@@ -1648,30 +1975,17 @@ public final class PaintActivity extends Activity {
             content.addView(note);return content;
         }
         if(current.tool==ToolSettings.Tool.FILL) {
-            LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(8),dp(16),dp(8));
-            TextView note=new TextView(this);note.setTag("hint");
-            Runnable hint=() -> note.setText("• Tap for solid fill\n• "+(library.current().gradient==ToolSettings.Gradient.CIRCULAR
-                    ? "Drag center to edge, then choose a second color" : "Drag a line for gradient, then choose a second color"));
-            TextView title=new TextView(this);title.setText("Gradient type");content.addView(title);
-            android.widget.RadioGroup types=new android.widget.RadioGroup(this);types.setOrientation(LinearLayout.HORIZONTAL);
-            for(ToolSettings.Gradient type:ToolSettings.Gradient.values()) {
-                android.widget.RadioButton choice=new android.widget.RadioButton(this);
-                choice.setId(View.generateViewId());choice.setText(type.label);choice.setTextColor(Color.BLACK);
-                choice.setContentDescription(type.label+" gradient");choice.setTag(type);
-                types.addView(choice,new LinearLayout.LayoutParams(0,dp(48),1));
-                choice.setChecked(current.gradient==type);
-            }
-            types.setOnCheckedChangeListener((group,id) -> {
-                View choice=group.findViewById(id);if(choice==null)return;
-                library.edit(library.current().gradient((ToolSettings.Gradient)choice.getTag()));
-                preferences();refreshToolSelection();hint.run();
-            });
-            content.addView(types);
+            LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+            if(current.gradient==ToolSettings.Gradient.FLAT)return content;
+            content.setPadding(dp(12),dp(12),dp(12),dp(4));
             settingSlider(content,"Tolerance",current.tolerance,value -> {
                 library.edit(library.current().tolerance(value));preferences();
             });
-            hint.run();content.addView(note);
-            return content;
+            TextView note=new TextView(this);note.setTag("hint");
+            note.setText(current.gradient==ToolSettings.Gradient.CIRCULAR
+                    ? "Drag from center to edge, then choose a second color."
+                    : "Drag along the gradient, then choose a second color.");
+            content.addView(note);return content;
         }
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(8), dp(16), dp(8));
@@ -1786,11 +2100,14 @@ public final class PaintActivity extends Activity {
         android.view.Window window=dialog.getWindow();
         if (window==null) return;
         int width=Math.min(dp(desiredWidth),root.getWidth()-dp(32));
-        if (appRotation == Surface.ROTATION_0) { window.setLayout(width,-2); return; }
+        boolean nomad=nomadMode();
+        if (appRotation == Surface.ROTATION_0 && !nomad) { window.setLayout(width,-2); return; }
         android.view.ViewGroup content=window.findViewById(android.R.id.content);
         if (content==null || content.getChildCount()!=1 || content.getChildAt(0) instanceof QuarterTurnLayout) return;
         View panel=content.getChildAt(0); content.removeView(panel);
         QuarterTurnLayout frame=new QuarterTurnLayout(this); frame.setTurn(appTurn()); frame.addView(panel);
+        if(nomad)frame.setMaximumSize(Math.max(1,orientationFrame.getWidth()-dp(32)),
+                Math.max(1,orientationFrame.getHeight()-dp(32)));
         content.addView(frame,new android.widget.FrameLayout.LayoutParams(-1,-1));
         window.setLayout(landscape ? -2 : width,landscape ? width : -2);
     }
@@ -1829,14 +2146,20 @@ public final class PaintActivity extends Activity {
                 .setPositiveButton("New", (d,w) -> { pad.replace(null); drawingName = ""; recovery(); })
                 .setNegativeButton("Cancel", null));
     }
+    private View clearButton;
     private void clearDrawing() {
-        showDialog(new AlertDialog.Builder(this).setTitle("Clear this layer?")
-                .setMessage("Remove every mark on "+pad.document.layerName(pad.document.activeLayer())+". Other layers and pages stay as they are. You can undo this.")
-                .setPositiveButton("Clear",(d,w) -> {
-                    pad.dryWet();
-                    if(!pad.document.layerVisible(pad.document.activeLayer())) { message("Show this layer before clearing it."); return; }
-                    if(pad.document.clear()) {pad.renderDirty();pad.present();recovery();}
-                }).setNegativeButton("Cancel",null));
+        closePagePanel();
+        SettingsPanel menu=new SettingsPanel(clearButton,300);
+        for(boolean all:new boolean[]{false,true}) {
+            Button option=new Button(this);option.setAllCaps(false);
+            String label=all?"Clear all layers":"Clear current layer";
+            option.setText(label);option.setContentDescription(label);
+            option.setOnClickListener(v -> {menu.popup.dismiss();layerChange(() -> {
+                if(all)pad.document.clearAllLayers();else pad.document.clear();
+            });});
+            menu.panel.addView(option,new LinearLayout.LayoutParams(-1,dp(56)));
+        }
+        menu.show();
     }
     private void saveDrawing() {
         showSaveError();
@@ -1889,9 +2212,15 @@ public final class PaintActivity extends Activity {
     @Override protected void onResume() {
         super.onResume(); resumed = true;
         if (orientationSensor != null && orientationSensor.canDetectOrientation()) orientationSensor.enable();
+        if(shakeSensors!=null) {
+            android.hardware.Sensor sensor=shakeSensors.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER);
+            if(sensor!=null)shakeSensors.registerListener(shakeListener,sensor,android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        }
         if (pad != null) { pad.updateViewport(); pad.post(pad::connectDisplay); }
     }
     @Override protected void onPause() {
+        if(pageOverview!=null)pageOverview.dismiss();
+        closePagePanel();
         closePaletteEditor();
         setPickingShade(false);
         if (filePopup != null) filePopup.dismiss();
@@ -1899,6 +2228,7 @@ public final class PaintActivity extends Activity {
         if (toolPicker != null) toolPicker.dismiss();
         resumed = false;
         if (orientationSensor != null) orientationSensor.disable();
+        if(shakeSensors!=null)shakeSensors.unregisterListener(shakeListener);
         hideRotationSuggestion();
         if (presetDrag != null) presetDrag.reset();
         if (pad != null) { pad.finishStroke(); pad.dryWet(); pad.disconnectDisplay(); }
@@ -1909,17 +2239,19 @@ public final class PaintActivity extends Activity {
         super.onWindowFocusChanged(focus);
         if (pad == null) return;
         if (focus) { pad.post(pad::connectDisplay); showSaveError(); }
-        else { hideRotationSuggestion(); pad.finishStroke(); pad.disconnectDisplay(); }
+        else { dismissRotationSuggestion(); pad.finishStroke(); pad.disconnectDisplay(); }
     }
     @Override protected void onDestroy() {
         destroyed = true;
         if (orientationSensor != null) orientationSensor.disable();
         selectionFeedback.close();
+        layerFeedback.close();
         if (pad != null) pad.close();
         book=null;
         super.onDestroy();
     }
     @Override public void onBackPressed() {
+        if(pagePanel!=null){closePagePanel();return;}
         if(paletteEditor!=null) {closePaletteEditor();return;}
         if(pad!=null && (pad.hasGradient() || pad.fillGesture)) { pad.finishStroke(); return; }
         super.onBackPressed();
@@ -1969,7 +2301,7 @@ public final class PaintActivity extends Activity {
         if (!supported && eraseMode) { setEraseMode(false); return; }
         eraseButton.setEnabled(supported);
         eraseButton.setAlpha(supported ? 1f : .3f);
-        eraseButton.setContentDescription(supported ? "Erase with current tool" : "Erasing requires a brush, pencil, or airbrush");
+        eraseButton.setContentDescription(supported ? "Erase with current tool" : "This tool does not use a color");
         markPaintMode(eraseButton, eraseMode && !pickingShade);
     }
     private void setPickingShade(boolean picking) {
@@ -2251,7 +2583,7 @@ public final class PaintActivity extends Activity {
         private int gradientShade, gradientPassShade, pickPointer = -1;
         private byte[] gradientSample;
         private float fillStartX, fillStartY, fillEndX, fillEndY;
-        private int fillShade, fillTolerance;
+        private int fillShade, fillOriginalGray, fillTolerance;
         private ToolSettings.Gradient fillGradient=ToolSettings.Gradient.LINEAR;
         private final Paint gradientGuide = new Paint();
         private final Runnable gradientStep = this::advanceGradient;
@@ -2259,6 +2591,7 @@ public final class PaintActivity extends Activity {
         private long lastPresent;
         private boolean fallbackNotice;
         private int drawCount;
+        private int pagePresentCount;
         private final Runnable retry = () -> flush(true);
         private final Runnable fillStep = this::advanceFill;
         private final Runnable wetStep = () -> wetQueue.addIdleHandler(wetIdle);
@@ -2343,17 +2676,37 @@ public final class PaintActivity extends Activity {
             renderAll(); invalidate(); post(this::connectDisplay);
         }
         void showPage(ToneDocument page) {
-            finishStroke();dryWet();disconnectDisplay();document=page;
-            viewport.reset();
-            ensureDisplay(); updateViewport();
-            renderAll();invalidate();post(this::connectDisplay);
+            finishStroke();dryWet();disconnectDisplay();
+            PageTurnDisplay turn=null;
+            // Same-sized fitted pages share a transform. Snapshot the old panel
+            // background before rendering the next page, even with Pages open.
+            if(document!=null && display!=null && page.width==document.width && page.height==document.height
+                    && viewport.zoom==1 && resumed && hasWindowFocus() && !isLayoutRequested()
+                    && !root.isLayoutRequested() && !previewFrame.isLayoutRequested()
+                    && rotateButton.getVisibility()!=View.VISIBLE) {
+                try { turn=new PageTurnDisplay(this,viewportBitmap==null?display:viewportBitmap.bitmap,
+                        viewportBitmap==null?pageToView:new Matrix(),pagePanel); }
+                catch(RuntimeException | LinkageError error) { Log.w(ProbeActivity.TAG,"Page update uses Android display",error); }
+            }
+            boolean presented=false;
+            try {
+                document=page;viewport.reset();ensureDisplay();updateViewport();renderAll();
+                if(turn!=null) {
+                    try { presented=turn.present(viewportBitmap==null?display:viewportBitmap.bitmap); }
+                    catch(RuntimeException error) { Log.w(ProbeActivity.TAG,"Page update uses Android display",error); }
+                }
+            } finally { if(turn!=null)turn.close(); }
+            if(presented) {
+                pagePresentCount++;
+                selectionFeedback.retainForNextDraw(this,new Rect(0,0,getWidth(),getHeight()));
+            } else invalidate();
+            post(this::connectDisplay);
         }
         private void renderAll() {
             if (display == null) return;
             display.eraseColor(Color.WHITE);
             if (document != null) {
-                if(viewportBitmap!=null)ViewportBitmap.compose(document,display);
-                else render(new Rect(0, 0, Math.min(document.width, display.getWidth()), Math.min(document.height, display.getHeight())));
+                ViewportBitmap.compose(document,display,viewportBitmap==null);
                 document.clearDirty();
             }
             pending.setEmpty();
@@ -2400,7 +2753,7 @@ public final class PaintActivity extends Activity {
             canvas.drawColor(Color.WHITE);
             if(viewportBitmap!=null) canvas.drawBitmap(viewportBitmap.bitmap,0,0,null);
             else if (display != null) canvas.drawBitmap(display,pageToView,null);
-            if(fillGesture || gradientWaiting) {
+            if((fillGesture && fillGradient!=ToolSettings.Gradient.FLAT) || gradientWaiting) {
                 float[] axis={fillStartX,fillStartY,fillEndX,fillEndY}; pageToView.mapPoints(axis);
                 gradientGuide.setStyle(Paint.Style.STROKE);
                 gradientGuide.setColor(Color.WHITE); gradientGuide.setStrokeWidth(dp(5));
@@ -2414,8 +2767,9 @@ public final class PaintActivity extends Activity {
         }
         void connectDisplay() {
             scheduleWet();
-            if (paletteEditor!=null || !resumed || !hasWindowFocus() || loading || display == null || direct != null) return;
-            if (isLayoutRequested() || root.isLayoutRequested() || orientationFrame.isLayoutRequested()) return;
+            if (rotateButton.getVisibility()==View.VISIBLE || pagePanel!=null || pageOverview!=null || paletteEditor!=null || !resumed || !hasWindowFocus() || loading || display == null || direct != null) return;
+            if (isLayoutRequested() || root.isLayoutRequested() || orientationFrame.isLayoutRequested()
+                    || previewFrame.isLayoutRequested()) return;
             try {
                 if (!input.prepareDocumentCanvas()) throw new IllegalStateException(input.status);
                 direct = viewportBitmap==null ? DirectEink.forView(this,display,pageToView,0,7)
@@ -2483,13 +2837,13 @@ public final class PaintActivity extends Activity {
                     renderDirty();
                     pointer=event.getPointerId(index);
                     shapeX=samplePoint[0];shapeY=samplePoint[1];
-                    shapeStroke=new ShapePreview(document,settings,gray,shapeX,shapeY);
+                    shapeStroke=new ShapePreview(document,settings,erasing?ToneDocument.ERASE:gray,shapeX,shapeY);
                     getParent().requestDisallowInterceptTouchEvent(true);drawShapeFrame();return true;
                 }
                 if(settings.tool==ToolSettings.Tool.FILL) {
                     fillGesture=true; pointer=event.getPointerId(index);
                     fillStartX=fillEndX=samplePoint[0]; fillStartY=fillEndY=samplePoint[1];
-                    fillShade=gray; fillTolerance=settings.tolerance; fillGradient=settings.gradient;
+                    fillOriginalGray=gray; fillShade=erasing?ToneDocument.ERASE:gray; fillTolerance=settings.gradient==ToolSettings.Gradient.FLAT?0:settings.tolerance; fillGradient=settings.gradient;
                     getParent().requestDisallowInterceptTouchEvent(true); invalidate(); return true;
                 }
                 pointer = event.getPointerId(index);
@@ -2640,7 +2994,7 @@ public final class PaintActivity extends Activity {
             if(!up) return;
             fillGesture=false; pointer=-1; getParent().requestDisallowInterceptTouchEvent(false);
             float[] axis={fillStartX,fillStartY,fillEndX,fillEndY}; pageToView.mapPoints(axis);
-            if(Math.hypot(axis[2]-axis[0],axis[3]-axis[1])<dp(8)) {
+            if(fillGradient==ToolSettings.Gradient.FLAT || Math.hypot(axis[2]-axis[0],axis[3]-axis[1])<dp(8)) {
                 fill=new FloodFill(document,(int)fillStartX,(int)fillStartY,fillShade,fillTolerance);
                 operationStatus.setText("Filling…"); post(fillStep);
             } else {
@@ -2724,7 +3078,8 @@ public final class PaintActivity extends Activity {
             if(gradientWaiting) { gradientWaiting=false; invalidate(); }
             gradientFill=null; gradientSample=null; gradientReady=false; gradientCommit=false;
             operationStatus.setText(""); renderDirty(); flush(true);
-            selectionFeedback.update(shadePicker,new Rect(0,0,shadePicker.getWidth(),shadePicker.getHeight()),() -> gray=fillShade);
+            selectionFeedback.update(shadePicker,new Rect(0,0,shadePicker.getWidth(),shadePicker.getHeight()),() -> gray=fillOriginalGray);
+            setEraseMode(fillShade==ToneDocument.ERASE);
             preferences();
         }
         private void sampleEvent(MotionEvent event,int pointerIndex,int history) {

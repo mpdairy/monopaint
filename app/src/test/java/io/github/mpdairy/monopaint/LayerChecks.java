@@ -6,8 +6,40 @@ import java.util.zip.DeflaterOutputStream;
 
 final class LayerChecks {
     public static void main(String[] args) throws Exception {
-        composition(); glazing(); history(); persistence(); damaged();
+        opacityAndClear(); composition(); glazing(); history(); persistence(); damaged();
         System.out.println("PASS: layer ordering/visibility, transparent erasing, white coverage, fill isolation, structural undo/redo, immutable saves, page eviction, legacy import and invalid-layer rejection");
+    }
+    private static void opacityAndClear() throws Exception {
+        ToneDocument doc=new ToneDocument(8,8);paint(doc,2,2,20);doc.addLayer();paint(doc,2,2,220);
+        check(doc.layerOpacity(1)==100,"New layers are opaque");
+        ToneDocument.Snapshot before=doc.layerSnapshot();
+        doc.setLayerOpacity(1,50);
+        check(doc.compositeTone(2,2)==120&&doc.tone(2,2)==220&&doc.opacity(2,2)==255,"Opacity changes composition without changing marks");
+        check(before.layers.get(1).opacity==100,"Pending saves freeze opacity");
+        check(doc.undo()&&doc.layerOpacity(1)==100&&doc.redo()&&doc.layerOpacity(1)==50,"Opacity undo/redo");
+        doc.setLayerOpacity(1,0);check(doc.compositeTone(2,2)==20,"Zero opacity reveals lower layer");
+        paint(doc,3,3,0);doc.setLayerOpacity(1,100);check(doc.compositeTone(3,3)==0,"Painting at zero opacity retains pigment");
+        doc.setLayerOpacity(1,37);doc.setLayerVisible(0,false);
+        byte[] original=DrawingBook.encode(doc);
+        DrawingBook book=new DrawingBook(doc);book.addPage();book.addPage();book.select(0);
+        check(book.current().layerOpacity(1)==37,"Opacity survives page eviction");
+        ToneDocument restored=DocumentCodec.read(new ByteArrayInputStream(original));
+        check(restored.layerOpacity(1)==37,"Opacity persists");
+        check(doc.clearAllLayers()&&doc.layerCount()==2&&doc.activeLayer()==1&&doc.layerOpacity(1)==37&&!doc.layerVisible(0),"Clear retains layer structure");
+        for(ToneDocument.Layer layer:doc.layerSnapshot().layers)for(byte value:layer.alpha)check(value==0,"Clear includes hidden layers");
+        check(!doc.clearAllLayers(),"Empty clear adds no undo");
+        check(doc.undo()&&Arrays.equals(original,DrawingBook.encode(doc)),"One undo restores all layers exactly");
+        check(doc.redo()&&doc.compositeTone(2,2)==255&&doc.undo(),"Clear all redoes and undoes");
+        // Build a checksummed pre-opacity layered file, ensuring migration defaults to 100%.
+        ByteArrayOutputStream old=new ByteArrayOutputStream();DataOutputStream header=new DataOutputStream(old);
+        header.writeInt(0x54534d32);header.writeInt(1);header.writeInt(1);
+        DeflaterOutputStream compressed=new DeflaterOutputStream(old);java.util.zip.CRC32 crc=new java.util.zip.CRC32();
+        DataOutputStream data=new DataOutputStream(new java.util.zip.CheckedOutputStream(compressed,crc));
+        data.writeInt(1);data.writeInt(0);data.writeUTF("Legacy");data.writeBoolean(true);data.writeByte(24);data.writeByte(255);data.flush();
+        new DataOutputStream(compressed).writeLong(crc.getValue());compressed.finish();
+        ToneDocument legacy=DocumentCodec.read(new ByteArrayInputStream(old.toByteArray()));
+        check(legacy.layerOpacity(0)==100&&legacy.compositeTone(0,0)==24,"Old layers remain fully opaque");
+        System.out.println("PASS: layer opacity composition, non-destructive marks, snapshot/save/page eviction, legacy layers, undo/redo and atomic clear including hidden layers");
     }
     private static void paint(ToneDocument doc,int x,int y,int tone) {
         doc.begin(); doc.paintTone(x,y,tone); doc.finish();

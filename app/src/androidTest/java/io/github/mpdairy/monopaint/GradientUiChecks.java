@@ -35,7 +35,7 @@ final class GradientUiChecks {
             main(test,() -> {
                 set(activity,"eraseMode",false);
                 ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
-                ToolLibrary tools=new ToolLibrary();tools.select(ToolSettings.Tool.FILL);
+                ToolLibrary tools=new ToolLibrary();tools.select(ToolSettings.Tool.FILL);tools.edit(tools.current().gradient(ToolSettings.Gradient.LINEAR));
                 set(activity,"library",tools);set(activity,"drawingName","");
             });
             for(int rotation:new int[]{0,1,2,3}) for(boolean hand:new boolean[]{false,true}) {
@@ -183,6 +183,11 @@ final class GradientUiChecks {
                 call(activity,"requestQuarter",new Class<?>[]{int.class},0);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));set(activity,"gray",80);
             });test.waitForIdleSync();
+            chooseGradient(test,activity,ToolSettings.Gradient.FLAT);
+            pen(test,pad,60,60,240,240,MotionEvent.ACTION_UP);
+            await(test,() -> get(pad,"fill")==null&&doc.tone(639,719)==80,"Flat fill drag completes without a gradient");
+            main(test,() -> {check(!(Boolean)get(pad,"gradientWaiting")&&doc.undo(),"Flat fill has no second color and one undo");call(pad,"renderAll");});
+            chooseGradient(test,activity,ToolSettings.Gradient.LINEAR);
             pen(test,pad,60,60,60,60,MotionEvent.ACTION_UP);
             await(test,() -> get(pad,"fill")==null&&doc.tone(639,719)==80,"Solid tap completes");
             main(test,() -> check(doc.undo()&&!doc.canUndo(),"Solid tap is one undo"));
@@ -242,7 +247,7 @@ final class GradientUiChecks {
         android.widget.PopupWindow[] dialog={null};
         try {
             main(test,() -> dialog[0]=(android.widget.PopupWindow)call(activity,"settings"));test.waitForIdleSync();
-            tap(test,description(dialog[0].getContentView(),type.label+" gradient"));
+            tap(test,description(dialog[0].getContentView(),type==ToolSettings.Gradient.FLAT?"Flat fill":type.label+" gradient"));
             main(test,() -> {
                 check(((ToolLibrary)get(activity,"library")).current().gradient==type,"Gradient control selects "+type);
                 SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");

@@ -62,25 +62,29 @@ final class ToolbarChecks {
             test.waitForIdleSync();
             main(test,() -> {
                 View settings=dialog[0].getWindow().getDecorView();
+                check((Boolean)call(activity,"supportsNomadSimulation") && findCheck(settings,"Nomad Simulation Mode")!=null,
+                        "Connected Manta exposes simulation despite its misleading Nomad model name");
                 check(findCheck(settings,"Instant selection dots (experimental)")==null,"No optional instant selection setting");
                 check(findCheck(settings,"Blending stump")!=null && findCheck(settings,"Soften")==null,"Blending stump has its proper name");
                 for(String name:new String[]{"Brush","Pencil","Airbrush","Fill","Eraser","Blending stump","Layers","Zoom","Palette"})
                     check(findCheck(settings,name).getCompoundDrawables()[0]!=null,"Settings shows the actual icon for "+name);
                 check(!description(settings,"Move Brush up").isEnabled(),"First item cannot move up");
                 check(!description(settings,"Move Palette down").isEnabled(),"Last item cannot move down");
+                int zoomIndex=((java.util.List<?>)call(activity,"toolbarOrder")).indexOf("ZOOM");
                 description(settings,"Move Zoom up").performClick();
-                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(6).equals("ZOOM"),"Zoom can move in saved order");
-                check(((ViewGroup)get(activity,"toolRail")).getChildAt(6)==get(activity,"zoomButton"),"Zoom uses chosen position");
+                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(zoomIndex-1).equals("ZOOM"),"Zoom can move in saved order");
+                check(((ViewGroup)get(activity,"toolRail")).getChildAt(zoomIndex-1)==get(activity,"zoomButton"),"Zoom uses chosen position");
                 description(settings,"Move Zoom down").performClick();
                 CheckBox zoom=findCheck(settings,"Zoom");zoom.performClick();
                 check(get(activity,"zoomButton")==null && !prefs.getBoolean("tool_visible_ZOOM",true),"Zoom can be hidden and saves");
                 call(activity,"refreshZoom");
                 zoom.performClick();
                 check(get(activity,"zoomButton")!=null,"Zoom can return to toolbar");
+                int layerIndex=((java.util.List<?>)call(activity,"toolbarOrder")).indexOf("LAYERS");
                 description(settings,"Move Layers up").performClick();
                 description(settings,"Move Layers down").performClick();
-                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(6).equals("LAYERS"),"Down control reverses an upward move");
-                for(int i=0;i<6;i++)description(settings,"Move Layers up").performClick();
+                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(layerIndex).equals("LAYERS"),"Down control reverses an upward move");
+                for(int i=0;i<layerIndex;i++)description(settings,"Move Layers up").performClick();
                 check(prefs.getString("toolbar_order","").startsWith("LAYERS,"),"Toolbar order persists");
                 ViewGroup rail=(ViewGroup)get(activity,"toolRail");
                 check(rail.getChildAt(0)==get(activity,"layersButton"),"Toolbar uses chosen layer position");
@@ -100,7 +104,7 @@ final class ToolbarChecks {
                 library.select(ToolSettings.Tool.PENCIL);String id=library.add("Test pencil").id;
                 call(activity,"rebuildTools");pencil.performClick();
                 check(buttons(activity).containsKey(id) && library.activeId().equals(id),"Hiding base tool preserves selected favorite");
-                for(String name:new String[]{"Airbrush","Fill","Eraser","Blending stump"}) findCheck(dialog[0].getWindow().getDecorView(),name).performClick();
+                for(String name:new String[]{"Airbrush","Fill","Shapes","Eraser","Blending stump"}) findCheck(dialog[0].getWindow().getDecorView(),name).performClick();
                 CheckBox brush=findCheck(dialog[0].getWindow().getDecorView(),"Brush");brush.performClick();
                 check(brush.isChecked() && buttons(activity).containsKey("tool:BRUSH"),"Cannot hide last regular tool");
                 call(activity,"preferences");
@@ -208,11 +212,38 @@ final class ToolbarChecks {
     private static void markerChecks(PaintActivity activity) throws Exception {
         View shade=(View)get(activity,"shadePicker"), eye=(View)get(activity,"eyedropperButton"), root=(View)get(activity,"root");
         SelectionFeedback feedback=(SelectionFeedback)get(activity,"selectionFeedback");
+        View menu=(View)get(activity,"menuButton");
+        int menuSubmissions=feedback.submitted;
+        long down=SystemClock.uptimeMillis();
+        MotionEvent press=MotionEvent.obtain(down,down,MotionEvent.ACTION_DOWN,menu.getWidth()/2f,menu.getHeight()/2f,0);
+        try {menu.dispatchTouchEvent(press);}finally{press.recycle();}
+        check((Boolean)get(menu,"feedbackPressed") && feedback.submitted>menuSubmissions,"Hamburger shows immediate fast-path press outline");
+        check(get(activity,"filePopup")==null,"Menu press feedback precedes opening the menu");
+        MotionEvent cancel=MotionEvent.obtain(down,SystemClock.uptimeMillis(),MotionEvent.ACTION_CANCEL,0,0,0);
+        try {menu.dispatchTouchEvent(cancel);}finally{cancel.recycle();}
+        check(!(Boolean)get(menu,"feedbackPressed") && get(activity,"filePopup")==null,"Cancelled hamburger press clears its outline without opening the menu");
         boolean oldFeedback=feedback.enabled;
         int oldGray=(Integer)get(activity,"gray");
         try {
             for(boolean instant:new boolean[]{false,true}) {
                 feedback.enabled=instant;
+                View selected=(View)buttons(activity).get(call(activity,"selectedKey"));
+                View brush=(View)buttons(activity).get("tool:BRUSH");
+                Bitmap inactive=render(brush);
+                int toolSubmissions=feedback.submitted;
+                brush.performClick();
+                Bitmap active=render(brush);
+                Rect changed=SelectionFeedback.difference(inactive,active);
+                check(changed.width()>brush.getWidth()/2 && changed.height()>brush.getHeight()/2,"Selected tool has a box around the whole button");
+                float inset=6*activity.getResources().getDisplayMetrics().density;
+                for(int y=(int)inset;y<brush.getHeight()-inset;y++)for(int x=(int)inset;x<brush.getWidth()-inset;x++)
+                    check(inactive.getPixel(x,y)==active.getPixel(x,y),"Selection box preserves the tool icon and favorite marks");
+                check(brush.isSelected()&&!selected.isSelected(),"Only the active drawing tool is selected");
+                if(instant)check(feedback.submitted>toolSubmissions,"Toolbar selection box reaches direct e-ink feedback");
+                selected.performClick();
+                Bitmap restored=render(brush);
+                check(inactive.sameAs(restored),"Deselecting restores exact toolbar pixels");
+                inactive.recycle();active.recycle();restored.recycle();
                 set(activity,"gray",128);
                 Bitmap shadeBefore=render(shade), eyeBefore=render(eye);
                 Bitmap shadeArmed=null, eyeArmed=null, shadeOther=null, shadeAfter=null, eyeAfter=null;

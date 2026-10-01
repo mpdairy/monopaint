@@ -16,7 +16,7 @@ final class ToolSettings {
         Head(String label) { this.label=label; }
     }
     enum Gradient {
-        LINEAR("Linear"), CIRCULAR("Circular");
+        LINEAR("Linear"), CIRCULAR("Circular"), FLAT("Flat fill");
         final String label;
         Gradient(String label) { this.label=label; }
     }
@@ -78,7 +78,10 @@ final class ToolSettings {
         this.pressureResponse = pressureResponse;
         pressureExponent = Math.pow(2, pressureResponse / 50.0);
     }
-    static ToolSettings defaults(Tool tool) { return new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : 64, 3, 70, tool == Tool.PENCIL, 40); }
+    static ToolSettings defaults(Tool tool) {
+        ToolSettings settings=new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : 64, 3, 70, tool == Tool.PENCIL, 40);
+        return tool==Tool.FILL?settings.gradient(Gradient.FLAT):settings;
+    }
     ToolSettings asBrush() {
         if (!isBrush() || tool == Tool.BRUSH) return this;
         return new ToolSettings(Tool.BRUSH, minimum, maximum, tip, softness, tilt, hardness,
@@ -119,7 +122,7 @@ final class ToolSettings {
     }
     float headAspectRatio() { return head == Head.ROUND ? 1f : headThickness / 100f; }
     float flatHeight(float width) { return Math.max(1, width*Math.min(MAX_FLAT_HEIGHT,headThickness)/100f); }
-    String description() { return tool==Tool.SHAPES ? shape.label + (shape==Shape.LINE ? "" : filled ? " filled" : " outline") : isBrush() ? head.label + " " + label() : tool==Tool.FILL ? gradient.label + " " + label() : label(); }
+    String description() { return tool==Tool.SHAPES ? shape.label + (shape==Shape.LINE ? "" : filled ? " filled" : " outline") : isBrush() ? head.label + " " + label() : tool==Tool.FILL ? (gradient==Gradient.FLAT?"Flat fill":gradient.label+" gradient") : label(); }
     float diameter(float pressure) {
         if(!Float.isFinite(pressure)) pressure=0;
         float p=Math.max(0,Math.min(1,(pressure-.05f)/.40f));
@@ -129,7 +132,7 @@ final class ToolSettings {
             return minimum+(maximum-minimum)*p*p;
         return minimum+(maximum-minimum)*(float)Math.pow(p, pressureExponent);
     }
-    boolean supportsEraseMode() { return isBrush() || tool == Tool.PENCIL || tool == Tool.AIRBRUSH; }
+    boolean supportsEraseMode() { return isBrush() || tool == Tool.PENCIL || tool == Tool.AIRBRUSH || tool == Tool.SHAPES || tool == Tool.FILL; }
     boolean isBrush() { return tool == Tool.BRUSH || tool == Tool.WATERCOLOR || tool == Tool.WET_WATERCOLOR || tool == Tool.FLAT_WASH; }
     String label() {
         switch (tool) {

@@ -10,8 +10,11 @@ final class BookCodec {
     private static final int MAX_PAGE_BYTES=DrawingBook.MAX_PACKED_BYTES;
     static void write(OutputStream output,DrawingBook.Snapshot snapshot) throws IOException {
         ArrayList<byte[]> pages=new ArrayList<>(snapshot.pages);
-        ByteArrayOutputStream active=new ByteArrayOutputStream(); DocumentCodec.write(active,snapshot.activePage);
-        pages.set(snapshot.index,active.toByteArray());
+        if(snapshot.packedActivePage!=null)pages.set(snapshot.index,snapshot.packedActivePage);
+        else {
+            ByteArrayOutputStream active=new ByteArrayOutputStream(); DocumentCodec.write(active,snapshot.activePage);
+            pages.set(snapshot.index,active.toByteArray());
+        }
         long size=0;for(byte[] page:pages)size+=page.length;
         if(size>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Drawing exceeds the page storage limit");
         try(ZipOutputStream zip=new ZipOutputStream(new FilterOutputStream(output) {
@@ -32,7 +35,7 @@ final class BookCodec {
     }
     static DrawingBook read(InputStream input) throws IOException {
         byte[] archive=bounded(input,DrawingBook.MAX_PACKED_BYTES+65536);
-        if(archive.length>=4&&archive[0]=='T'&&archive[1]=='S'&&archive[2]=='M'&&(archive[3]=='1'||archive[3]=='2'))
+        if(archive.length>=4&&archive[0]=='T'&&archive[1]=='S'&&archive[2]=='M'&&(archive[3]=='1'||archive[3]=='2'||archive[3]=='3'))
             return new DrawingBook(DocumentCodec.read(new ByteArrayInputStream(archive)));
         // Require the complete central-directory footer, including when local entries are intact.
         int end=archive.length-22;

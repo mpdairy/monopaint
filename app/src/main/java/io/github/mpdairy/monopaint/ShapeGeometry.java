@@ -12,8 +12,10 @@ final class ShapeGeometry {
     void raster(float x,float y,int[] spans) {
         next=spans;java.util.Arrays.fill(next,0);
         // Input beyond the canvas remains bounded, while strokes at its edges clip naturally.
-        x=Math.max(0,Math.min(width,x)); y=Math.max(0,Math.min(height,y));
-        if(settings.shape==ToolSettings.Shape.SQUARE || settings.shape==ToolSettings.Shape.CIRCLE) {
+        if(settings.shape!=ToolSettings.Shape.CIRCLE) {
+            x=Math.max(0,Math.min(width,x)); y=Math.max(0,Math.min(height,y));
+        }
+        if(settings.shape==ToolSettings.Shape.SQUARE) {
             float size=Math.max(Math.abs(x-startX),Math.abs(y-startY));
             x=startX+Math.copySign(size,x-startX); y=startY+Math.copySign(size,y-startY);
         }
@@ -23,6 +25,10 @@ final class ShapeGeometry {
         if(settings.shape==ToolSettings.Shape.LINE) { line(x,y); return; }
         double left=Math.min(startX,x), right=Math.max(startX,x);
         double top=Math.min(startY,y), bottom=Math.max(startY,y);
+        if(settings.shape==ToolSettings.Shape.CIRCLE) {
+            double radius=Math.hypot((double)x-startX,(double)y-startY);
+            left=startX-radius;right=startX+radius;top=startY-radius;bottom=startY+radius;
+        }
         if(right-left<1 || bottom-top<1) return;
         double width=settings.outlineWidth;
         boolean oval=settings.shape==ToolSettings.Shape.OVAL || settings.shape==ToolSettings.Shape.CIRCLE;

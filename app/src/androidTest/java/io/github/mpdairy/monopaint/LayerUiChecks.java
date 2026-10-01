@@ -20,6 +20,7 @@ final class LayerUiChecks {
         Object pad=get(activity,"pad"); DrawingBook original=(DrawingBook)get(activity,"book");
         String originalName=(String)get(activity,"drawingName");
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences"); boolean right=prefs.getBoolean("toolbox_right",false);
+        int originalQuarter=(4-(Integer)get(activity,"appRotation"))%4;
         ToneDocument doc=new ToneDocument(original.width,original.height);
         try {
             main(test,() -> {
@@ -40,7 +41,7 @@ final class LayerUiChecks {
                 check(doc.compositeTone(200,200)==20,"Hard eraser reveals lower pigment");
                 doc.undo(); call(pad,"renderAll"); ((View)pad).invalidate(); call(activity,"recovery");
             });
-            open(test,activity); tap(test,description(popup(activity).getContentView(),"Show Layer 2"));
+            open(test,activity); tap(test,description(popup(activity).getContentView(),"Hide Layer 2"));
             await(test,() -> !doc.layerVisible(1)&&doc.compositeTone(200,200)==20,"Visibility toggle");
             tap(test,description(popup(activity).getContentView(),"Show Layer 2"));
             await(test,() -> doc.layerVisible(1),"Visibility restored");
@@ -62,10 +63,59 @@ final class LayerUiChecks {
                     PanelCoordinates.fromView(content).mapRect(bounds); Matrix inverse=new Matrix();PanelCoordinates.fromView(root).invert(inverse); inverse.mapRect(bounds);
                     check(bounds.left>=-1&&bounds.top>=-1&&bounds.right<=root.getWidth()+1&&bounds.bottom<=root.getHeight()+1,"Layer panel fits rotated screen");
                 });
+                View eye=description(popup.getContentView(),"Hide Layer 2");
+                SelectionFeedback feedback=(SelectionFeedback)get(activity,"layerFeedback");
+                int submissions=feedback.submitted;
+                main(test,() -> {
+                    android.view.MotionEvent down=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,eye.getWidth()/2f,eye.getHeight()/2f,0);
+                    eye.dispatchTouchEvent(down);down.recycle();
+                    check((Boolean)get(eye,"feedbackPressed")&&feedback.submitted>submissions,"Eye press presents an immediate box on the fast display");
+                    android.graphics.Rect region=feedback.lastScreenRegion;
+                    android.graphics.RectF bounds=new android.graphics.RectF(0,0,eye.getWidth(),eye.getHeight());
+                    PanelCoordinates.fromView(eye).mapRect(bounds);
+                    check(bounds.contains(new android.graphics.RectF(region)),"Eye feedback stays within its rotated control");
+                    android.view.MotionEvent cancel=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_CANCEL,0,0,0);
+                    eye.dispatchTouchEvent(cancel);cancel.recycle();
+                    check(!(Boolean)get(eye,"feedbackPressed")&&doc.layerVisible(1),"Cancelled press clears feedback without toggling visibility");
+                });
+                int[] detached={0};
+                main(test,() -> eye.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                    @Override public void onViewAttachedToWindow(View v) {}
+                    @Override public void onViewDetachedFromWindow(View v) {detached[0]++;}
+                }));
+                tap(test,eye);
+                check(feedback.submitted>submissions+2,"Eye click also sends the changed visibility icon through the fast path");
+                check(!doc.layerVisible(1)&&doc.compositeTone(200,200)==20,"Eye hides upper layer");
+                check(popup(activity)==popup&&popup.isShowing()&&detached[0]==0,"Visibility keeps the original Layers window and controls attached: turn="+quarter+" side="+side+" same="+(popup(activity)==popup)+" showing="+popup.isShowing()+" detached="+detached[0]);
+                check(description(popup.getContentView(),"Show Layer 2")==eye,"Same eye updates its action in place");
+                check(description(popup.getContentView(),"Layer 2"+(doc.activeLayer()==1?", selected":"")+", hidden")!=null,"Layer accessibility state updates");
+                if(quarter==0&&!side)screenshot(test,activity,"layers-eye-hidden.png");
+                tap(test,eye);
+                check(doc.layerVisible(1)&&doc.compositeTone(200,200)==180,"Eye restores upper layer");
+                check(popup(activity)==popup&&detached[0]==0&&description(popup.getContentView(),"Hide Layer 2")==eye,"Repeated visibility taps keep the panel open");
+                int selected=doc.activeLayer();
+                tap(test,description(popup.getContentView(),"Layer opacity"));
+                check(doc.layerOpacity(selected)>30&&doc.layerOpacity(selected)<70,"Rotated opacity slider responds");
+                main(test,() -> {
+                    if(popup(activity)!=null)popup(activity).dismiss();
+                    check(doc.undo()&&doc.layerOpacity(selected)==100,"Opacity drag is one undo");
+                    call(pad,"renderAll");
+                });
+                open(test,activity);
                 screenshot(test,activity,"layers-"+quarter+"-"+side+".png");
-                tap(test,find(popup.getContentView(),"Layer 2"));
+                tap(test,find(popup(activity).getContentView(),"Layer 2"));
                 await(test,() -> doc.activeLayer()==1&&get(activity,"layersPopup")==null,"Rotated layer selection hit target");
                 await(test,() -> get(pad,"direct")!=null,"Rotated fast display reconnects");
+                for(boolean all:new boolean[]{false,true}) {
+                    byte[] before=DrawingBook.encode(doc);
+                    main(test,() -> ((View)get(activity,"clearButton")).performClick());test.waitForIdleSync();
+                    PopupWindow clear=(PopupWindow)get(activity,"toolPicker");
+                    check(clear!=null&&clear.isShowing(),"Clear opens dropdown");
+                    tap(test,description(clear.getContentView(),all?"Clear all layers":"Clear current layer"));
+                    check(doc.compositeTone(200,200)==(all?255:20),"Clear scope is correct");
+                    main(test,() -> {check(doc.undo()&&java.util.Arrays.equals(before,DrawingBook.encode(doc)),"Clear is one exact undo");call(pad,"renderAll");});
+                }
+
             }
             main(test,() -> {
                 while(doc.layerCount()<ToneDocument.MAX_LAYERS) doc.addLayer();
@@ -76,19 +126,26 @@ final class LayerUiChecks {
             // Let asynchronous compression run while all eight full-size layers and the display stay resident.
             SystemClock.sleep(2000);
             main(test,() -> check(get(activity,"saveError")==null,"Eight-layer autosave succeeds"));
-            report.append("PASS: layer add/select/show/hide/reorder, opaque brush and transparent eraser, all four orientations and both hands, display reconnection, eight full-resolution layers and autosave.\n");
+            report.append("PASS: eye visibility updates in place without detaching the panel, layer add/select/show/hide/reorder, opaque brush and transparent eraser, all four orientations and both hands, display reconnection, eight full-resolution layers and autosave.\n");
         } finally {
             main(test,() -> {
                 PopupWindow popup=popup(activity); if(popup!=null) popup.dismiss();
                 set(activity,"drawingName",originalName);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 prefs.edit().putBoolean("toolbox_right",right).apply();
-                call(activity,"requestQuarter",new Class<?>[]{int.class},0);call(activity,"applyToolboxSide"); call(activity,"recovery");
+                call(activity,"requestQuarter",new Class<?>[]{int.class},originalQuarter);call(activity,"applyToolboxSide"); call(activity,"recovery");
             });
+            TestSessionSave.await(activity);
         }
     }
     private static void open(Instrumentation test,PaintActivity activity) throws Exception {
-        main(test,() -> ((View)get(activity,"layersButton")).performClick());
+        await(test,() -> activity.hasWindowFocus() && !(Boolean)get(get(activity,"layersButton"),"feedbackPressed"),"Toolbar ready for next press");
+        main(test,() -> {
+            SelectionFeedback feedback=(SelectionFeedback)get(activity,"selectionFeedback");int before=feedback.submitted;
+            View button=(View)get(activity,"layersButton");button.performClick();
+            check(feedback.submitted>before,"Layers toolbar press uses fast feedback");
+            check(button.isSelected(),"Layers toolbar stays outlined while open");
+        });
         await(test,() -> popup(activity)!=null&&popup(activity).isShowing(),"Layers opened");test.waitForIdleSync();SystemClock.sleep(100);
     }
     private static PopupWindow popup(PaintActivity activity) throws Exception {return (PopupWindow)get(activity,"layersPopup");}

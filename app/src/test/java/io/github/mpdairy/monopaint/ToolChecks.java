@@ -10,7 +10,7 @@ public final class ToolChecks {
     }
     private static void gradientSettings() throws Exception {
         ToolLibrary library=new ToolLibrary();library.select(ToolSettings.Tool.FILL);
-        check(library.current().gradient==ToolSettings.Gradient.LINEAR,"Fill defaults to Linear");
+        check(library.current().gradient==ToolSettings.Gradient.FLAT,"Fill defaults to Flat");
         library.edit(library.current().gradient(ToolSettings.Gradient.CIRCULAR).tolerance(23).size(32).minimum(4));
         ToolSettings circular=library.current();ToolLibrary.Preset favorite=library.add();
         library.edit(library.current().gradient(ToolSettings.Gradient.LINEAR).tolerance(7));

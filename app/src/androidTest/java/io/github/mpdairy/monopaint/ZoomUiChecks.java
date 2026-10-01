@@ -270,7 +270,8 @@ final class ZoomUiChecks {
         for(int i=0;i<8;i++) {
             byte[] tones=new byte[count],alpha=new byte[count];
             for(int j=0;j<count;j++){tones[j]=(byte)(j*31+i*7);alpha[j]=(byte)(j*13+i*19);}
-            layers.add(new ToneDocument.Layer("Layer "+i,i%3!=0,tones,alpha));
+            ToneDocument.Layer layer=new ToneDocument.Layer("Layer "+i,i%3!=0,tones,alpha);
+            layer.opacity=i*14;layers.add(layer);
         }
         ToneDocument doc=new ToneDocument(width,height,layers,0);
         Bitmap target=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);

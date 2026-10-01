@@ -33,12 +33,50 @@ public final class BookChecks {
         ByteArrayOutputStream legacy=new ByteArrayOutputStream();DocumentCodec.write(legacy,first.width,first.height,first.snapshot());
         DrawingBook old=BookCodec.read(new ByteArrayInputStream(legacy.toByteArray()));
         check(old.count()==1&&Arrays.equals(first.snapshot(),old.current().snapshot()),"Older drawings open as page one");
+        legacy.reset();first.setLayerOpacity(0,43);DocumentCodec.write(legacy,first.layerSnapshot());
+        check(BookCodec.read(new ByteArrayInputStream(legacy.toByteArray())).current().layerOpacity(0)==43,"Standalone opacity page imports");
         for(int length:new int[]{0,10,zip.length-1,zip.length-22})reject(Arrays.copyOf(zip,length));
         byte[] broken=zip.clone();broken[50]^=1;reject(broken);
         DrawingBook many=new DrawingBook(new ToneDocument(2,2));for(int i=1;i<DrawingBook.MAX_PAGES;i++)many.addPage();
         try{many.addPage();throw new AssertionError("Page limit ignored");}catch(IOException expected){}
         check(many.count()==100,"Page-limit failure preserves existing pages");
+        packedPageReuse();
         System.out.println("PASS: blank pages, navigation/cache, isolated clear, recent undo, immutable ZIP saves, legacy import and damaged-archive rejection");
+    }
+    private static void packedPageReuse() throws Exception {
+        DrawingBook book=new DrawingBook(new ToneDocument(37,29));
+        mark(book.current(),4,5,60);book.addPage();book.select(0);
+        byte[] packed=book.snapshot().packedActivePage;
+        check(packed!=null,"Saved page has reusable compressed data");
+        book.select(1);book.select(0);
+        check(book.snapshot().packedActivePage==packed,"Unchanged browsing reuses the exact compressed page");
+        ToneDocument doc=book.current();
+        Runnable[] edits={
+            () -> mark(doc,5,6,90), () -> doc.undo(), () -> doc.redo(),
+            () -> doc.addLayer(), () -> doc.renameLayer("Ink"),
+            () -> doc.setLayerVisible(1,false), () -> doc.selectLayer(0),
+            () -> doc.moveLayer(1), () -> doc.removeLayer(),
+            () -> doc.undo(), () -> doc.redo(), () -> doc.setLayerVisible(doc.activeLayer(),true), () -> doc.clear(),
+            () -> {doc.begin();doc.paintTone(2,2,17);doc.cancel();}
+        };
+        for(Runnable edit:edits) {
+            edit.run();
+            check(book.snapshot().packedActivePage==null,"Pixel, metadata and history changes invalidate packed data");
+            byte[] expected=DrawingBook.encode(doc);
+            DrawingBook.Snapshot snapshot=book.snapshot();
+            book.select(1);book.select(0);
+            check(Arrays.equals(expected,book.snapshot().packedActivePage),"Navigation stores the latest page state");
+            ByteArrayOutputStream saved=new ByteArrayOutputStream();BookCodec.write(saved,snapshot);
+            DrawingBook restored=BookCodec.read(new ByteArrayInputStream(saved.toByteArray()));
+            check(Arrays.equals(expected,DrawingBook.encode(restored.current())),"Autosave preserves modified page state");
+        }
+        book.addPage();book.addPage();book.select(0);
+        check(book.snapshot().packedActivePage!=null,"Decoded evicted pages reuse their compressed data");
+        DrawingBook.Snapshot stable=book.snapshot();
+        mark(book.current(),3,3,0);
+        ByteArrayOutputStream saved=new ByteArrayOutputStream();BookCodec.write(saved,stable);
+        check(BookCodec.read(new ByteArrayInputStream(saved.toByteArray())).current().tone(3,3)==255,
+                "Reused compressed snapshot stays immutable after later edits");
     }
     private static void mark(ToneDocument d,int x,int y,int gray){d.begin();d.setTone(x,y,gray);d.finish();}
     private static void reject(byte[] data) throws Exception {

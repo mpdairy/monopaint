@@ -27,7 +27,7 @@ final class ShapePreview {
         ToneDocument.Snapshot source=document.layerSnapshot();active=source.active;
         tones=new byte[source.layers.size()][];alpha=new byte[tones.length][];visible=new int[tones.length];
         for(int i=0;i<tones.length;i++) {
-            ToneDocument.Layer layer=source.layers.get(i);tones[i]=layer.tones;alpha[i]=layer.alpha;visible[i]=layer.visible?1:0;
+            ToneDocument.Layer layer=source.layers.get(i);tones[i]=layer.tones;alpha[i]=layer.alpha;visible[i]=layer.visible?layer.opacity:0;
         }
         previous=new int[document.height*4];next=new int[previous.length];
     }

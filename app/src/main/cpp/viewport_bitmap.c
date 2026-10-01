@@ -76,15 +76,18 @@ Java_io_github_mpdairy_monopaint_ViewportBitmap_nativeRender(JNIEnv *env,jclass 
  * references; only this app-owned bitmap is written, never document/undo pixels. */
 JNIEXPORT void JNICALL
 Java_io_github_mpdairy_monopaint_ViewportBitmap_nativeCompose(JNIEnv *env,jclass clazz,
-        jobject target,jobjectArray tones,jobjectArray alpha) {
+        jobject target,jobjectArray tones,jobjectArray alpha,jintArray opacity,jintArray dots) {
     (void)clazz;
     AndroidBitmapInfo info;
     int count=(*env)->GetArrayLength(env,tones);
-    if(count>8 || (*env)->GetArrayLength(env,alpha)!=count
+    if(count>8 || (*env)->GetArrayLength(env,opacity)!=count || (*env)->GetArrayLength(env,alpha)!=count
+            || (dots && (*env)->GetArrayLength(env,dots)!=256*64)
             || AndroidBitmap_getInfo(env,target,&info)!=ANDROID_BITMAP_RESULT_SUCCESS
             || info.format!=ANDROID_BITMAP_FORMAT_RGBA_8888) {
         fail(env,"Invalid navigation layers");return;
     }
+    jint opacities[8]={0};
+    (*env)->GetIntArrayRegion(env,opacity,0,count,opacities);
     jbyteArray tone_refs[8]={0},alpha_refs[8]={0};
     const uint8_t *tone_pixels[8]={0},*alpha_pixels[8]={0};
     for(int i=0;i<count;i++) {
@@ -101,6 +104,8 @@ Java_io_github_mpdairy_monopaint_ViewportBitmap_nativeCompose(JNIEnv *env,jclass
         fail(env,"Cannot compose navigation bitmap");return;
     }
     int ready=1;
+    jint *pattern=dots?(*env)->GetIntArrayElements(env,dots,NULL):NULL;
+    if(dots && !pattern)ready=0;
     for(int i=0;i<count && ready;i++) {
         tone_pixels[i]=(*env)->GetPrimitiveArrayCritical(env,tone_refs[i],NULL);
         if(tone_pixels[i])alpha_pixels[i]=(*env)->GetPrimitiveArrayCritical(env,alpha_refs[i],NULL);
@@ -113,15 +118,19 @@ Java_io_github_mpdairy_monopaint_ViewportBitmap_nativeCompose(JNIEnv *env,jclass
             const uint8_t *t=tone_pixels[layer]+(size_t)y*info.width;
             const uint8_t *a=alpha_pixels[layer]+(size_t)y*info.width;
             for(uint32_t x=0;x<info.width;x++) {
-                unsigned shade=(t[x]*a[x]+(out[x]&255)*(255-a[x])+127)/255;
+                unsigned coverage=(a[x]*opacities[layer]+50)/100;
+                unsigned shade=(t[x]*coverage+(out[x]&255)*(255-coverage)+127)/255;
                 out[x]=0xff000000u|shade*0x010101u;
             }
         }
+        if(pattern)for(uint32_t x=0;x<info.width;x++)
+            out[x]=(uint32_t)pattern[(out[x]&255)*64+(y&7)*8+(x&7)];
     }
     for(int i=count-1;i>=0;i--) {
         if(alpha_pixels[i])(*env)->ReleasePrimitiveArrayCritical(env,alpha_refs[i],(void *)alpha_pixels[i],JNI_ABORT);
         if(tone_pixels[i])(*env)->ReleasePrimitiveArrayCritical(env,tone_refs[i],(void *)tone_pixels[i],JNI_ABORT);
     }
+    if(pattern)(*env)->ReleaseIntArrayElements(env,dots,pattern,JNI_ABORT);
     AndroidBitmap_unlockPixels(env,target);
 }
 

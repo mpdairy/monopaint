@@ -15,15 +15,20 @@ final class ViewportBitmap {
     }
     private static native void nativeRender(Bitmap source,Bitmap target,float[] inverse,int[] dots,
                                              int left,int top,int right,int bottom);
-    private static native void nativeCompose(Bitmap target,byte[][] tones,byte[][] alpha);
+    private static native void nativeCompose(Bitmap target,byte[][] tones,byte[][] alpha,int[] opacity,int[] dots);
     /** One logical composite when navigation starts; never derive shades from display dots. */
     static void compose(ToneDocument document,Bitmap target) {
+        compose(document,target,false);
+    }
+    static void compose(ToneDocument document,Bitmap target,boolean dither) {
         ToneDocument.Snapshot snapshot=document.layerSnapshot();
         java.util.ArrayList<byte[]> tones=new java.util.ArrayList<>(),alpha=new java.util.ArrayList<>();
+        int[] opacity=new int[snapshot.layers.size()];
         for(ToneDocument.Layer layer:snapshot.layers)if(layer.visible) {
+            opacity[tones.size()]=layer.opacity;
             tones.add(layer.tones);alpha.add(layer.alpha);
         }
-        nativeCompose(target,tones.toArray(new byte[0][]),alpha.toArray(new byte[0][]));
+        nativeCompose(target,tones.toArray(new byte[0][]),alpha.toArray(new byte[0][]),java.util.Arrays.copyOf(opacity,tones.size()),dither?DOTS:null);
     }
     final Bitmap bitmap;
     private final Matrix inverse=new Matrix();
