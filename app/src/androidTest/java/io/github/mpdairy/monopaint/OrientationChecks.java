@@ -294,6 +294,8 @@ final class OrientationChecks {
             screenshot(test,activity,"orientation-menu-"+get(activity,"appRotation")+"-"+get(activity,"toolboxRight")+".png");
             android.view.ViewGroup rows=(android.view.ViewGroup)((android.view.ViewGroup)((android.view.ViewGroup)popup.getContentView()).getChildAt(0)).getChildAt(0);
             View settings=rows.getChildAt(4);
+            // Input reaches a popup only once its window has focus, which can lag behind main-thread idle.
+            await(test,() -> popup.getContentView().hasWindowFocus(),"File menu receives input");
             injectTap(test,physicalPoint(settings,settings.getWidth()/2f,settings.getHeight()/2f));
             await(test,() -> !popup.isShowing(),"Rotated menu item responds to its displayed touch target");
             test.waitForIdleSync();
@@ -305,7 +307,8 @@ final class OrientationChecks {
             test.waitForIdleSync();
             android.widget.PopupWindow reopened=(android.widget.PopupWindow)get(activity,"filePopup");
             View pad=(View)get(activity,"pad");
-            injectTap(test,physicalPoint(pad,pad.getWidth()/2f,pad.getHeight()/2f));
+            await(test,() -> reopened.getContentView().hasWindowFocus(),"Reopened file menu receives input");
+            injectTap(test,physicalPoint(pad,pad.getWidth()/2f,pad.getHeight()/2f),true);
             await(test,() -> !reopened.isShowing(),"Tap outside dismisses the anchored menu");
             check(Arrays.equals(tones,((ToneDocument)get(get(activity,"pad"),"document")).snapshot()),"Opening and dismissing the menu preserves drawing pixels");
         } finally {
@@ -319,12 +322,15 @@ final class OrientationChecks {
         Matrix inverse=new Matrix();PanelCoordinates.fromView(root).invert(inverse);inverse.mapRect(bounds);
         return bounds;
     }
-    private static void injectTap(Instrumentation test,float[] point) {
+    private static void injectTap(Instrumentation test,float[] point) {injectTap(test,point,false);}
+    private static void injectTap(Instrumentation test,float[] point,boolean dismissing) {
         long now=SystemClock.uptimeMillis();
         for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {
             MotionEvent event=MotionEvent.obtain(now,SystemClock.uptimeMillis(),action,point[0],point[1],0);
             event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-            check(test.getUiAutomation().injectInputEvent(event,true),"Menu touch injected");event.recycle();
+            boolean delivered=test.getUiAutomation().injectInputEvent(event,true);event.recycle();
+            // A touch outside a modal popup dismisses it on down, which can leave the lift without a target.
+            check(delivered || (dismissing && action==MotionEvent.ACTION_UP),"Menu touch injected");
         }
     }
     private static MotionEvent stylus(long down,long time,int action,float x,float y,float pressure,float tiltX,float tiltY) {
