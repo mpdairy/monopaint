@@ -26,15 +26,15 @@ final class GradientUiChecks {
         DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName");
         ToolLibrary library=(ToolLibrary)get(activity,"library");
-        int gray=(Integer)get(activity,"gray"),maximum=(Integer)get(activity,"maximum");
+        int gray=(Integer)get(get(activity,"paint"),"gray"),maximum=TestAccess.maximum(activity);
         int quarter=(4-(Integer)get(activity,"appRotation"))%4;
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");
         boolean right=prefs.getBoolean("toolbox_right",false);
-        boolean originalErase=(Boolean)get(activity,"eraseMode");
+        boolean originalErase=(Boolean)get(get(activity,"paint"),"eraseMode");
         try {
             main(test,() -> {
-                set(activity,"eraseMode",false);
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                set(get(activity,"paint"),"eraseMode",false);
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 ToolLibrary tools=new ToolLibrary();tools.select(ToolSettings.Tool.FILL);tools.edit(tools.current().gradient(ToolSettings.Gradient.LINEAR));
                 set(activity,"library",tools);set(activity,"drawingName","");
             });
@@ -46,7 +46,7 @@ final class GradientUiChecks {
                     call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));
                     prefs.edit().putBoolean("toolbox_right",hand).apply();
                     call(activity,"requestQuarter",new Class<?>[]{int.class},rotation);call(activity,"applyToolboxSide");
-                    set(activity,"gray",0);
+                    set(get(activity,"paint"),"gray",0);
                 });
                 test.waitForIdleSync();SystemClock.sleep(150);
                 byte[] before=encoded(doc);
@@ -56,7 +56,7 @@ final class GradientUiChecks {
                     check((Boolean)get(pad,"gradientWaiting")&&get(pad,"gradientFill")==null,"Direction line waits without a fill transaction");
                     check(Arrays.equals(before,encoded(doc)),"Waiting leaves every layer unchanged");
                     check(get(activity,"gradientHint")==null,"No immediate hint");
-                    check(((android.widget.TextView)get(activity,"operationStatus")).getText().length()==0,"No tool-rail instruction");
+                    check(((android.widget.TextView)get(get(activity,"toolbar"),"operationStatus")).getText().length()==0,"No tool-rail instruction");
                     guide(pad);
                 });
                 if(rotation==0&&!hand) {
@@ -103,7 +103,7 @@ final class GradientUiChecks {
                     check(get(pad,"gradientFill")==null,"Palette release commits gradient");
                     check(doc.undo()&&Arrays.equals(before,encoded(doc)),"One undo restores all layer data");
                     check(doc.redo()&&doc.tone(240,240)==255,"Redo keeps chosen gradient");doc.undo();
-                    set(activity,"gray",0);
+                    set(get(activity,"paint"),"gray",0);
                 });
                 pen(test,pad,60,60,240,240,MotionEvent.ACTION_UP);
                 shadeEvent(test,activity,true,MotionEvent.ACTION_DOWN);
@@ -111,7 +111,7 @@ final class GradientUiChecks {
                 shadeEvent(test,activity,true,MotionEvent.ACTION_CANCEL);
                 main(test,() -> {
                     check(get(pad,"gradientFill")==null&&Arrays.equals(before,encoded(doc)),"Interrupted selector restores all layers");
-                    check(doc.canRedo()&&(Integer)get(activity,"gray")==0,"Interrupted selector preserves redo and starting shade");
+                    check(doc.canRedo()&&(Integer)get(get(activity,"paint"),"gray")==0,"Interrupted selector preserves redo and starting shade");
                 });
                 // Pick from underneath the preview, then move to a different shade.
                 pen(test,pad,60,60,240,240,MotionEvent.ACTION_UP);
@@ -125,10 +125,10 @@ final class GradientUiChecks {
                     main(test,() -> check(get(activity,"gradientHint")==null,"Eyedropper cancels pending hint timer"));
                 }
                 penEvent(test,pad,MotionEvent.ACTION_DOWN,50,50);
-                await(test,() -> (Integer)get(activity,"gray")==80&&(Boolean)get(pad,"gradientReady"),"Dropper samples original layer composite");
+                await(test,() -> (Integer)get(get(activity,"paint"),"gray")==80&&(Boolean)get(pad,"gradientReady"),"Dropper samples original layer composite");
                 main(test,() -> check((Boolean)get(activity,"pickingShade")&&get(pad,"gradientFill")!=null,"Dropper holds preview open"));
                 penEvent(test,pad,MotionEvent.ACTION_MOVE,300,150);
-                await(test,() -> (Integer)get(activity,"gray")==100&&(Boolean)get(pad,"gradientReady"),"Moving dropper updates shade");
+                await(test,() -> (Integer)get(get(activity,"paint"),"gray")==100&&(Boolean)get(pad,"gradientReady"),"Moving dropper updates shade");
                 penEvent(test,pad,MotionEvent.ACTION_UP,50,50);
                 await(test,() -> get(pad,"gradientFill")==null,"Dropper release commits");
                 main(test,() -> {
@@ -138,23 +138,23 @@ final class GradientUiChecks {
                 // The regular eyedropper also follows a held pen without painting.
                 tap(test,(View)get(activity,"eyedropperButton"));
                 penEvent(test,pad,MotionEvent.ACTION_DOWN,50,50);
-                main(test,() -> check((Integer)get(activity,"gray")==80&&(Boolean)get(activity,"pickingShade"),"Regular dropper stays armed on down"));
+                main(test,() -> check((Integer)get(get(activity,"paint"),"gray")==80&&(Boolean)get(activity,"pickingShade"),"Regular dropper stays armed on down"));
                 penEvent(test,pad,MotionEvent.ACTION_MOVE,300,150);
-                main(test,() -> check((Integer)get(activity,"gray")==100&&(Boolean)get(activity,"pickedShade"),"Regular drag updates visible marker"));
+                main(test,() -> check((Integer)get(get(activity,"paint"),"gray")==100&&(Boolean)get(activity,"pickedShade"),"Regular drag updates visible marker"));
                 penEvent(test,pad,MotionEvent.ACTION_UP,400,150);
                 main(test,() -> {
-                    check((Integer)get(activity,"gray")==255&&!(Boolean)get(activity,"pickingShade"),"Regular dropper accepts release shade");
+                    check((Integer)get(get(activity,"paint"),"gray")==255&&!(Boolean)get(activity,"pickingShade"),"Regular dropper accepts release shade");
                     check(Arrays.equals(before,encoded(doc))&&doc.canRedo(),"Regular sampling leaves artwork and history untouched");
                 });
                 tap(test,(View)get(activity,"eyedropperButton"));
                 penEvent(test,pad,MotionEvent.ACTION_DOWN,50,50);
                 penEvent(test,pad,MotionEvent.ACTION_CANCEL,50,50);
-                main(test,() -> check((Integer)get(activity,"gray")==255&&!(Boolean)get(activity,"pickingShade"),"Canceled dropper restores prior color"));
+                main(test,() -> check((Integer)get(get(activity,"paint"),"gray")==255&&!(Boolean)get(activity,"pickingShade"),"Canceled dropper restores prior color"));
                 chooseGradient(test,activity,ToolSettings.Gradient.CIRCULAR);
                 chooseGradient(test,activity,ToolSettings.Gradient.LINEAR);
                 chooseGradient(test,activity,ToolSettings.Gradient.CIRCULAR);
                 main(test,() -> {
-                    set(activity,"gray",0);
+                    set(get(activity,"paint"),"gray",0);
                     // Direct document undo above bypasses the app's Undo button refresh.
                     call(pad,"renderDirty");call(pad,"present");
                 });
@@ -181,7 +181,7 @@ final class GradientUiChecks {
             ToneDocument doc=new ToneDocument(640,720);
             main(test,() -> {
                 call(activity,"requestQuarter",new Class<?>[]{int.class},0);
-                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));set(activity,"gray",80);
+                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));set(get(activity,"paint"),"gray",80);
             });test.waitForIdleSync();
             chooseGradient(test,activity,ToolSettings.Gradient.FLAT);
             pen(test,pad,60,60,240,240,MotionEvent.ACTION_UP);
@@ -208,7 +208,7 @@ final class GradientUiChecks {
             chooseGradient(test,activity,ToolSettings.Gradient.CIRCULAR);
             ToneDocument large=new ToneDocument(1800,2470);
             main(test,() -> {
-                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(large));set(activity,"gray",0);
+                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(large));set(get(activity,"paint"),"gray",0);
             });test.waitForIdleSync();
             pen(test,pad,60,60,1200,1700,MotionEvent.ACTION_UP);
             shadeEvent(test,activity,true,MotionEvent.ACTION_DOWN);
@@ -231,12 +231,12 @@ final class GradientUiChecks {
         } finally {
             main(test,() -> {
                 call(pad,"finishStroke");
-                set(activity,"library",library);set(activity,"eraseMode",originalErase);set(activity,"drawingName",name);
-                set(activity,"gray",gray);set(activity,"maximum",maximum);
+                set(activity,"library",library);set(get(activity,"paint"),"eraseMode",originalErase);set(activity,"drawingName",name);
+                set(get(activity,"paint"),"gray",gray);TestAccess.setMaximum(activity,maximum);
                 prefs.edit().putBoolean("toolbox_right",right).apply();
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");
-                call(activity,"preferences");call(activity,"recovery");
+                call(activity,"saveToolState");call(activity,"recovery");
             });
             CountDownLatch saved=new CountDownLatch(1);
             ((DocumentStore)get(activity,"store")).recover((value,error) -> saved.countDown());
@@ -246,7 +246,7 @@ final class GradientUiChecks {
     private static void chooseGradient(Instrumentation test,PaintActivity activity,ToolSettings.Gradient type) throws Exception {
         android.widget.PopupWindow[] dialog={null};
         try {
-            main(test,() -> dialog[0]=(android.widget.PopupWindow)call(activity,"settings"));test.waitForIdleSync();
+            main(test,() -> dialog[0]=(android.widget.PopupWindow)call(activity,"showToolSettings"));test.waitForIdleSync();
             tap(test,description(dialog[0].getContentView(),type==ToolSettings.Gradient.FLAT?"Flat fill":type.label+" gradient"));
             main(test,() -> {
                 check(((ToolLibrary)get(activity,"library")).current().gradient==type,"Gradient control selects "+type);

@@ -63,7 +63,7 @@ final class NomadUiChecks {
                 PopupWindow file=(PopupWindow)get(app,"filePopup");
                 check(bounds(frame).contains(bounds(file.getContentView())),"File menu inside preview");
                 main(test,file::dismiss);
-                main(test,() -> call(app,"settings"));idle(test);
+                main(test,() -> call(app,"showToolSettings"));idle(test);
                 PopupWindow tools=(PopupWindow)get(app,"toolPicker");
                 check(bounds(frame).contains(bounds(tools.getContentView())),"Tool panel inside preview");
                 main(test,tools::dismiss);

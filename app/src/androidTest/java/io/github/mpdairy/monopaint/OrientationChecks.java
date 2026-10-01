@@ -30,9 +30,9 @@ final class OrientationChecks {
         SharedPreferences preferences = (SharedPreferences)get(activity,"preferences");
         boolean right = preferences.getBoolean("toolbox_right",false);
         ToolLibrary library = (ToolLibrary)get(activity,"library");
-        int gray = (Integer)get(activity,"gray"), maximum = (Integer)get(activity,"maximum");
-        boolean wet = (Boolean)get(activity,"wetCanvas"), transparent = (Boolean)get(activity,"transparentPaint");
-        OrientationEventListener sensor = (OrientationEventListener)get(activity,"orientationSensor");
+        int gray = (Integer)get(get(activity,"paint"),"gray"), maximum = TestAccess.maximum(activity);
+        boolean wet = (Boolean)get(get(activity,"paint"),"wetCanvas"), transparent = (Boolean)get(get(activity,"paint"),"transparentPaint");
+        OrientationEventListener sensor = (OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor");
         // Pen/display assertions use full-tablet coordinates, regardless of the
         // dimensions of a previously opened drawing in this test install.
         android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
@@ -40,15 +40,15 @@ final class OrientationChecks {
         float density = activity.getResources().getDisplayMetrics().density;
         ToneDocument doc = new ToneDocument(metrics.widthPixels-Math.round(64*density),
                 metrics.heightPixels-Math.round(48*density));
-        boolean originalErase=(Boolean)get(activity,"eraseMode");
+        boolean originalErase=(Boolean)get(get(activity,"paint"),"eraseMode");
         try {
             main(test,() -> {
-                set(activity,"eraseMode",false);
+                set(get(activity,"paint"),"eraseMode",false);
                 sensor.disable();
                 check(sensor.canDetectOrientation(),"Accelerometer is exposed");
-                call(activity,"hideRotationSuggestion");
-                set(activity,"drawingName",""); set(activity,"gray",0); set(activity,"maximum",20);
-                set(activity,"wetCanvas",false); set(activity,"transparentPaint",false);
+                call(get(activity,"rotationPrompt"),"hide");
+                set(activity,"drawingName",""); set(get(activity,"paint"),"gray",0); TestAccess.setMaximum(activity,20);
+                set(get(activity,"paint"),"wetCanvas",false); set(get(activity,"paint"),"transparentPaint",false);
                 set(activity,"library",new ToolLibrary());
                 call(pad,"replace",new Class<?>[]{ToneDocument.class},doc);
                 preferences.edit().putBoolean("toolbox_right",false).apply(); call(activity,"applyToolboxSide");
@@ -82,10 +82,10 @@ final class OrientationChecks {
                 // Header touches travel through the rotated View hierarchy.
                 View shade = (View)get(activity,"shadePicker");
                 tapLocal(activity,shade,1,shade.getHeight()/2f);
-                check((Integer)get(activity,"gray")==255,"Top of landscape shade strip selects white");
+                check((Integer)get(get(activity,"paint"),"gray")==255,"Top of landscape shade strip selects white");
                 tapLocal(activity,shade,shade.getWidth()-1,shade.getHeight()/2f);
-                check((Integer)get(activity,"gray")==0,"Bottom of landscape shade strip selects black");
-                set(activity,"gray",0);
+                check((Integer)get(get(activity,"paint"),"gray")==0,"Bottom of landscape shade strip selects black");
+                set(get(activity,"paint"),"gray",0);
                 check(((View)get(activity,"rotateButton")).getVisibility()==View.INVISIBLE,"Accepted suggestion disappears");
             });
             report.append("Landscape suggestion waits for a stable sensor angle and a tap; document, undo, pen and rotated palette hit testing pass.\n");
@@ -151,12 +151,12 @@ final class OrientationChecks {
         } finally {
             main(test,() -> {
                 call(activity,"requestQuarter",new Class<?>[]{int.class},0);
-                set(activity,"library",library);set(activity,"eraseMode",originalErase); set(activity,"gray",gray); set(activity,"maximum",maximum);
-                set(activity,"wetCanvas",wet); set(activity,"transparentPaint",transparent);
+                set(activity,"library",library);set(get(activity,"paint"),"eraseMode",originalErase); set(get(activity,"paint"),"gray",gray); TestAccess.setMaximum(activity,maximum);
+                set(get(activity,"paint"),"wetCanvas",wet); set(get(activity,"paint"),"transparentPaint",transparent);
                 preferences.edit().putBoolean("toolbox_right",right).apply();
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 set(activity,"drawingName",name); call(activity,"applyToolboxSide");
-                call(activity,"refreshPaintModes"); call(activity,"preferences"); call(activity,"recovery");
+                call(activity,"refreshPaintModes"); call(activity,"saveToolState"); call(activity,"recovery");
             });
             CountDownLatch saved = new CountDownLatch(1);
             ((DocumentStore)get(activity,"store")).recover((value,error) -> saved.countDown());
@@ -169,7 +169,7 @@ final class OrientationChecks {
         ToolLibrary.Preset first=tools.add("Landscape A"), middle=tools.add("Landscape B"), last=tools.add("Landscape C");
         tools.recall(middle.id);
         byte[] tones=document.snapshot();
-        main(test,() -> { set(activity,"library",tools); call(activity,"rebuildTools"); });
+        main(test,() -> { set(activity,"library",tools); call(get(activity,"toolbar"),"rebuildTools"); });
         test.waitForIdleSync();
         try {
             View source=preset(activity,first.id), target=preset(activity,last.id);
@@ -177,24 +177,24 @@ final class OrientationChecks {
             float[] end=physicalPoint(target,target.getWidth()-2,target.getHeight()/2f);
             PaintChecks.drag(test,start[0],start[1],end[0],end[1],0);
             check(tools.presets().get(2).id.equals(first.id),"Horizontal drag reorders presets");
-            main(test,() -> { for(int i=0;i<30;i++)tools.add("Landscape scroll "+i); tools.recall(middle.id); call(activity,"rebuildTools"); });
+            main(test,() -> { for(int i=0;i<30;i++)tools.add("Landscape scroll "+i); tools.recall(middle.id); call(get(activity,"toolbar"),"rebuildTools"); });
             test.waitForIdleSync();
-            source=preset(activity,middle.id); View scroll=(View)get(activity,"landscapeTools");
+            source=preset(activity,middle.id); View scroll=(View)get(get(activity,"toolbar"),"landscapeTools");
             start=physicalPoint(source,source.getWidth()/2f,source.getHeight()/2f);
             end=physicalPoint(scroll,scroll.getWidth()-8,scroll.getHeight()/2f);
             PaintChecks.drag(test,start[0],start[1],end[0],end[1],800);
             check(scroll.getScrollX()>0,"Horizontal drag scrolls at right edge");
             check(Arrays.equals(tones,document.snapshot()),"Horizontal drag never paints");
         } finally {
-            main(test,() -> { set(activity,"library",saved); call(activity,"rebuildTools"); ((View)get(activity,"landscapeTools")).scrollTo(0,0); });
+            main(test,() -> { set(activity,"library",saved); call(get(activity,"toolbar"),"rebuildTools"); ((View)get(get(activity,"toolbar"),"landscapeTools")).scrollTo(0,0); });
         }
     }
     private static View preset(PaintActivity activity,String id) throws Exception {
-        return (View)((java.util.Map<?,?>)get(activity,"selectionButtons")).get(id);
+        return (View)((java.util.Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get(id);
     }
     private static void fastStrokeAndRefresh(Instrumentation test,PaintActivity activity,ToneDocument document,StringBuilder report) throws Exception {
         Object pad=get(activity,"pad"); View view=(View)pad;
-        ToolLibrary saved=(ToolLibrary)get(activity,"library"); int maximum=(Integer)get(activity,"maximum");
+        ToolLibrary saved=(ToolLibrary)get(activity,"library"); int maximum=TestAccess.maximum(activity);
         ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.BRUSH).head(ToolSettings.Head.FLAT).size(48).automaticHead();
         int y=(Integer)get(activity,"appRotation")==Surface.ROTATION_90 ? 1100 : 1400;
         ToneDocument reference=new ToneDocument(document.width,document.height,document.snapshot());
@@ -204,7 +204,7 @@ final class OrientationChecks {
         int draws=(Integer)get(pad,"drawCount"); long[] elapsed={0};
         try {
             main(test,() -> {
-                ToolLibrary tools=new ToolLibrary(); tools.edit(settings); set(activity,"library",tools); set(activity,"maximum",48);
+                ToolLibrary tools=new ToolLibrary(); tools.edit(settings); set(activity,"library",tools); TestAccess.setMaximum(activity,48);
                 float[] points={900,y,1020,y,1140,y};
                 ((Matrix)get(pad,"pageToView")).mapPoints(points); PanelCoordinates.fromView(view).mapPoints(points);
                 long now=SystemClock.uptimeMillis(), started=System.nanoTime();
@@ -238,7 +238,7 @@ final class OrientationChecks {
             refreshed.recycle();
             report.append("App rotation ").append(get(activity,"appRotation")).append(": direct pen + batched signed tilt, no Android pen frames, control patches and full refresh pass; replay CPU ")
                     .append(String.format(java.util.Locale.US,"%.2f",elapsed[0]/1_000_000.0)).append(" ms (not panel latency).\n");
-        } finally { main(test,() -> { set(activity,"library",saved); set(activity,"maximum",maximum); }); }
+        } finally { main(test,() -> { set(activity,"library",saved); TestAccess.setMaximum(activity,maximum); }); }
     }
     private static MotionEvent.PointerCoords coords(float x,float y,float pressure,float tiltX,float tiltY) {
         MotionEvent.PointerCoords c=new MotionEvent.PointerCoords(); c.x=x;c.y=y;c.pressure=pressure;
@@ -247,7 +247,7 @@ final class OrientationChecks {
     private static void dialogChecks(Instrumentation test,PaintActivity activity) throws Exception {
         android.widget.PopupWindow[] dialog={null};
         main(test,() -> {
-            Method method=PaintActivity.class.getDeclaredMethod("settings"); method.setAccessible(true);
+            Method method=PaintActivity.class.getDeclaredMethod("showToolSettings"); method.setAccessible(true);
             dialog[0]=(android.widget.PopupWindow)method.invoke(activity);
         });
         test.waitForIdleSync(); SystemClock.sleep(200);
@@ -353,7 +353,7 @@ final class OrientationChecks {
         }
     }
     private static void layout(PaintActivity activity,boolean right) throws Exception {
-        View palette=(View)get(activity,"paletteFrame"), pad=(View)get(activity,"pad"), tools=(View)get(activity,"landscapeTools");
+        View palette=(View)get(activity,"paletteFrame"), pad=(View)get(activity,"pad"), tools=(View)get(get(activity,"toolbar"),"landscapeTools");
         LinearLayout root=(LinearLayout)get(activity,"root");
         check(root.indexOfChild(palette)==(right ? 1 : 0),"Header is on the non-drawing-hand side");
         check(tools.getBottom()<=pad.getTop(),"Tools stay at the top for both hands and both landscape directions");
@@ -364,7 +364,7 @@ final class OrientationChecks {
         int shadeY=layoutY(root,(View)get(activity,"shadePicker"));
         int pageY=layoutY(root,(View)get(activity,"previousPage"));
         check(menuY<undoY && undoY<shadeY && shadeY<pageY,"Side column reads menu, undo, colors, then pages from top to bottom");
-        check(((LinearLayout)get(activity,"toolRail")).getOrientation()==LinearLayout.HORIZONTAL,"Tool rail runs horizontally");
+        check(((LinearLayout)get(get(activity,"toolbar"),"toolRail")).getOrientation()==LinearLayout.HORIZONTAL,"Tool rail runs horizontally");
         Bitmap bitmap=(Bitmap)get(pad,"display");
         float[] bounds={0,0,bitmap.getWidth(),0,0,bitmap.getHeight(),bitmap.getWidth(),bitmap.getHeight()};
         ((Matrix)get(pad,"pageToView")).mapPoints(bounds);
@@ -389,13 +389,13 @@ final class OrientationChecks {
     }
     private static void shadeMarker(PaintActivity activity) throws Exception {
         View shade=(View)get(activity,"shadePicker"), root=(View)get(activity,"root"), pad=(View)get(activity,"pad");
-        int gray=(Integer)get(activity,"gray");
+        int gray=(Integer)get(get(activity,"paint"),"gray");
         Bitmap rendered=Bitmap.createBitmap(shade.getWidth(),shade.getHeight(),Bitmap.Config.ARGB_8888);
         try {
             tapLocal(activity,shade,1,shade.getHeight()/2f);
-            check((Integer)get(activity,"gray")==255,"Landscape picker keeps white at the top for both hands");
+            check((Integer)get(get(activity,"paint"),"gray")==255,"Landscape picker keeps white at the top for both hands");
             tapLocal(activity,shade,shade.getWidth()-1,shade.getHeight()/2f);
-            check((Integer)get(activity,"gray")==0,"Landscape picker keeps black at the bottom for both hands");
+            check((Integer)get(get(activity,"paint"),"gray")==0,"Landscape picker keeps black at the bottom for both hands");
             shade.draw(new android.graphics.Canvas(rendered));
             int inset=Math.round(3*activity.getResources().getDisplayMetrics().density);
             float[] middle=layoutPoint(root,shade,shade.getWidth()/2f,shade.getHeight()/2f);
@@ -411,7 +411,7 @@ final class OrientationChecks {
                 }
             }
             check(marks>0,"Black selection marker is visible beside the gradient");
-        } finally { rendered.recycle(); set(activity,"gray",gray); shade.invalidate(); }
+        } finally { rendered.recycle(); set(get(activity,"paint"),"gray",gray); shade.invalidate(); }
     }
     private static int layoutY(View root,View view) {
         return Math.round(layoutPoint(root,view,0,0)[1]);

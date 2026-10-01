@@ -30,20 +30,20 @@ final class ToolbarChecks {
         DrawingBook original=(DrawingBook)get(activity,"book");
         String originalName=(String)get(activity,"drawingName");
         ToolLibrary originalTools=(ToolLibrary)get(activity,"library");
-        int originalGray=(Integer)get(activity,"gray"), originalMaximum=(Integer)get(activity,"maximum");
+        int originalGray=(Integer)get(get(activity,"paint"),"gray"), originalMaximum=TestAccess.maximum(activity);
         int originalRotation=(Integer)get(activity,"appRotation");
-        boolean originalWet=(Boolean)get(activity,"wetCanvas"), originalTransparent=(Boolean)get(activity,"transparentPaint");
+        boolean originalWet=(Boolean)get(get(activity,"paint"),"wetCanvas"), originalTransparent=(Boolean)get(get(activity,"paint"),"transparentPaint");
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");
         Map<String,?> originalPrefs=prefs.getAll();
         ToneDocument doc=new ToneDocument(320,480);
         AlertDialog[] dialog={null};
-        boolean originalErase=(Boolean)get(activity,"eraseMode");
+        boolean originalErase=(Boolean)get(get(activity,"paint"),"eraseMode");
         try {
             main(test,() -> {
-                set(activity,"eraseMode",false);
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                set(get(activity,"paint"),"eraseMode",false);
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 call(pad,"finishStroke");call(pad,"dryWet");
-                set(activity,"wetCanvas",false);set(activity,"transparentPaint",false);call(activity,"refreshPaintModes");
+                set(get(activity,"paint"),"wetCanvas",false);set(get(activity,"paint"),"transparentPaint",false);call(activity,"refreshPaintModes");
                 for(ToolSettings.Tool tool:ToolSettings.Tool.values()) prefs.edit().remove("tool_visible_"+tool.name()).apply();
                 prefs.edit().remove("tool_visible_LAYERS").remove("tool_visible_ZOOM").remove("toolbar_order")
                         .remove("large_toolbar_icons").apply();
@@ -56,7 +56,7 @@ final class ToolbarChecks {
                 doc.finish();call(pad,"renderAll");
                 ToolLibrary library=(ToolLibrary)get(activity,"library");
                 library.select(ToolSettings.Tool.PENCIL);library.edit(library.current().size(37));
-                call(activity,"rebuildTools");
+                call(get(activity,"toolbar"),"rebuildTools");
                 dialog[0]=(AlertDialog)call(activity,"appSettings");
             });
             test.waitForIdleSync();
@@ -70,28 +70,28 @@ final class ToolbarChecks {
                     check(findCheck(settings,name).getCompoundDrawables()[0]!=null,"Settings shows the actual icon for "+name);
                 check(!description(settings,"Move Brush up").isEnabled(),"First item cannot move up");
                 check(!description(settings,"Move Palette down").isEnabled(),"Last item cannot move down");
-                int zoomIndex=((java.util.List<?>)call(activity,"toolbarOrder")).indexOf("ZOOM");
+                int zoomIndex=((java.util.List<?>)call(get(activity,"toolbar"),"toolbarOrder")).indexOf("ZOOM");
                 description(settings,"Move Zoom up").performClick();
-                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(zoomIndex-1).equals("ZOOM"),"Zoom can move in saved order");
-                check(((ViewGroup)get(activity,"toolRail")).getChildAt(zoomIndex-1)==get(activity,"zoomButton"),"Zoom uses chosen position");
+                check(((java.util.List<?>)call(get(activity,"toolbar"),"toolbarOrder")).get(zoomIndex-1).equals("ZOOM"),"Zoom can move in saved order");
+                check(((ViewGroup)get(get(activity,"toolbar"),"toolRail")).getChildAt(zoomIndex-1)==get(get(activity,"toolbar"),"zoomButton"),"Zoom uses chosen position");
                 description(settings,"Move Zoom down").performClick();
                 CheckBox zoom=findCheck(settings,"Zoom");zoom.performClick();
-                check(get(activity,"zoomButton")==null && !prefs.getBoolean("tool_visible_ZOOM",true),"Zoom can be hidden and saves");
-                call(activity,"refreshZoom");
+                check(get(get(activity,"toolbar"),"zoomButton")==null && !prefs.getBoolean("tool_visible_ZOOM",true),"Zoom can be hidden and saves");
+                call(get(activity,"toolbar"),"refreshZoom");
                 zoom.performClick();
-                check(get(activity,"zoomButton")!=null,"Zoom can return to toolbar");
-                int layerIndex=((java.util.List<?>)call(activity,"toolbarOrder")).indexOf("LAYERS");
+                check(get(get(activity,"toolbar"),"zoomButton")!=null,"Zoom can return to toolbar");
+                int layerIndex=((java.util.List<?>)call(get(activity,"toolbar"),"toolbarOrder")).indexOf("LAYERS");
                 description(settings,"Move Layers up").performClick();
                 description(settings,"Move Layers down").performClick();
-                check(((java.util.List<?>)call(activity,"toolbarOrder")).get(layerIndex).equals("LAYERS"),"Down control reverses an upward move");
+                check(((java.util.List<?>)call(get(activity,"toolbar"),"toolbarOrder")).get(layerIndex).equals("LAYERS"),"Down control reverses an upward move");
                 for(int i=0;i<layerIndex;i++)description(settings,"Move Layers up").performClick();
                 check(prefs.getString("toolbar_order","").startsWith("LAYERS,"),"Toolbar order persists");
-                ViewGroup rail=(ViewGroup)get(activity,"toolRail");
-                check(rail.getChildAt(0)==get(activity,"layersButton"),"Toolbar uses chosen layer position");
+                ViewGroup rail=(ViewGroup)get(get(activity,"toolbar"),"toolRail");
+                check(rail.getChildAt(0)==get(get(activity,"toolbar"),"layersButton"),"Toolbar uses chosen layer position");
                 CheckBox layers=findCheck(settings,"Layers");layers.performClick();
-                check(get(activity,"layersButton")==null && !prefs.getBoolean("tool_visible_LAYERS",true),"Layers can be hidden and preference saves");
+                check(get(get(activity,"toolbar"),"layersButton")==null && !prefs.getBoolean("tool_visible_LAYERS",true),"Layers can be hidden and preference saves");
                 layers.performClick();
-                check(rail.getChildAt(0)==get(activity,"layersButton"),"Layers returns to chosen position");
+                check(rail.getChildAt(0)==get(get(activity,"toolbar"),"layersButton"),"Layers returns to chosen position");
                 CheckBox pencil=findCheck(dialog[0].getWindow().getDecorView(),"Pencil");
                 check(pencil!=null && pencil.isChecked(),"Pencil visible by default");pencil.performClick();
                 ToolLibrary library=(ToolLibrary)get(activity,"library");
@@ -102,12 +102,12 @@ final class ToolbarChecks {
                 pencil.performClick();
                 check(buttons(activity).containsKey("tool:PENCIL"),"Tool can be re-enabled");
                 library.select(ToolSettings.Tool.PENCIL);String id=library.add("Test pencil").id;
-                call(activity,"rebuildTools");pencil.performClick();
+                call(get(activity,"toolbar"),"rebuildTools");pencil.performClick();
                 check(buttons(activity).containsKey(id) && library.activeId().equals(id),"Hiding base tool preserves selected favorite");
                 for(String name:new String[]{"Airbrush","Fill","Shapes","Eraser","Blending stump"}) findCheck(dialog[0].getWindow().getDecorView(),name).performClick();
                 CheckBox brush=findCheck(dialog[0].getWindow().getDecorView(),"Brush");brush.performClick();
                 check(brush.isChecked() && buttons(activity).containsKey("tool:BRUSH"),"Cannot hide last regular tool");
-                call(activity,"preferences");
+                call(activity,"saveToolState");
                 ToolLibrary decoded=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
                 check(decoded.activeId().equals(id) && decoded.builtin(ToolSettings.Tool.PENCIL).maximum==37,"Saved favorite and hidden settings survive decoding");
                 dialog[0].dismiss();dialog[0]=null;
@@ -121,11 +121,11 @@ final class ToolbarChecks {
                 main(test,() -> {
                     prefs.edit().putBoolean("toolbox_right",right).apply();
                     call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");
-                    set(activity,"gray",0);
+                    set(get(activity,"paint"),"gray",0);
                 });
                 test.waitForIdleSync();SystemClock.sleep(150);
                 main(test,() -> {
-                    check(((ViewGroup)get(activity,"toolRail")).getChildAt(0)==get(activity,"layersButton"),"Toolbar order survives orientation and hand changes");
+                    check(((ViewGroup)get(get(activity,"toolbar"),"toolRail")).getChildAt(0)==get(get(activity,"toolbar"),"layersButton"),"Toolbar order survives orientation and hand changes");
                     dialog[0]=(AlertDialog)call(activity,"appSettings");
                 });
                 test.waitForIdleSync();
@@ -135,8 +135,8 @@ final class ToolbarChecks {
                         check(prefs.getBoolean("large_toolbar_icons",true)==large,"Icon size persists");
                         for(Object button:buttons(activity).values())
                             check((Integer)get(button,"iconHalf")== (large?18:14),"Size applies to regular and favorite icons");
-                        check((Integer)get(get(activity,"layersButton"),"iconHalf")== (large?18:14),"Layers icon follows size");
-                        check((Integer)get(get(activity,"zoomButton"),"iconHalf")== (large?16:12),"Zoom icon follows size");
+                        check((Integer)get(get(get(activity,"toolbar"),"layersButton"),"iconHalf")== (large?18:14),"Layers icon follows size");
+                        check((Integer)get(get(get(activity,"toolbar"),"zoomButton"),"iconHalf")== (large?16:12),"Zoom icon follows size");
                         check((Integer)get(get(activity,"eyedropperButton"),"iconHalf")==14,"Header icon size stays unchanged");
                     });
                     if(large)screenshot(test,activity,"toolbar-large-"+quarter+"-"+right+".png");
@@ -144,7 +144,7 @@ final class ToolbarChecks {
                 // Exercise the move targets through the rotated dialog, not only performClick.
                 tap(test,description(dialog[0].getWindow().getDecorView(),"Move Layers down"));
                 tap(test,description(dialog[0].getWindow().getDecorView(),"Move Layers up"));
-                main(test,() -> check(((java.util.List<?>)call(activity,"toolbarOrder")).get(0).equals("LAYERS"),"Rotated Settings move targets respond"));
+                main(test,() -> check(((java.util.List<?>)call(get(activity,"toolbar"),"toolbarOrder")).get(0).equals("LAYERS"),"Rotated Settings move targets respond"));
                 screenshot(test,activity,"toolbar-settings-"+quarter+"-"+right+".png");
                 main(test,() -> {dialog[0].dismiss();dialog[0]=null;});
                 await(test,activity::hasWindowFocus,"Canvas focus after Settings");
@@ -153,7 +153,7 @@ final class ToolbarChecks {
                 screenshot(test,activity,"eyedropper-"+quarter+"-"+right+".png");
                 pen(test,pad,110,110);
                 main(test,() -> {
-                    check((Integer)get(activity,"gray")==expected,"Eyedropper samples logical composite in rotation "+quarter+", hand "+right);
+                    check((Integer)get(get(activity,"paint"),"gray")==expected,"Eyedropper samples logical composite in rotation "+quarter+", hand "+right);
                     check(!(Boolean)get(activity,"pickingShade"),"Eyedropper returns after one sample");
                     check(((ToolLibrary)get(activity,"library")).activeId().equals(preset),"Previous favorite retained");
                     check(Arrays.equals(before,encoded(doc)),"Sample gesture leaves all layers unchanged");
@@ -165,7 +165,7 @@ final class ToolbarChecks {
             main(test,() -> {doc.setLayerVisible(1,false);call(pad,"renderAll");((View)get(activity,"eyedropperButton")).performClick();});
             pen(test,pad,110,110);
             main(test,() -> {
-                check((Integer)get(activity,"gray")==40,"Hidden selected layer does not prevent picking visible layer");
+                check((Integer)get(get(activity,"paint"),"gray")==40,"Hidden selected layer does not prevent picking visible layer");
                 ((View)get(activity,"eyedropperButton")).performClick();
                 ((View)get(activity,"eyedropperButton")).performClick();
                 check(!(Boolean)get(activity,"pickingShade"),"Second eyedropper tap cancels");
@@ -188,9 +188,9 @@ final class ToolbarChecks {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();
                 call(activity,"setPickingShade",new Class<?>[]{boolean.class},false);
-                set(activity,"drawingName",originalName);set(activity,"library",originalTools);set(activity,"eraseMode",originalErase);
-                set(activity,"gray",originalGray);set(activity,"maximum",originalMaximum);
-                set(activity,"wetCanvas",originalWet);set(activity,"transparentPaint",originalTransparent);call(activity,"refreshPaintModes");
+                set(activity,"drawingName",originalName);set(activity,"library",originalTools);set(get(activity,"paint"),"eraseMode",originalErase);
+                set(get(activity,"paint"),"gray",originalGray);TestAccess.setMaximum(activity,originalMaximum);
+                set(get(activity,"paint"),"wetCanvas",originalWet);set(get(activity,"paint"),"transparentPaint",originalTransparent);call(activity,"refreshPaintModes");
                 SharedPreferences.Editor editor=prefs.edit();
                 for(ToolSettings.Tool tool:ToolSettings.Tool.values()) {
                     String key="tool_visible_"+tool.name();
@@ -204,7 +204,7 @@ final class ToolbarChecks {
                 editor.putBoolean("toolbox_right",Boolean.TRUE.equals(originalPrefs.get("toolbox_right"))).apply();
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 call(activity,"requestQuarter",new Class<?>[]{int.class},originalRotation);call(activity,"applyToolboxSide");
-                call(activity,"preferences");call(activity,"recovery");
+                call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
         }
@@ -217,17 +217,17 @@ final class ToolbarChecks {
         long down=SystemClock.uptimeMillis();
         MotionEvent press=MotionEvent.obtain(down,down,MotionEvent.ACTION_DOWN,menu.getWidth()/2f,menu.getHeight()/2f,0);
         try {menu.dispatchTouchEvent(press);}finally{press.recycle();}
-        check((Boolean)get(menu,"feedbackPressed") && feedback.submitted>menuSubmissions,"Hamburger shows immediate fast-path press outline");
+        check((Boolean)get(get(menu,"press"),"pressed") && feedback.submitted>menuSubmissions,"Hamburger shows immediate fast-path press outline");
         check(get(activity,"filePopup")==null,"Menu press feedback precedes opening the menu");
         MotionEvent cancel=MotionEvent.obtain(down,SystemClock.uptimeMillis(),MotionEvent.ACTION_CANCEL,0,0,0);
         try {menu.dispatchTouchEvent(cancel);}finally{cancel.recycle();}
-        check(!(Boolean)get(menu,"feedbackPressed") && get(activity,"filePopup")==null,"Cancelled hamburger press clears its outline without opening the menu");
+        check(!(Boolean)get(get(menu,"press"),"pressed") && get(activity,"filePopup")==null,"Cancelled hamburger press clears its outline without opening the menu");
         boolean oldFeedback=feedback.enabled;
-        int oldGray=(Integer)get(activity,"gray");
+        int oldGray=(Integer)get(get(activity,"paint"),"gray");
         try {
             for(boolean instant:new boolean[]{false,true}) {
                 feedback.enabled=instant;
-                View selected=(View)buttons(activity).get(call(activity,"selectedKey"));
+                View selected=(View)buttons(activity).get(call(get(activity,"toolbar"),"selectedKey"));
                 View brush=(View)buttons(activity).get("tool:BRUSH");
                 Bitmap inactive=render(brush);
                 int toolSubmissions=feedback.submitted;
@@ -244,19 +244,19 @@ final class ToolbarChecks {
                 Bitmap restored=render(brush);
                 check(inactive.sameAs(restored),"Deselecting restores exact toolbar pixels");
                 inactive.recycle();active.recycle();restored.recycle();
-                set(activity,"gray",128);
+                set(get(activity,"paint"),"gray",128);
                 Bitmap shadeBefore=render(shade), eyeBefore=render(eye);
                 Bitmap shadeArmed=null, eyeArmed=null, shadeOther=null, shadeAfter=null, eyeAfter=null;
                 try {
                     int submitted=feedback.submitted;
                     eye.performClick();
-                    check((Boolean)get(activity,"pickingShade") && (Integer)get(activity,"gray")==128,"Arming retains previous shade");
+                    check((Boolean)get(activity,"pickingShade") && (Integer)get(get(activity,"paint"),"gray")==128,"Arming retains previous shade");
                     shadeArmed=render(shade);eyeArmed=render(eye);
                     check(!shadeBefore.sameAs(shadeArmed),"Color indicators disappear while picking");
                     // No indicator may reveal the remembered shade while the eyedropper is armed.
-                    set(activity,"gray",220);shadeOther=render(shade);
+                    set(get(activity,"paint"),"gray",220);shadeOther=render(shade);
                     check(shadeArmed.sameAs(shadeOther),"Neither color indicator is drawn while picking");
-                    set(activity,"gray",128);
+                    set(get(activity,"paint"),"gray",128);
                     Rect declared=(Rect)call(eye,"markerArea");
                     Matrix panelToRoot=new Matrix();PanelCoordinates.fromView(root).invert(panelToRoot);
                     Matrix eyeToRoot=PanelCoordinates.fromView(eye);eyeToRoot.postConcat(panelToRoot);
@@ -275,7 +275,7 @@ final class ToolbarChecks {
                     check(changes>=25*density*density && changes<=49*density*density,"Small square marker has expected size");
                     if(instant)check(feedback.submitted>submitted,"Marker transfer reaches direct e-ink feedback");
                     eye.performClick();
-                    check(!(Boolean)get(activity,"pickingShade") && (Integer)get(activity,"gray")==128,"Cancel restores remembered color");
+                    check(!(Boolean)get(activity,"pickingShade") && (Integer)get(get(activity,"paint"),"gray")==128,"Cancel restores remembered color");
                     shadeAfter=render(shade);eyeAfter=render(eye);
                     check(shadeBefore.sameAs(shadeAfter) && eyeBefore.sameAs(eyeAfter),"Cancel restores both controls pixel for pixel");
                 } finally {
@@ -285,7 +285,7 @@ final class ToolbarChecks {
             }
         } finally {
             call(activity,"setPickingShade",new Class<?>[]{boolean.class},false);
-            feedback.enabled=oldFeedback;set(activity,"gray",oldGray);shade.invalidate();eye.invalidate();
+            feedback.enabled=oldFeedback;set(get(activity,"paint"),"gray",oldGray);shade.invalidate();eye.invalidate();
         }
     }
     private static Bitmap render(View view) {
@@ -295,7 +295,7 @@ final class ToolbarChecks {
     private static byte[] encoded(ToneDocument doc) throws Exception {
         java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();DocumentCodec.write(out,doc.layerSnapshot());return out.toByteArray();
     }
-    private static Map<?,?> buttons(PaintActivity activity) throws Exception {return (Map<?,?>)get(activity,"selectionButtons");}
+    private static Map<?,?> buttons(PaintActivity activity) throws Exception {return (Map<?,?>)get(get(activity,"toolbar"),"selectionButtons");}
     private static View description(View view,String text) {
         if(text.contentEquals(view.getContentDescription()==null ? "" : view.getContentDescription()))return view;
         if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++) {

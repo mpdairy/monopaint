@@ -23,8 +23,8 @@ final class ZoomUiChecks {
         Object pad=get(activity,"pad"); View view=(View)pad;
         DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName"); ToolLibrary library=(ToolLibrary)get(activity,"library");
-        int gray=(Integer)get(activity,"gray"), maximum=(Integer)get(activity,"maximum"), rotation=(Integer)get(activity,"appRotation");
-        boolean wet=(Boolean)get(activity,"wetCanvas"), transparent=(Boolean)get(activity,"transparentPaint"), erase=(Boolean)get(activity,"eraseMode");
+        int gray=(Integer)get(get(activity,"paint"),"gray"), maximum=TestAccess.maximum(activity), rotation=(Integer)get(activity,"appRotation");
+        boolean wet=(Boolean)get(get(activity,"paint"),"wetCanvas"), transparent=(Boolean)get(get(activity,"paint"),"transparentPaint"), erase=(Boolean)get(get(activity,"paint"),"eraseMode");
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences"); boolean right=prefs.getBoolean("toolbox_right",false);
         boolean originalLock=(Boolean)get(activity,"navigationLocked"), hadLock=prefs.contains("navigation_locked");
         boolean zoomVisible=prefs.getBoolean("tool_visible_ZOOM",true), hadZoomVisible=prefs.contains("tool_visible_ZOOM");
@@ -36,15 +36,15 @@ final class ZoomUiChecks {
                 rasterChecks();
                 check(originalLock==prefs.getBoolean("navigation_locked",true),"Navigation defaults to locked and restores saved choice");
                 prefs.edit().putBoolean("tool_visible_ZOOM",true).apply();
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 call(pad,"finishStroke"); call(pad,"dryWet");
-                set(activity,"drawingName",""); set(activity,"gray",0); set(activity,"maximum",16);
-                set(activity,"wetCanvas",false);set(activity,"transparentPaint",false);set(activity,"eraseMode",false);
+                set(activity,"drawingName",""); set(get(activity,"paint"),"gray",0); TestAccess.setMaximum(activity,16);
+                set(get(activity,"paint"),"wetCanvas",false);set(get(activity,"paint"),"transparentPaint",false);set(get(activity,"paint"),"eraseMode",false);
                 set(activity,"library",new ToolLibrary());
                 doc.begin();
                 for(int y=doc.height/2-180;y<doc.height/2+180;y++) for(int x=doc.width/2-180;x<doc.width/2+180;x++) doc.setTone(x,y,170);
                 doc.finish();
-                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc)); call(activity,"rebuildTools");
+                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc)); call(get(activity,"toolbar"),"rebuildTools");
             });
             for(int turn=0;turn<4;turn++) for(boolean hand:new boolean[]{false,true}) {
                 final int quarter=turn;
@@ -55,12 +55,12 @@ final class ZoomUiChecks {
                 test.waitForIdleSync(); SystemClock.sleep(300);
                 main(test,() -> {
                     call(pad,"fitPage");set(pad,"penGuardUntil",0L);
-                    View zoom=(View)get(activity,"zoomButton");
+                    View zoom=(View)get(get(activity,"toolbar"),"zoomButton");
                     zoom.requestRectangleOnScreen(new Rect(0,0,zoom.getWidth(),zoom.getHeight()),true);
                 });
                 test.waitForIdleSync();SystemClock.sleep(100);
                 main(test,() -> {
-                    View zoom=(View)get(activity,"zoomButton");
+                    View zoom=(View)get(get(activity,"toolbar"),"zoomButton");
                     if(!(Boolean)get(activity,"navigationLocked"))zoom.performClick();
                     Matrix locked=new Matrix((Matrix)get(pad,"pageToView"));
                     pinch(activity,pad,view.getWidth()/2f,view.getHeight()/2f);
@@ -95,7 +95,7 @@ final class ZoomUiChecks {
                     pinch(activity,pad,x,y);
                     CanvasViewport viewport=(CanvasViewport)get(pad,"viewport");
                     check(Math.abs(viewport.zoom-2)<.01,"Two fingers zoom to 200% in rotation "+quarter);
-                    check(((View)get(activity,"zoomButton")).getContentDescription().toString().contains(viewport.percent()+"%"),"Toolbar percentage updates during pinch");
+                    check(((View)get(get(activity,"toolbar"),"zoomButton")).getContentDescription().toString().contains(viewport.percent()+"%"),"Toolbar percentage updates during pinch");
                     check(Arrays.equals(before,doc.snapshot()),"Pinch and pan leave all artwork unchanged");
                     check(get(pad,"viewportBitmap")!=null,"Zoom uses a clipped screen raster");
                     Matrix inverse=(Matrix)get(pad,"viewToPage");float[] page={x,y};inverse.mapPoints(page);
@@ -145,7 +145,7 @@ final class ZoomUiChecks {
                         check(direct.readGray(x+dx,y)==0,"Zoomed pen ink reaches native panel in rotation "+quarter);
                     }
                     check(doc.undo(),"Native zoomed stroke can undo");call(pad,"renderDirty");call(pad,"present");
-                    View zoom=(View)get(activity,"zoomButton");
+                    View zoom=(View)get(get(activity,"toolbar"),"zoomButton");
                     Matrix locked=new Matrix((Matrix)get(pad,"pageToView"));
                     zoom.performClick();set(pad,"penGuardUntil",0L);
                     pinch(activity,pad,x,y);
@@ -177,15 +177,15 @@ final class ZoomUiChecks {
         } finally {
             main(test,() -> {
                 call(pad,"finishStroke");call(pad,"dryWet");
-                set(activity,"drawingName",name);set(activity,"library",library);set(activity,"gray",gray);set(activity,"maximum",maximum);
-                set(activity,"wetCanvas",wet);set(activity,"transparentPaint",transparent);set(activity,"eraseMode",erase);
+                set(activity,"drawingName",name);set(activity,"library",library);set(get(activity,"paint"),"gray",gray);TestAccess.setMaximum(activity,maximum);
+                set(get(activity,"paint"),"wetCanvas",wet);set(get(activity,"paint"),"transparentPaint",transparent);set(get(activity,"paint"),"eraseMode",erase);
                 SharedPreferences.Editor restore=prefs.edit().putBoolean("toolbox_right",right);
                 if(hadLock)restore.putBoolean("navigation_locked",originalLock);else restore.remove("navigation_locked");
                 if(hadZoomVisible)restore.putBoolean("tool_visible_ZOOM",zoomVisible);else restore.remove("tool_visible_ZOOM");
                 restore.apply();set(activity,"navigationLocked",originalLock);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 call(activity,"requestQuarter",new Class<?>[]{int.class},rotation);call(activity,"applyToolboxSide");
-                call(activity,"refreshPaintModes");call(activity,"preferences");call(activity,"recovery");
+                call(activity,"refreshPaintModes");call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
         }
@@ -257,9 +257,9 @@ final class ZoomUiChecks {
             touch(activity,pad,MotionEvent.ACTION_DOWN,new int[]{7},new int[]{1},new float[]{x-100,y});
             touch(activity,pad,MotionEvent.ACTION_POINTER_DOWN|(1<<8),new int[]{7,12},new int[]{1,1},new float[]{x-100,y,x+100,y});
             touch(activity,pad,MotionEvent.ACTION_MOVE,new int[]{7,12},new int[]{1,1},new float[]{x-120,y,x+120,y});
-            ((View)get(activity,"zoomButton")).performClick();
+            ((View)get(get(activity,"toolbar"),"zoomButton")).performClick();
             check((Boolean)get(activity,"navigationLocked")&&!(Boolean)get(pad,"navigationFrameScheduled")&&!(Boolean)get(pad,"navigating"),"Lock interruption drains the preview");
-            ((View)get(activity,"zoomButton")).performClick();
+            ((View)get(get(activity,"toolbar"),"zoomButton")).performClick();
             call(pad,"fitPage");
         });
         test.waitForIdleSync();

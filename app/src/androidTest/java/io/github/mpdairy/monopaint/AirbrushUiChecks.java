@@ -23,29 +23,29 @@ final class AirbrushUiChecks {
         test.waitForIdleSync();
         Object pad=get(activity,"pad");DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName");ToolLibrary library=(ToolLibrary)get(activity,"library");
-        int gray=(Integer)get(activity,"gray"),maximum=(Integer)get(activity,"maximum"),rotation=(Integer)get(activity,"appRotation");
+        int gray=(Integer)get(get(activity,"paint"),"gray"),maximum=TestAccess.maximum(activity),rotation=(Integer)get(activity,"appRotation");
         ToneDocument doc=new ToneDocument(320,480);PopupWindow[] dialog={null};
-        boolean originalErase=(Boolean)get(activity,"eraseMode");
+        boolean originalErase=(Boolean)get(get(activity,"paint"),"eraseMode");
         try {
             main(test,() -> {
-                set(activity,"eraseMode",false);
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                set(get(activity,"paint"),"eraseMode",false);
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 call(pad,"finishStroke");call(pad,"dryWet");
                 set(activity,"drawingName","");set(activity,"library",new ToolLibrary());
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));
-                call(activity,"rebuildTools");
-                Map<?,?> buttons=(Map<?,?>)get(activity,"selectionButtons");
+                call(get(activity,"toolbar"),"rebuildTools");
+                Map<?,?> buttons=(Map<?,?>)get(get(activity,"toolbar"),"selectionButtons");
                 check(buttons.containsKey("tool:ERASER"),"Standalone eraser remains available");
                 ((View)buttons.get("tool:AIRBRUSH")).performClick();
                 check(((ToolLibrary)get(activity,"library")).current().tool==ToolSettings.Tool.AIRBRUSH,"Toolbar selects airbrush");
-                dialog[0]=(PopupWindow)call(activity,"settings");
+                dialog[0]=(PopupWindow)call(activity,"showToolSettings");
                 View content=dialog[0].getContentView();
                 ((SeekBar)find(content,"Airbrush diameter")).setProgress(62);
                 ((SeekBar)find(content,"Flow")).setProgress(55);
                 ToolSettings settings=((ToolLibrary)get(activity,"library")).current();
                 check(settings.maximum==64&&settings.strength==55,"Size and flow controls edit settings");
                 check(find(content,"Minimum diameter")==null,"Airbrush has a single fixed size");
-                dialog[0].dismiss();dialog[0]=null;set(activity,"gray",0);
+                dialog[0].dismiss();dialog[0]=null;set(get(activity,"paint"),"gray",0);
             });
             test.waitForIdleSync();SystemClock.sleep(150);
             for(int quarter=0;quarter<4;quarter++) {
@@ -79,10 +79,10 @@ final class AirbrushUiChecks {
         } finally {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();call(pad,"finishStroke");call(pad,"dryWet");
-                set(activity,"drawingName",name);set(activity,"library",library);set(activity,"eraseMode",originalErase);set(activity,"gray",gray);set(activity,"maximum",maximum);
+                set(activity,"drawingName",name);set(activity,"library",library);set(get(activity,"paint"),"eraseMode",originalErase);set(get(activity,"paint"),"gray",gray);TestAccess.setMaximum(activity,maximum);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
-                call(activity,"requestQuarter",new Class<?>[]{int.class},rotation);call(activity,"rebuildTools");
-                call(activity,"preferences");call(activity,"recovery");
+                call(activity,"requestQuarter",new Class<?>[]{int.class},rotation);call(get(activity,"toolbar"),"rebuildTools");
+                call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
         }

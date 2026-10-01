@@ -181,7 +181,7 @@ final class PageNavigationChecks {
                 "Page buttons must not be clipped, including density rounding");
         event(test,MotionEvent.ACTION_DOWN,down,bounds.centerX(),bounds.centerY());
         main(test,() -> {
-            check((Boolean)get(button,"feedbackPressed"),"Press is visibly retained on pen-down");
+            check((Boolean)get(get(button,"press"),"pressed"),"Press is visibly retained on pen-down");
             check(feedback.submitted>submitted,"Press uses fast display before loading");
             check(book.index()==before,"Page work waits until click");
         });
@@ -189,7 +189,7 @@ final class PageNavigationChecks {
         check(book.index()==expected,"Correct page after action");
         check((Integer)get(get(app,"pad"),"pagePresentCount")>pageSubmissions,"Page artwork submitted through fast display");
         SystemClock.sleep(250);test.waitForIdleSync();
-        check(!(Boolean)get(button,"feedbackPressed"),"Press clears after completion");
+        check(!(Boolean)get(get(button,"press"),"pressed"),"Press clears after completion");
     }
     private static void verifyRaster(StringBuilder report) {
         int width=257,height=193;

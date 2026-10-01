@@ -38,9 +38,9 @@ final class ShapeUiChecks {
         test.waitForIdleSync();
         Object pad=get(activity,"pad"); DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName"); ToolLibrary library=(ToolLibrary)get(activity,"library");
-        int gray=(Integer)get(activity,"gray"),maximum=(Integer)get(activity,"maximum");
+        int gray=(Integer)get(get(activity,"paint"),"gray"),maximum=TestAccess.maximum(activity);
         int quarter=(4-(Integer)get(activity,"appRotation"))%4;
-        boolean erase=(Boolean)get(activity,"eraseMode");
+        boolean erase=(Boolean)get(get(activity,"paint"),"eraseMode");
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");
         boolean brushVisible=prefs.getBoolean("tool_visible_BRUSH",true);
         boolean right=prefs.getBoolean("toolbox_right",false),visible=prefs.getBoolean("tool_visible_SHAPES",true);
@@ -52,11 +52,11 @@ final class ShapeUiChecks {
         try {
             main(test,() -> {
                 call(pad,"finishStroke");call(pad,"dryWet");
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
-                set(activity,"eraseMode",false);set(activity,"drawingName","");set(activity,"library",new ToolLibrary());
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
+                set(get(activity,"paint"),"eraseMode",false);set(activity,"drawingName","");set(activity,"library",new ToolLibrary());
                 prefs.edit().putBoolean("shape_chosen",true).putBoolean("tool_visible_SHAPES",true).putBoolean("tool_visible_BRUSH",pickerOnly||brushVisible).apply();
-                call(activity,"rebuildTools");
-                Map<?,?> buttons=(Map<?,?>)get(activity,"selectionButtons");
+                call(get(activity,"toolbar"),"rebuildTools");
+                Map<?,?> buttons=(Map<?,?>)get(get(activity,"toolbar"),"selectionButtons");
                 ((View)buttons.get("tool:SHAPES")).performClick();
                 check(((ToolLibrary)get(activity,"library")).current().tool==ToolSettings.Tool.SHAPES,"Sidebar selects Shapes");
             });
@@ -76,10 +76,10 @@ final class ShapeUiChecks {
                     call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));
                     prefs.edit().putBoolean("toolbox_right",hand).apply();
                     call(activity,"requestQuarter",new Class<?>[]{int.class},turn);call(activity,"applyToolboxSide");
-                    set(activity,"gray",70);
+                    set(get(activity,"paint"),"gray",70);
                 });
                 test.waitForIdleSync();
-                main(test,() -> dialog[0]=(PopupWindow)call(activity,"settings"));
+                main(test,() -> dialog[0]=(PopupWindow)call(activity,"showToolSettings"));
                 test.waitForIdleSync();SystemClock.sleep(100);
                 View decor=dialog[0].getContentView();
                 tap(test,find(decor,"Rectangle shape"));tap(test,find(decor,"Filled shape"));
@@ -134,7 +134,7 @@ final class ShapeUiChecks {
                     assertRendered(pad,doc);
                     check(doc.undo(),"Zoom shape undo");call(pad,"fitPage");
                     ToolLibrary tools=(ToolLibrary)get(activity,"library");tools.edit(tools.current().shape(ToolSettings.Shape.LINE).filled(true).outlineWidth(1));
-                    dialog[0]=(PopupWindow)call(activity,"settings");
+                    dialog[0]=(PopupWindow)call(activity,"showToolSettings");
                     check(find(dialog[0].getContentView(),"Shape outline width").isShown(),"Line always exposes width");
                     dialog[0].dismiss();dialog[0]=null;
                 });
@@ -175,7 +175,7 @@ final class ShapeUiChecks {
                     ShapeStroke sample=new ShapeStroke(doc,selected,70,100+i*300,250);
                     sample.preview(280+i*300,kind==ToolSettings.Shape.SQUARE || kind==ToolSettings.Shape.CIRCLE?500:600);sample.finish();
                 }
-                call(pad,"renderAll");((View)pad).invalidate();dialog[0]=(PopupWindow)call(activity,"settings");
+                call(pad,"renderAll");((View)pad).invalidate();dialog[0]=(PopupWindow)call(activity,"showToolSettings");
             });
             test.waitForIdleSync();SystemClock.sleep(200);
             Bitmap screenshot=test.getUiAutomation().takeScreenshot();
@@ -190,11 +190,11 @@ final class ShapeUiChecks {
                 call(pad,"finishStroke");call(pad,"dryWet");
                 set(activity,"drawingName",name);set(activity,"library",library);
                 if(hadShapeChosen)prefs.edit().putBoolean("shape_chosen",shapeChosen).apply();else prefs.edit().remove("shape_chosen").apply();
-                set(activity,"eraseMode",erase);set(activity,"gray",gray);set(activity,"maximum",maximum);
+                set(get(activity,"paint"),"eraseMode",erase);set(get(activity,"paint"),"gray",gray);TestAccess.setMaximum(activity,maximum);
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 prefs.edit().putBoolean("toolbox_right",right).putBoolean("tool_visible_SHAPES",visible).putBoolean("tool_visible_BRUSH",brushVisible).apply();
-                call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");call(activity,"rebuildTools");
-                call(activity,"preferences");call(activity,"recovery");
+                call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");call(get(activity,"toolbar"),"rebuildTools");
+                call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
             try(java.io.FileInputStream input=new java.io.FileInputStream(new java.io.File(activity.getFilesDir(),"drawings/_recovery.tsm"))) {

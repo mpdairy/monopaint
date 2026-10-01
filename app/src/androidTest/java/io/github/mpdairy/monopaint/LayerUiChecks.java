@@ -24,7 +24,7 @@ final class LayerUiChecks {
         ToneDocument doc=new ToneDocument(original.width,original.height);
         try {
             main(test,() -> {
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 set(activity,"drawingName",""); call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));
                 doc.begin(); doc.paintTone(200,200,20); doc.finish(); call(pad,"renderAll");
             });
@@ -69,14 +69,14 @@ final class LayerUiChecks {
                 main(test,() -> {
                     android.view.MotionEvent down=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,eye.getWidth()/2f,eye.getHeight()/2f,0);
                     eye.dispatchTouchEvent(down);down.recycle();
-                    check((Boolean)get(eye,"feedbackPressed")&&feedback.submitted>submissions,"Eye press presents an immediate box on the fast display");
+                    check((Boolean)get(get(eye,"press"),"pressed")&&feedback.submitted>submissions,"Eye press presents an immediate box on the fast display");
                     android.graphics.Rect region=feedback.lastScreenRegion;
                     android.graphics.RectF bounds=new android.graphics.RectF(0,0,eye.getWidth(),eye.getHeight());
                     PanelCoordinates.fromView(eye).mapRect(bounds);
                     check(bounds.contains(new android.graphics.RectF(region)),"Eye feedback stays within its rotated control");
                     android.view.MotionEvent cancel=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_CANCEL,0,0,0);
                     eye.dispatchTouchEvent(cancel);cancel.recycle();
-                    check(!(Boolean)get(eye,"feedbackPressed")&&doc.layerVisible(1),"Cancelled press clears feedback without toggling visibility");
+                    check(!(Boolean)get(get(eye,"press"),"pressed")&&doc.layerVisible(1),"Cancelled press clears feedback without toggling visibility");
                 });
                 int[] detached={0};
                 main(test,() -> eye.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -139,10 +139,10 @@ final class LayerUiChecks {
         }
     }
     private static void open(Instrumentation test,PaintActivity activity) throws Exception {
-        await(test,() -> activity.hasWindowFocus() && !(Boolean)get(get(activity,"layersButton"),"feedbackPressed"),"Toolbar ready for next press");
+        await(test,() -> activity.hasWindowFocus() && !(Boolean)get(get(get(get(activity,"toolbar"),"layersButton"),"press"),"pressed"),"Toolbar ready for next press");
         main(test,() -> {
             SelectionFeedback feedback=(SelectionFeedback)get(activity,"selectionFeedback");int before=feedback.submitted;
-            View button=(View)get(activity,"layersButton");button.performClick();
+            View button=(View)get(get(activity,"toolbar"),"layersButton");button.performClick();
             check(feedback.submitted>before,"Layers toolbar press uses fast feedback");
             check(button.isSelected(),"Layers toolbar stays outlined while open");
         });

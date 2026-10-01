@@ -40,6 +40,10 @@ final class SelectionFeedback {
         observer = null; pending.clear();
     }
 
+    /** Updates the whole control. */
+    void update(View owner, Runnable change) {
+        update(owner,new Rect(0,0,owner.getWidth(),owner.getHeight()),change);
+    }
     void update(View owner, Rect area, Runnable change) {
         update(owner,area,change,owner.hasWindowFocus());
     }

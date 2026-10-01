@@ -24,8 +24,8 @@ final class EraseUiChecks {
         test.waitForIdleSync();
         Object pad=get(activity,"pad");DrawingBook original=(DrawingBook)get(activity,"book");
         String name=(String)get(activity,"drawingName");ToolLibrary library=(ToolLibrary)get(activity,"library");
-        int gray=(Integer)get(activity,"gray"),maximum=(Integer)get(activity,"maximum"),rotation=(Integer)get(activity,"appRotation");
-        boolean wet=(Boolean)get(activity,"wetCanvas"),transparent=(Boolean)get(activity,"transparentPaint"),erase=(Boolean)get(activity,"eraseMode");
+        int gray=(Integer)get(get(activity,"paint"),"gray"),maximum=TestAccess.maximum(activity),rotation=(Integer)get(activity,"appRotation");
+        boolean wet=(Boolean)get(get(activity,"paint"),"wetCanvas"),transparent=(Boolean)get(get(activity,"paint"),"transparentPaint"),erase=(Boolean)get(get(activity,"paint"),"eraseMode");
         SharedPreferences prefs=(SharedPreferences)get(activity,"preferences");boolean right=prefs.getBoolean("toolbox_right",false);
         Map<String,?> originalPreferences=prefs.getAll();
         String[] requiredTools={"PENCIL","AIRBRUSH","SOFTEN","ERASER"};
@@ -35,11 +35,11 @@ final class EraseUiChecks {
         byte[] originalPixels=doc.snapshot();
         try {
             main(test,() -> {
-                ((android.view.OrientationEventListener)get(activity,"orientationSensor")).disable();
+                ((android.view.OrientationEventListener)get(get(activity,"rotationPrompt"),"orientationSensor")).disable();
                 call(pad,"finishStroke");call(pad,"dryWet");set(activity,"drawingName","");set(activity,"library",new ToolLibrary());
-                set(activity,"eraseMode",false);set(activity,"wetCanvas",false);set(activity,"gray",0);
+                set(get(activity,"paint"),"eraseMode",false);set(get(activity,"paint"),"wetCanvas",false);set(get(activity,"paint"),"gray",0);
                 for(String tool:requiredTools)prefs.edit().putBoolean("tool_visible_"+tool,true).commit();
-                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));call(activity,"rebuildTools");
+                call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));call(get(activity,"toolbar"),"rebuildTools");
             });
             for(int quarter=0;quarter<4;quarter++)for(boolean hand:new boolean[]{false,true}) {
                 final int turn=quarter;
@@ -53,7 +53,7 @@ final class EraseUiChecks {
                 Bitmap before=render(test,shade);
                 tap(test,button);
                 main(test,() -> {
-                    check((Boolean)get(activity,"eraseMode")&&button.isSelected(),"Eraser color selected in every rotation and hand");
+                    check((Boolean)get(get(activity,"paint"),"eraseMode")&&button.isSelected(),"Eraser color selected in every rotation and hand");
                     ViewGroup colors=(ViewGroup)shade.getParent();
                     check(colors.indexOfChild(button)==colors.indexOfChild(shade)+((Boolean)get(activity,"landscape")?-1:1),"Eraser next to white end");
                     check(shade.getWidth()>60,"Shade bar retains usable width");
@@ -74,7 +74,7 @@ final class EraseUiChecks {
             main(test,() -> {
                 ToolLibrary tools=(ToolLibrary)get(activity,"library");
                 for(ToolSettings.Head head:ToolSettings.Head.values()) {
-                    tools.selectHead(head);tools.edit(tools.current().size(64));set(activity,"maximum",64);call(activity,"refreshToolSelection");
+                    tools.selectHead(head);tools.edit(tools.current().size(64));TestAccess.setMaximum(activity,64);call(get(activity,"toolbar"),"refreshToolSelection");
                     ToolSettings settings=tools.current();
                     call(activity,"setWetCanvas",new Class<?>[]{boolean.class},true);
                     call(activity,"setTransparentPaint",new Class<?>[]{boolean.class},true);
@@ -87,35 +87,35 @@ final class EraseUiChecks {
                     for(int y=195;y<285;y++)for(int x=115;x<205;x++)check(doc.opacity(x,y)==255-mask.opacity(x,y),"Erase footprint matches "+head);
                     check(doc.undo()&&Arrays.equals(originalPixels,doc.snapshot()),"Head undo");
                 }
-                Map<?,?> buttons=(Map<?,?>)get(activity,"selectionButtons");
+                Map<?,?> buttons=(Map<?,?>)get(get(activity,"toolbar"),"selectionButtons");
                 for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.PENCIL,ToolSettings.Tool.AIRBRUSH}) {
                     ((View)buttons.get("tool:"+tool)).performClick();
-                    check((Boolean)get(activity,"eraseMode"),"Mode follows supported tools");
+                    check((Boolean)get(get(activity,"paint"),"eraseMode"),"Mode follows supported tools");
                     replay(pad,160,240);
                     check(doc.opacity(160,240)<255,"Tool erases: "+tool);check(doc.undo(),"Tool undo");
                 }
-                tools.select(ToolSettings.Tool.AIRBRUSH);String preset=tools.add().id;call(activity,"rebuildTools");
+                tools.select(ToolSettings.Tool.AIRBRUSH);String preset=tools.add().id;call(get(activity,"toolbar"),"rebuildTools");
                 call(activity,"selectShade",new Class<?>[]{int.class},0);
                 ((View)get(activity,"eraseButton")).performClick();
                 check(tools.activeId().equals(preset),"Erase mode preserves favorite identity");
-                call(activity,"preferences");check(prefs.getBoolean("erase_mode",false),"Erase selection saved");
-                call(activity,"selectShade",new Class<?>[]{int.class},(Integer)get(activity,"gray"));
-                check(!(Boolean)get(activity,"eraseMode"),"Reselecting same shade exits erase");
+                call(activity,"saveToolState");check(prefs.getBoolean("erase_mode",false),"Erase selection saved");
+                call(activity,"selectShade",new Class<?>[]{int.class},(Integer)get(get(activity,"paint"),"gray"));
+                check(!(Boolean)get(get(activity,"paint"),"eraseMode"),"Reselecting same shade exits erase");
                 ((View)get(activity,"eraseButton")).performClick();
                 ((View)get(activity,"eyedropperButton")).performClick();
                 check(!((View)get(activity,"eraseButton")).isSelected(),"Eyedropper takes selection dot");
                 MotionEvent event=event(pad,MotionEvent.ACTION_DOWN,0,0,160,240,.45f);((View)pad).onTouchEvent(event);event.recycle();
                 event=event(pad,MotionEvent.ACTION_CANCEL,0,1,160,240,.45f);((View)pad).onTouchEvent(event);event.recycle();
-                check((Boolean)get(activity,"eraseMode"),"Canceled sampling restores erase mode");
+                check((Boolean)get(get(activity,"paint"),"eraseMode"),"Canceled sampling restores erase mode");
                 ((View)get(activity,"eyedropperButton")).performClick();replay(pad,160,240);
-                check(!(Boolean)get(activity,"eraseMode")&&(Integer)get(activity,"gray")==160,"Picked color returns to painting");
+                check(!(Boolean)get(get(activity,"paint"),"eraseMode")&&(Integer)get(get(activity,"paint"),"gray")==160,"Picked color returns to painting");
                 erasingShapesAndFills(activity,pad,doc);
                 ShapePreviewChecks.run(report);
-                buttons=(Map<?,?>)get(activity,"selectionButtons");
+                buttons=(Map<?,?>)get(get(activity,"toolbar"),"selectionButtons");
                 for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.SOFTEN,ToolSettings.Tool.ERASER}) {
-                    tools.select(ToolSettings.Tool.BRUSH);call(activity,"refreshToolSelection");((View)get(activity,"eraseButton")).performClick();
+                    tools.select(ToolSettings.Tool.BRUSH);call(get(activity,"toolbar"),"refreshToolSelection");((View)get(activity,"eraseButton")).performClick();
                     ((View)buttons.get("tool:"+tool)).performClick();
-                    check(!(Boolean)get(activity,"eraseMode")&&!((View)get(activity,"eraseButton")).isEnabled(),"Non-brush tool uses normal behavior: "+tool);
+                    check(!(Boolean)get(get(activity,"paint"),"eraseMode")&&!((View)get(activity,"eraseButton")).isEnabled(),"Non-brush tool uses normal behavior: "+tool);
                 }
                 replay(pad,160,240);check(doc.opacity(160,240)<255,"Standalone eraser still erases");check(doc.undo(),"Standalone undo");
                 doc.selectLayer(0);check(doc.tone(160,240)==24,"Lower layer intact");doc.selectLayer(1);
@@ -124,8 +124,8 @@ final class EraseUiChecks {
         } finally {
             main(test,() -> {
                 call(pad,"finishStroke");call(pad,"dryWet");
-                set(activity,"drawingName",name);set(activity,"library",library);set(activity,"gray",gray);set(activity,"maximum",maximum);
-                set(activity,"wetCanvas",wet);set(activity,"transparentPaint",transparent);set(activity,"eraseMode",erase);
+                set(activity,"drawingName",name);set(activity,"library",library);set(get(activity,"paint"),"gray",gray);TestAccess.setMaximum(activity,maximum);
+                set(get(activity,"paint"),"wetCanvas",wet);set(get(activity,"paint"),"transparentPaint",transparent);set(get(activity,"paint"),"eraseMode",erase);
                 prefs.edit().putBoolean("toolbox_right",right).commit();
                 for(String tool:requiredTools) {
                     String key="tool_visible_"+tool;
@@ -134,7 +134,7 @@ final class EraseUiChecks {
                 }
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},original);
                 call(activity,"requestQuarter",new Class<?>[]{int.class},rotation);call(activity,"applyToolboxSide");call(activity,"refreshPaintModes");
-                call(activity,"preferences");call(activity,"recovery");
+                call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
         }
@@ -142,19 +142,20 @@ final class EraseUiChecks {
     private static void erasingShapesAndFills(PaintActivity activity,Object pad,ToneDocument doc) throws Exception {
         ToolLibrary tools=(ToolLibrary)get(activity,"library");
         byte[] original=DrawingBook.encode(doc);
-        tools.select(ToolSettings.Tool.SHAPES);call(activity,"refreshToolSelection");
+        tools.select(ToolSettings.Tool.SHAPES);call(get(activity,"toolbar"),"refreshToolSelection");
         ((View)get(activity,"eraseButton")).performClick();
-        check((Boolean)get(activity,"eraseMode"),"Shapes accepts eraser color");
+        check((Boolean)get(get(activity,"paint"),"eraseMode"),"Shapes accepts eraser color");
         tools.edit(tools.current().shape(ToolSettings.Shape.RECTANGLE).filled(true));
         drag(pad,80,100,240,300);
         check(doc.opacity(160,240)==0&&doc.compositeTone(160,240)==24&&doc.opacity(40,40)==255,"Shape erases its interior only");
         check(doc.undo()&&Arrays.equals(original,DrawingBook.encode(doc)),"Erase shape restores all layers");call(pad,"renderAll");
-        tools.select(ToolSettings.Tool.FILL);call(activity,"refreshToolSelection");
-        check((Boolean)get(activity,"eraseMode")&&((View)get(activity,"eraseButton")).isEnabled(),"Fill retains eraser color");
+        tools.select(ToolSettings.Tool.FILL);call(get(activity,"toolbar"),"refreshToolSelection");
+        check((Boolean)get(get(activity,"paint"),"eraseMode")&&((View)get(activity,"eraseButton")).isEnabled(),"Fill retains eraser color");
         replay(pad,160,240);while(get(pad,"fill")!=null)call(pad,"advanceFill");
         check(doc.opacity(10,10)==0&&doc.compositeTone(160,240)==24,"Pen tap erase fill");
         check(doc.undo()&&Arrays.equals(original,DrawingBook.encode(doc)),"Erase fill undo");call(pad,"renderAll");
         for(ToolSettings.Gradient type:ToolSettings.Gradient.values()) {
+            if(type==ToolSettings.Gradient.FLAT)continue; // A flat fill has no second color.
             tools.edit(tools.current().gradient(type));
             // Start transparent, then choose a paint endpoint.
             drag(pad,80,240,240,240);
@@ -170,7 +171,7 @@ final class EraseUiChecks {
             check(doc.undo()&&Arrays.equals(original,DrawingBook.encode(doc)),"Color-to-erase undo");call(pad,"renderAll");
             drag(pad,80,240,240,240);call(activity,"selectShade",new Class<?>[]{int.class},200);
             call(pad,"finishStroke");
-            check((Boolean)get(activity,"eraseMode")&&Arrays.equals(original,DrawingBook.encode(doc)),"Canceled gradient restores eraser and drawing");
+            check((Boolean)get(get(activity,"paint"),"eraseMode")&&Arrays.equals(original,DrawingBook.encode(doc)),"Canceled gradient restores eraser and drawing");
         }
         call(activity,"selectShade",new Class<?>[]{int.class},160);
     }

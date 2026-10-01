@@ -14,10 +14,10 @@ import java.lang.reflect.Method;
 /** Target-orientation corners, timeout, shake recall and real prompt touch targets. */
 final class RotationPromptChecks {
     static void run(Instrumentation test,PaintActivity app,StringBuilder report)throws Exception {
-        OrientationEventListener sensor=(OrientationEventListener)get(app,"orientationSensor");
+        OrientationEventListener sensor=(OrientationEventListener)get(get(app,"rotationPrompt"),"orientationSensor");
         SharedPreferences prefs=(SharedPreferences)get(app,"preferences");
         View hint=(View)get(app,"rotateButton"),frame=(View)get(app,"orientationFrame"),shade=(View)get(app,"shadePicker");
-        RotationSuggestion suggestion=(RotationSuggestion)get(app,"rotationSuggestion");
+        RotationSuggestion suggestion=(RotationSuggestion)get(get(app,"rotationPrompt"),"rotationSuggestion");
         int size=Math.round(48*app.getResources().getDisplayMetrics().density),inset=Math.round(8*app.getResources().getDisplayMetrics().density);
         for(boolean nomad:new boolean[]{false,true})for(int target=0;target<4;target++)for(boolean right:new boolean[]{false,true}) {
             final int quarter=target,current=(target+3)%4;
@@ -25,7 +25,7 @@ final class RotationPromptChecks {
                 call(app,"setNomadMode",new Class<?>[]{boolean.class},nomad);
                 prefs.edit().putBoolean("toolbox_right",right).apply();
                 call(app,"requestQuarter",new Class<?>[]{int.class},current);
-                call(app,"hideRotationSuggestion");
+                call(get(app,"rotationPrompt"),"hide");
             });idle(test);int shadeWidth=shade.getWidth();
             main(test,() -> {
                 suggestion.update(quarter*90,current,SystemClock.uptimeMillis()-RotationSuggestion.HOLD_MS);
@@ -46,7 +46,7 @@ final class RotationPromptChecks {
                 check(hint.getVisibility()==View.INVISIBLE,"Prompt disappears automatically");
                 main(test,() -> sensor.onOrientationChanged(quarter*90));idle(test);
                 check(hint.getVisibility()==View.INVISIBLE,"Steady orientation stays dismissed");
-                main(test,() -> call(app,"shakeRotationSuggestion"));idle(test);
+                main(test,() -> call(get(app,"rotationPrompt"),"shake"));idle(test);
                 check(hint.getVisibility()==View.VISIBLE,"Shake recalls current physical rotation");
             }
             SelectionFeedback feedback=(SelectionFeedback)get(app,"selectionFeedback");
@@ -54,14 +54,14 @@ final class RotationPromptChecks {
             RectF touch=bounds(hint);long down=SystemClock.uptimeMillis();
             touch(test,MotionEvent.ACTION_DOWN,down,touch);
             main(test,() -> {
-                check((Boolean)get(hint,"feedbackPressed"),"Rotation button immediately shows pressed outline: nomad="+nomad+" target="+quarter+" right="+right+" visibility="+hint.getVisibility());
+                check((Boolean)get(get(hint,"press"),"pressed"),"Rotation button immediately shows pressed outline: nomad="+nomad+" target="+quarter+" right="+right+" visibility="+hint.getVisibility());
                 check(feedback.submitted>submitted,"Pressed outline submitted through fast path");
                 check((Integer)get(app,"appRotation")==previousRotation,"Press feedback precedes orientation change");
             });
             touch(test,MotionEvent.ACTION_UP,down,touch);idle(test);
             check((Integer)get(app,"appRotation")==((4-target)%4),"Actual target-corner touch applies rotation");
             check(hint.getVisibility()==View.INVISIBLE,"Applied rotation dismisses prompt");
-            check(!(Boolean)get(hint,"feedbackPressed"),"Hidden rotation prompt retains no pressed state");
+            check(!(Boolean)get(get(hint,"press"),"pressed"),"Hidden rotation prompt retains no pressed state");
             check(get(get(app,"pad"),"direct")!=null,"Canvas fast path restored after rotation");
         }
         report.append("PASS: rotation prompt occupies the corner diagonally opposite the hamburger in both modes/all directions/both hands; five-second expiry, shake recall, fast pressed outline before rotation, real tap rotation and cleared press state.\n");

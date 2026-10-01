@@ -92,22 +92,22 @@ final class PaintChecks {
         DrawingBook originalBook=(DrawingBook)field(current,"book");
         String originalName=(String)field(current,"drawingName");
         boolean originalSide=((android.content.SharedPreferences)field(current,"preferences")).getBoolean("toolbox_right",false);
-        int originalGray = (Integer)field(current, "gray"), originalMaximum = (Integer)field(current, "maximum");
+        int originalGray = (Integer)field(get(current,"paint"),"gray"), originalMaximum = TestAccess.maximum(current);
         ToolLibrary originalLibrary = (ToolLibrary)field(current,"library");
-        boolean originalErase = (Boolean)field(current,"eraseMode");
-        boolean originalWet = (Boolean)field(current,"wetCanvas"), originalTransparent = (Boolean)field(current,"transparentPaint");
-        int originalWetness = (Integer)field(current,"wetness");
+        boolean originalErase = (Boolean)field(get(current,"paint"),"eraseMode");
+        boolean originalWet = (Boolean)field(get(current,"paint"),"wetCanvas"), originalTransparent = (Boolean)field(get(current,"paint"),"transparentPaint");
+        int originalWetness = (Integer)field(get(current,"paint"),"wetness");
         try {
             Object firstPad = pad;
             PaintActivity firstActivity = current;
             test.runOnMainSync(() -> {
                 call(firstPad, "replace", new Class<?>[]{ToneDocument.class}, new ToneDocument(original.width, original.height));
                 set(firstActivity, "drawingName", "");
-                set(firstActivity, "gray", 128); set(firstActivity, "maximum", 64);
-                set(firstActivity,"eraseMode",false);set(firstActivity,"wetCanvas",false); set(firstActivity,"transparentPaint",false);
+                set(get(firstActivity,"paint"),"gray", 128); TestAccess.setMaximum(firstActivity, 64);
+                set(get(firstActivity,"paint"),"eraseMode",false);set(get(firstActivity,"paint"),"wetCanvas",false); set(get(firstActivity,"paint"),"transparentPaint",false);
                 call(firstActivity,"refreshPaintModes",new Class<?>[0]);
                 set(firstActivity,"library",new ToolLibrary());
-                call(firstActivity,"rebuildTools",new Class<?>[0]);
+                call(get(firstActivity,"toolbar"),"rebuildTools",new Class<?>[0]);
             });
             test.waitForIdleSync(); SystemClock.sleep(300);
             if (brushOnly) {
@@ -154,10 +154,10 @@ final class PaintChecks {
             report.append("Gray paints live, driver pixels agree, and pen-up causes no Android redraw.\n");
 
             test.runOnMainSync(() -> {
-                set(firstActivity, "gray", 0); set(firstActivity, "maximum", 64);
+                set(get(firstActivity,"paint"),"gray", 0); TestAccess.setMaximum(firstActivity, 64);
                 event(view, start, MotionEvent.ACTION_DOWN, 260, 270, .45f);
                 event(view, start, MotionEvent.ACTION_UP, 260, 270, 0);
-                set(firstActivity, "gray", 255); set(firstActivity, "maximum", 16);
+                set(get(firstActivity,"paint"),"gray", 255); TestAccess.setMaximum(firstActivity, 16);
                 event(view, start, MotionEvent.ACTION_DOWN, 260, 270, .45f);
                 event(view, start, MotionEvent.ACTION_UP, 260, 270, 0);
             });
@@ -166,7 +166,7 @@ final class PaintChecks {
             check(doc.tone(260,270) == 0, "Undo white stroke");
             test.runOnMainSync(() -> findButton(firstActivity, "Redo").performClick());
             check(doc.tone(260,270) == 255, "Redo white stroke");
-            test.runOnMainSync(() -> { set(firstActivity, "gray", 128); set(firstActivity, "maximum", 128); });
+            test.runOnMainSync(() -> { set(get(firstActivity,"paint"),"gray", 128); TestAccess.setMaximum(firstActivity, 128); });
             long largeStart = SystemClock.uptimeMillis();
             test.runOnMainSync(() -> {
                 event(view, start, MotionEvent.ACTION_DOWN, 200, 450, .45f);
@@ -236,13 +236,13 @@ final class PaintChecks {
                 try {((android.content.SharedPreferences)field(restoreActivity,"preferences")).edit().putBoolean("toolbox_right",originalSide).apply();}
                 catch(Exception error){throw new IllegalStateException(error);}
                 call(restoreActivity,"applyToolboxSide",new Class<?>[0]);
-                set(restoreActivity, "gray", originalGray); set(restoreActivity, "maximum", originalMaximum);
-                set(restoreActivity,"wetCanvas",originalWet); set(restoreActivity,"transparentPaint",originalTransparent);
-                set(restoreActivity,"wetness",originalWetness);
+                set(get(restoreActivity,"paint"),"gray", originalGray); TestAccess.setMaximum(restoreActivity, originalMaximum);
+                set(get(restoreActivity,"paint"),"wetCanvas",originalWet); set(get(restoreActivity,"paint"),"transparentPaint",originalTransparent);
+                set(get(restoreActivity,"paint"),"wetness",originalWetness);
                 call(restoreActivity,"refreshPaintModes",new Class<?>[0]);
-                set(restoreActivity,"library",originalLibrary);set(restoreActivity,"eraseMode",originalErase);
-                call(restoreActivity,"rebuildTools",new Class<?>[0]);
-                call(restoreActivity, "preferences", new Class<?>[0]);
+                set(restoreActivity,"library",originalLibrary);set(get(restoreActivity,"paint"),"eraseMode",originalErase);
+                call(get(restoreActivity,"toolbar"),"rebuildTools",new Class<?>[0]);
+                call(restoreActivity,"saveToolState", new Class<?>[0]);
                 try { ((View)field(restoreActivity, "shadePicker")).invalidate(); ((View)field(restoreActivity, "wetnessBar")).invalidate(); }
                 catch (Exception error) { throw new IllegalStateException(error); }
                 call(restoreActivity, "recovery", new Class<?>[0]);
@@ -273,9 +273,9 @@ final class PaintChecks {
         long start = SystemClock.uptimeMillis();
         onMain(test, () -> {
             call(pad, "replace", new Class<?>[]{ToneDocument.class}, blank);
-            set(activity,"library",library); set(activity,"maximum",64); set(activity,"gray",180);
-            set(activity,"wetCanvas",false); set(activity,"transparentPaint",false);
-            call(activity,"refreshPaintModes",new Class<?>[0]); call(activity,"rebuildTools",new Class<?>[0]);
+            set(activity,"library",library); TestAccess.setMaximum(activity,64); set(get(activity,"paint"),"gray",180);
+            set(get(activity,"paint"),"wetCanvas",false); set(get(activity,"paint"),"transparentPaint",false);
+            call(activity,"refreshPaintModes",new Class<?>[0]); call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
         });
         test.waitForIdleSync();
         View bar = (View)field(activity,"wetnessBar");
@@ -299,20 +299,20 @@ final class PaintChecks {
                     check(!droplet.isSelected(),"Dragging to zero switches wet mode off");
                     event(bar,start,MotionEvent.ACTION_MOVE,bar.getWidth()/2f,0,.3f,MotionEvent.TOOL_TYPE_FINGER);
                     event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,0,0,MotionEvent.TOOL_TYPE_FINGER);
-                    try {check((Integer)field(activity,"wetness")==100,"Wetness drag reaches full strength");}
+                    try {check((Integer)field(get(activity,"paint"),"wetness")==100,"Wetness drag reaches full strength");}
                     catch(Exception error){throw new IllegalStateException(error);}
                     droplet.performClick();
                     event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight()/2f,.3f,MotionEvent.TOOL_TYPE_FINGER);
                     event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,bar.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
                     check(droplet.isSelected(),"Changing the bar enables wet mode without a droplet tap");
                     try {
-                        int preferred=(Integer)field(activity,"wetness");
+                        int preferred=(Integer)field(get(activity,"paint"),"wetness");
                         droplet.performClick();
-                        check(!droplet.isSelected()&&(Integer)field(activity,"wetness")==preferred,"Droplet off retains preferred strength");
+                        check(!droplet.isSelected()&&(Integer)field(get(activity,"paint"),"wetness")==preferred,"Droplet off retains preferred strength");
                         // A tap at exactly the retained value must still enable wet mode.
                         event(bar,start,MotionEvent.ACTION_DOWN,bar.getWidth()/2f,bar.getHeight()/2f,.3f,MotionEvent.TOOL_TYPE_FINGER);
                         event(bar,start,MotionEvent.ACTION_UP,bar.getWidth()/2f,bar.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
-                        check(droplet.isSelected()&&(Integer)field(activity,"wetness")==preferred,"Same-value slider tap enables wet mode");
+                        check(droplet.isSelected()&&(Integer)field(get(activity,"paint"),"wetness")==preferred,"Same-value slider tap enables wet mode");
                         droplet.performClick();
                         android.content.SharedPreferences prefs=(android.content.SharedPreferences)field(activity,"preferences");
                         check(!prefs.getBoolean("wet_canvas",true)&&prefs.getInt("canvas_wetness",0)==preferred,"Droplet off preserves saved wetness");
@@ -332,7 +332,7 @@ final class PaintChecks {
                 // Freeze the reference on the document's owner thread immediately before
                 // the next stroke; queued seep frames must not run between these actions.
                 first[0] = blank.snapshot();
-                set(activity,"gray",30);event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);
+                set(get(activity,"paint"),"gray",30);event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);
                 check(blank.tone(200,100)==30,"Normal brush puts fresh wet paint down immediately");
                 try { check((Boolean)field(pad,"wetScheduled"),"Small strokes allow scheduled live blending"); }
                 catch(Exception error){throw new IllegalStateException(error);}
@@ -371,7 +371,7 @@ final class PaintChecks {
             onMain(test, () -> {
                 findButton(activity,"Undo").performClick();check(Arrays.equals(first[0],blank.snapshot()),"One undo removes wet stroke and its frames");
                 findButton(activity,"Redo").performClick();check(Arrays.equals(dried,blank.snapshot()),"Redo restores exact result");
-                findButton(activity,"Transparent paint").performClick(); set(activity,"gray",255);
+                findButton(activity,"Transparent paint").performClick(); set(get(activity,"paint"),"gray",255);
                 event(view,start,MotionEvent.ACTION_DOWN,200,100,.45f);event(view,start,MotionEvent.ACTION_UP,200,100,0);
                 check(Arrays.equals(dried,blank.snapshot()),"Dry transparent white is clear");
                 findButton(activity,"Opaque paint").performClick();
@@ -381,7 +381,7 @@ final class PaintChecks {
             report.append("Outline droplet, slider activation, zero/off, remembered strength, fast selection, live adaptive blending, transparent/opaque white, drying and exact undo/redo pass.\n");
         } finally {
             onMain(test, () -> {
-                feedback.enabled=originalFast;set(activity,"wetCanvas",false);set(activity,"transparentPaint",false);
+                feedback.enabled=originalFast;set(get(activity,"paint"),"wetCanvas",false);set(get(activity,"paint"),"transparentPaint",false);
                 call(activity,"refreshPaintModes",new Class<?>[0]);
                 call(pad,"replace",new Class<?>[]{ToneDocument.class},new ToneDocument(blank.width,blank.height));
             });
@@ -398,9 +398,9 @@ final class PaintChecks {
             doc.begin(); wet.beginStroke(); wet.paintMask(mask,width,16,32,width,height,120); wet.finishStroke();
             onMain(test, () -> {
                 call(pad,"replace",new Class<?>[]{ToneDocument.class},doc);
-                set(activity,"library",new ToolLibrary()); set(activity,"maximum",large?128:24);
-                set(activity,"gray",30); set(activity,"wetCanvas",true); set(activity,"wetness",100);
-                set(activity,"transparentPaint",false); set(pad,"wet",wet);
+                set(activity,"library",new ToolLibrary()); TestAccess.setMaximum(activity,large?128:24);
+                set(get(activity,"paint"),"gray",30); set(get(activity,"paint"),"wetCanvas",true); set(get(activity,"paint"),"wetness",100);
+                set(get(activity,"paint"),"transparentPaint",false); set(pad,"wet",wet);
                 call(pad,"renderDirty",new Class<?>[0]); call(pad,"present",new Class<?>[0]);
                 set(pad,"wetSliceCount",0); set(pad,"wetMaxSliceNanos",0L);
             });
@@ -453,10 +453,10 @@ final class PaintChecks {
         ToolSettings regular=library.current();String[] ids=new String[3];
         for(int i=0;i<3;i++){ids[i]=library.add().id;library.edit(library.current().size(20+i*10));}
         library.select(ToolSettings.Tool.BRUSH);
-        test.runOnMainSync(() -> {set(activity,"library",library);call(activity,"rebuildTools",new Class<?>[0]);});test.waitForIdleSync();
+        test.runOnMainSync(() -> {set(activity,"library",library);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);});test.waitForIdleSync();
         test.runOnMainSync(() -> {
             try {
-            java.util.Map<?,?> buttons=(java.util.Map<?,?>)field(activity,"selectionButtons");
+            java.util.Map<?,?> buttons=(java.util.Map<?,?>)field(get(activity,"toolbar"),"selectionButtons");
             for(int i=0;i<3;i++) {
                 Button button=(Button)buttons.get(ids[i]);
                 check((Integer)field(button,"presetNumber")==i+1,"Favorite button has its matching-type ordinal");
@@ -477,11 +477,11 @@ final class PaintChecks {
         ToolLibrary library=new ToolLibrary();
         android.content.SharedPreferences prefs=(android.content.SharedPreferences)field(activity,"preferences");
         Object pad=field(activity,"pad");ToneDocument doc=(ToneDocument)field(pad,"document");byte[] before=doc.snapshot();
-        test.runOnMainSync(() -> {set(activity,"library",library);call(activity,"rebuildTools",new Class<?>[0]);});
+        test.runOnMainSync(() -> {set(activity,"library",library);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);});
         for(boolean right:new boolean[]{false,true}) {
             test.runOnMainSync(() -> {
                 prefs.edit().putBoolean("toolbox_right",right).apply();call(activity,"applyToolboxSide",new Class<?>[0]);
-                try {((android.widget.ScrollView)field(activity,"toolScroll")).scrollTo(0,0);}catch(Exception error){throw new IllegalStateException(error);}
+                try {((android.widget.ScrollView)field(get(activity,"toolbar"),"toolScroll")).scrollTo(0,0);}catch(Exception error){throw new IllegalStateException(error);}
             });test.waitForIdleSync();
             for(String name:new String[]{"Brush"}) {
                 Button anchor=findButton(activity,name);check(anchor!=null&&anchor.isShown(),name+" is present in the toolbar");
@@ -536,13 +536,13 @@ final class PaintChecks {
                 check(library.current().equals(flat),"Switching tips restores each tip's own controls");
                 test.runOnMainSync(() -> findButton(panel,"Add to Toolbar").performClick());test.waitForIdleSync();
                 String id=library.activeId();check(!popup.isShowing()&&!id.isEmpty(),"Head setup can be saved directly from the editor");
-                java.util.Map<?,?> buttons=(java.util.Map<?,?>)field(activity,"selectionButtons");
+                java.util.Map<?,?> buttons=(java.util.Map<?,?>)field(get(activity,"toolbar"),"selectionButtons");
                 check((Integer)field(buttons.get(id),"iconResource")==expected,"Custom tool gets the matching enlarged tip icon");
                 ToolLibrary restored=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
                 check(restored.current().equals(flat)&&restored.activeId().equals(id),"Tip controls and custom selection persist");
                 android.widget.PopupWindow[] dialog=new android.widget.PopupWindow[1];
                 test.runOnMainSync(() -> {
-                    dialog[0]=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
+                    dialog[0]=(android.widget.PopupWindow)call(activity,"showToolSettings",new Class<?>[0]);
                     ((android.widget.SeekBar)findDescription(dialog[0].getContentView(),"Brush height")).setProgress(5);
                     check(library.current().headThickness==5&&library.builtin(ToolSettings.Tool.BRUSH).headThickness==20,"Favorite height changes leave regular height intact");
                     findButton(dialog[0].getContentView(),"Filbert").performClick();
@@ -558,7 +558,7 @@ final class PaintChecks {
     private static void brushTiltInput(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
         ToolLibrary library=new ToolLibrary();
         Object pad=field(activity,"pad");ToneDocument doc=(ToneDocument)field(pad,"document");byte[] before=doc.snapshot();
-        test.runOnMainSync(() -> {set(activity,"library",library);call(activity,"rebuildTools",new Class<?>[0]);});
+        test.runOnMainSync(() -> {set(activity,"library",library);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);});
         for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.BRUSH,ToolSettings.Tool.WATERCOLOR,ToolSettings.Tool.FLAT_WASH}) {
             ToolSettings live=ToolSettings.defaults(tool).head(ToolSettings.Head.FLAT).size(72).tilt(true);
             ToneDocument expected=new ToneDocument(doc.width,doc.height,doc.snapshot());
@@ -568,7 +568,7 @@ final class PaintChecks {
             reference.sample(400,1600,.45f,45,30);
             reference.sample(500,1600,.45f,60,0);reference.finish();
             test.runOnMainSync(() -> {
-                library.edit(live);set(activity,"maximum",72);set(activity,"gray",182);call(activity,"rebuildTools",new Class<?>[0]);
+                library.edit(live);TestAccess.setMaximum(activity,72);set(get(activity,"paint"),"gray",182);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
                 long start=SystemClock.uptimeMillis();
                 tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,300,1500,.45f,0,60);
                 // Two historical samples and one current sample exercise every
@@ -608,7 +608,7 @@ final class PaintChecks {
                 DirectEink direct=(DirectEink)field(pad,"direct");
                 long start=SystemClock.uptimeMillis();
                 test.runOnMainSync(() -> {
-                    library.edit(live);set(activity,"maximum",64);set(activity,"gray",0);call(activity,"rebuildTools",new Class<?>[0]);
+                    library.edit(live);TestAccess.setMaximum(activity,64);set(get(activity,"paint"),"gray",0);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
                     tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,700,1500,.05f,0,tilt);
                     check(doc.tone(700+dx,1500+dy)==255,"Light contact leaves room for pressure growth");
                     // Hold the coalescing window open deterministically. No new
@@ -638,11 +638,11 @@ final class PaintChecks {
     private static void customToolbarChecks(Instrumentation test, PaintActivity activity, StringBuilder report) throws Exception {
         ToolLibrary tools=new ToolLibrary();
         android.content.SharedPreferences prefs=(android.content.SharedPreferences)field(activity,"preferences");
-        test.runOnMainSync(() -> {set(activity,"library",tools);call(activity,"rebuildTools",new Class<?>[0]);});
+        test.runOnMainSync(() -> {set(activity,"library",tools);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);});
         for(ToolSettings.Tool tool:ToolSettings.Tool.values()) {
             test.runOnMainSync(() -> {
-                tools.select(tool);set(activity,"maximum",tools.current().maximum);
-                android.widget.PopupWindow dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
+                tools.select(tool);TestAccess.setMaximum(activity,tools.current().maximum);
+                android.widget.PopupWindow dialog=(android.widget.PopupWindow)call(activity,"showToolSettings",new Class<?>[0]);
                 try {
                     Button add=findButton(dialog.getContentView(),"Add to Toolbar");
                     check(add.getText().toString().equals("Add to Toolbar"),"Built-in settings offer Add to Toolbar");
@@ -650,7 +650,7 @@ final class PaintChecks {
                     check(!dialog.isShowing()&&tools.presets().size()==1&&!tools.activeId().isEmpty(),"Adding saves immediately without a naming dialog");
                 } finally {dialog.dismiss();}
                 String id=tools.activeId();
-                dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
+                dialog=(android.widget.PopupWindow)call(activity,"showToolSettings",new Class<?>[0]);
                 try {
                     View root=dialog.getContentView();
                     check(findButton(root,"Manage custom preset")==null&&findButton(root,"Add to Toolbar")==null,"Custom settings have no management or add button");
@@ -675,7 +675,7 @@ final class PaintChecks {
                     ToolLibrary saved=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
                     check(saved.activeId().equals(id)&&saved.presets().get(0).settings.equals(edited),"Dialog edits persist to preferences");
                 } catch(Exception error) {throw new IllegalStateException(error);}
-                dialog=(android.widget.PopupWindow)call(activity,"settings",new Class<?>[0]);
+                dialog=(android.widget.PopupWindow)call(activity,"showToolSettings",new Class<?>[0]);
                 try {
                     Button delete=(Button)findDescription(dialog.getContentView(),"Delete custom tool");
                     check(delete.getText().length()==0&&delete.getCompoundDrawablesRelative()[0]!=null
@@ -703,11 +703,11 @@ final class PaintChecks {
         ToolLibrary tools = new ToolLibrary();
         ToolLibrary.Preset a = tools.add("Drag A"), b = tools.add("Drag B"), c = tools.add("Drag C");
         tools.recall(b.id);
-        ToneDocument document = (ToneDocument)field(field(activity,"pad"),"document");
+        ToneDocument document = (ToneDocument)field(get(activity,"pad"),"document");
         byte[] original = document.snapshot();
-        android.widget.ScrollView scroll = (android.widget.ScrollView)field(activity,"toolScroll");
+        android.widget.ScrollView scroll = (android.widget.ScrollView)field(get(activity,"toolbar"),"toolScroll");
         android.content.SharedPreferences prefs = (android.content.SharedPreferences)field(activity,"preferences");
-        test.runOnMainSync(() -> {set(activity,"library",tools);call(activity,"rebuildTools",new Class<?>[0]);scroll.scrollTo(0,0);});
+        test.runOnMainSync(() -> {set(activity,"library",tools);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);scroll.scrollTo(0,0);});
         test.waitForIdleSync();
         for (boolean right : new boolean[]{false,true}) {
             test.runOnMainSync(() -> {prefs.edit().putBoolean("toolbox_right",right).apply();call(activity,"applyToolboxSide",new Class<?>[0]);});
@@ -737,7 +737,7 @@ final class PaintChecks {
                 +", active="+saved.activeId()+", live="+tools.activeId()+", expected="+b.id);
         test.runOnMainSync(() -> {
             for (int i=0;i<25;i++) tools.add("Drag scroll " + i);
-            tools.recall(b.id);call(activity,"rebuildTools",new Class<?>[0]);scroll.scrollTo(0,0);
+            tools.recall(b.id);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);scroll.scrollTo(0,0);
         });
         test.waitForIdleSync();
         Button first = findButton(activity,"Drag A");int[] start = new int[2], edge = new int[2];
@@ -791,7 +791,7 @@ final class PaintChecks {
         Object pad=field(activity,"pad");View canvas=(View)pad;long start=SystemClock.uptimeMillis();
         ToolLibrary tools=(ToolLibrary)field(activity,"library");
         test.runOnMainSync(() -> {
-            tools.select(ToolSettings.Tool.BRUSH);set(activity,"maximum",32);set(activity,"gray",0);
+            tools.select(ToolSettings.Tool.BRUSH);TestAccess.setMaximum(activity,32);set(get(activity,"paint"),"gray",0);
             event(canvas,start,MotionEvent.ACTION_DOWN,200,200,.45f);event(canvas,start,MotionEvent.ACTION_UP,200,200,0);
         });
         byte[] second=book.current().snapshot();check(book.current().tone(200,200)==0,"New page accepts drawing events");
@@ -823,13 +823,13 @@ final class PaintChecks {
     }
     private static void checkSelectionFeedback(Instrumentation test, PaintActivity activity, ToneDocument doc, StringBuilder report) throws Exception {
         SelectionFeedback feedback=(SelectionFeedback)field(activity,"selectionFeedback");
-        ToolLibrary savedLibrary=(ToolLibrary)field(activity,"library");int savedMaximum=(Integer)field(activity,"maximum");
+        ToolLibrary savedLibrary=(ToolLibrary)field(activity,"library");int savedMaximum=TestAccess.maximum(activity);
         boolean original=feedback.enabled;byte[] tones=doc.snapshot();boolean undo=doc.canUndo(),redo=doc.canRedo();
         Button pencil=findButton(activity,"Pencil");
         Bitmap[] baseline=new Bitmap[1],restored=new Bitmap[1];
         test.runOnMainSync(() -> {
             feedback.enabled=true;
-            call(activity,"markActive",new Class<?>[]{Button.class,boolean.class},pencil,false);
+            call(get(activity,"toolbar"),"markActive",new Class<?>[]{ToolButton.class,boolean.class},pencil,false);
             findButton(activity,"Brush").performClick();
         });
         test.waitForIdleSync();
@@ -866,9 +866,9 @@ final class PaintChecks {
             ToolLibrary longList=ToolLibrary.decode(savedLibrary.encode());
             for(int i=0;i<30;i++)longList.add("Scroll check " + i);
             longList.select(ToolSettings.Tool.BRUSH);
-            test.runOnMainSync(() -> {set(activity,"library",longList);call(activity,"rebuildTools",new Class<?>[0]);});
+            test.runOnMainSync(() -> {set(activity,"library",longList);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);});
             test.waitForIdleSync();
-            View rail=(View)field(activity,"toolRail");
+            View rail=(View)field(get(activity,"toolbar"),"toolRail");
             test.runOnMainSync(() -> {
                 View divider=((ViewGroup)rail).getChildAt(((ViewGroup)rail).indexOfChild(findButton(activity,"Layers"))+1);
                 Bitmap separator=controlBitmap(divider);
@@ -904,8 +904,8 @@ final class PaintChecks {
             report.append("Optional selection feedback changes only the tool dot (fixed border) and submits bounded control patches; rapid changes restore backgrounds, scrolling and modal focus suppress stale writes, and document/history remain untouched.\n");
         } finally {
             test.runOnMainSync(() -> {
-                feedback.enabled=original;set(activity,"library",savedLibrary);set(activity,"maximum",savedMaximum);
-                call(activity,"rebuildTools",new Class<?>[0]);call(activity,"preferences",new Class<?>[0]);
+                feedback.enabled=original;set(activity,"library",savedLibrary);TestAccess.setMaximum(activity,savedMaximum);
+                call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);call(activity,"saveToolState",new Class<?>[0]);
             });
             baseline[0].recycle();if(restored[0]!=null)restored[0].recycle();
         }
@@ -934,7 +934,7 @@ final class PaintChecks {
             check(brush.isSelected() && feedback.submitted>before,"Stylus tap selects the tool directly");
             check(frames.get()==0,"Pressed/released tool must not animate a later repaint: "+frames.get());
             before=feedback.submitted;
-            int oldGray=(Integer)field(activity,"gray");float x=oldGray==0?picker.getWidth()-2:2;
+            int oldGray=(Integer)field(get(activity,"paint"),"gray");float x=oldGray==0?picker.getWidth()-2:2;
             test.runOnMainSync(() -> {
                 long now=SystemClock.uptimeMillis();
                 event(picker,now,MotionEvent.ACTION_DOWN,x,picker.getHeight()/2f,.2f);
@@ -980,7 +980,7 @@ final class PaintChecks {
     }
     private static void checkToolTaps(Instrumentation test,PaintActivity activity,ToneDocument doc,StringBuilder report) throws Exception {
         ToolLibrary library=(ToolLibrary)field(activity,"library");byte[] before=doc.snapshot();
-        test.runOnMainSync(() -> call(activity,"rebuildTools",new Class<?>[0]));
+        test.runOnMainSync(() -> call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]));
         for(String name:new String[]{"Pencil","Renamed check preset"}) {
             test.runOnMainSync(() -> findButton(activity,name).performClick());test.waitForIdleSync();SystemClock.sleep(80);
             check(activity.hasWindowFocus()&&findButton(activity,name).isSelected(),"First tap selects "+name+" without a dialog");
@@ -1000,7 +1000,7 @@ final class PaintChecks {
         CountDownLatch responsive=new CountDownLatch(1);
         test.runOnMainSync(() -> {
             call(pad,"replace",new Class<?>[]{ToneDocument.class},blank);
-            if(!findButton(activity,"Fill").isSelected())findButton(activity,"Fill").performClick();set(activity,"gray",128);
+            if(!findButton(activity,"Fill").isSelected())findButton(activity,"Fill").performClick();set(get(activity,"paint"),"gray",128);
             event(view,start,MotionEvent.ACTION_DOWN,10,10,.45f);event(view,start,MotionEvent.ACTION_UP,10,10,0);
             view.post(responsive::countDown);
         });
@@ -1022,10 +1022,10 @@ final class PaintChecks {
         View view=(View)pad; long start=SystemClock.uptimeMillis();
         ToolLibrary library=(ToolLibrary)field(activity,"library");
         test.runOnMainSync(() -> {
-            library.edit(ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(128)); set(activity,"maximum",128);set(activity,"gray",0);
+            library.edit(ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(128)); TestAccess.setMaximum(activity,128);set(get(activity,"paint"),"gray",0);
             event(view,start,MotionEvent.ACTION_DOWN,600,800,.45f);event(view,start,MotionEvent.ACTION_UP,600,800,0);
             findButton(activity,"Eraser").performClick();
-            library.edit(library.current().size(32));set(activity,"maximum",32);
+            library.edit(library.current().size(32));TestAccess.setMaximum(activity,32);
             event(view,start,MotionEvent.ACTION_DOWN,600,800,.45f);event(view,start,MotionEvent.ACTION_UP,600,800,0);
         });
         check(doc.tone(600,800)>0&&doc.tone(600,800)<255&&doc.tone(640,800)==0,"Eraser contact lifts only part of the mark within its footprint");
@@ -1049,12 +1049,12 @@ final class PaintChecks {
         test.runOnMainSync(() -> {
             doc.begin();for(int y=940;y<1060;y++)for(int x=940;x<1060;x++)doc.setTone(x,y,x<1000?0:255);doc.finish();
             call(pad,"renderDirty",new Class<?>[0]);call(pad,"present",new Class<?>[0]);
-            findButton(activity,"Blending stump").performClick();set(activity,"maximum",32);
+            findButton(activity,"Blending stump").performClick();TestAccess.setMaximum(activity,32);
             event(view,start,MotionEvent.ACTION_DOWN,1000,1000,.45f);event(view,start,MotionEvent.ACTION_UP,1000,1000,0);
         });
         check(doc.tone(999,1000)>0&&doc.tone(1000,1000)<255,"Soften blends existing boundary tones");
         test.runOnMainSync(() -> {
-            findButton(activity,"Pencil").performClick();set(activity,"maximum",64);set(activity,"gray",0);
+            findButton(activity,"Pencil").performClick();TestAccess.setMaximum(activity,64);set(get(activity,"paint"),"gray",0);
             tiltEvent(view,start,MotionEvent.ACTION_DOWN,400,1100,.45f,0,0);tiltEvent(view,start,MotionEvent.ACTION_UP,400,1100,0,0,0);
             tiltEvent(view,start,MotionEvent.ACTION_DOWN,500,1100,.45f,65,0);tiltEvent(view,start,MotionEvent.ACTION_UP,500,1100,0,65,0);
             tiltEvent(view,start,MotionEvent.ACTION_DOWN,600,1100,.45f,0,65);tiltEvent(view,start,MotionEvent.ACTION_UP,600,1100,0,0,65);
@@ -1062,23 +1062,23 @@ final class PaintChecks {
         int[] upright=bounds(doc,400,1100,40),horizontal=bounds(doc,500,1100,40),vertical=bounds(doc,600,1100,40);
         check(horizontal[0]>upright[0]*3&&horizontal[0]>horizontal[1]*2,"Pencil tilt broadens directional contact");
         check(vertical[1]>vertical[0]*2&&horizontal[0]<=64&&vertical[1]<=64,"Tilt rotates pencil within selected cap");
-        int colorBefore=(Integer)field(activity,"gray");
+        int colorBefore=(Integer)field(get(activity,"paint"),"gray");
         final String[] presetId=new String[1];
         test.runOnMainSync(() -> {
             library.edit(ToolSettings.defaults(ToolSettings.Tool.ERASER).size(23).options(3,true,false));
             presetId[0]=library.add("Device check preset").id;
-            library.select(ToolSettings.Tool.BRUSH);call(activity,"rebuildTools",new Class<?>[0]);
+            library.select(ToolSettings.Tool.BRUSH);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
             findButton(activity,"Device check preset").performClick();
         });
         check(library.current().tool==ToolSettings.Tool.ERASER&&library.current().soft&&library.current().maximum==23,"Custom button recalls all tool settings");
-        check((Integer)field(activity,"gray")==colorBefore,"Preset recall keeps global shade");
+        check((Integer)field(get(activity,"paint"),"gray")==colorBefore,"Preset recall keeps global shade");
         test.runOnMainSync(() -> {
             library.edit(library.current().size(9));
             check(library.presets().get(0).settings.maximum==9&&library.activeId().equals(presetId[0]),"Custom edits save and keep selection");
-            library.rename(presetId[0],"Renamed check preset");call(activity,"preferences",new Class<?>[0]);
+            library.rename(presetId[0],"Renamed check preset");call(activity,"saveToolState",new Class<?>[0]);
             doc.begin();for(int y=1200;y<=1300;y++)for(int x=800;x<=900;x++)doc.setTone(x,y,x==800||x==900||y==1200||y==1300?0:182);doc.finish();
             call(pad,"renderDirty",new Class<?>[0]);call(pad,"present",new Class<?>[0]);
-            findButton(activity,"Fill").performClick();set(activity,"gray",249);
+            findButton(activity,"Fill").performClick();set(get(activity,"paint"),"gray",249);
             event(view,start,MotionEvent.ACTION_DOWN,850,1250,.45f);event(view,start,MotionEvent.ACTION_UP,850,1250,0);
         });
         long end=SystemClock.uptimeMillis()+15000;
@@ -1089,7 +1089,7 @@ final class PaintChecks {
         test.runOnMainSync(() -> {
             doc.begin();for(int y=1201;y<1300;y++)for(int x=801;x<900;x++)doc.setTone(x,y,x<830?192:x>870?205:182);doc.finish();
             call(pad,"renderDirty",new Class<?>[0]);call(pad,"present",new Class<?>[0]);
-            library.edit(library.current().tolerance(8));set(activity,"gray",182);
+            library.edit(library.current().tolerance(8));set(get(activity,"paint"),"gray",182);
             event(view,start,MotionEvent.ACTION_DOWN,850,1250,.45f);event(view,start,MotionEvent.ACTION_UP,850,1250,0);
         });
         end=SystemClock.uptimeMillis()+15000;
@@ -1176,7 +1176,7 @@ final class PaintChecks {
         view.dispatchTouchEvent(event);event.recycle();
     }
     private static void checkFirmwareArea(Object pad) throws Exception {
-        Object controller = field(field(pad,"input"),"controller");
+        Object controller = field(get(pad,"input"),"controller");
         Object base = field(controller,"mOurViewRecord");
         check((Boolean)field(base,"replaceByUserSet"), "Firmware whole-view default is excluded");
         Object global = field(controller,"mGlobalVirtualView");
@@ -1233,19 +1233,19 @@ final class PaintChecks {
             event(picker,start,MotionEvent.ACTION_DOWN,inset+cap/2f,picker.getHeight()/2f,.5f,MotionEvent.TOOL_TYPE_FINGER);
             event(picker,start,MotionEvent.ACTION_UP,inset+cap/2f,picker.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
         });
-        check((Integer)field(activity,"gray")==0, "Tap compact black end selects pure black");
+        check((Integer)field(get(activity,"paint"),"gray")==0, "Tap compact black end selects pure black");
         test.runOnMainSync(() -> {
             event(picker,start,MotionEvent.ACTION_DOWN,inset+strip.getWidth()-cap/2f,picker.getHeight()/2f,.5f,MotionEvent.TOOL_TYPE_FINGER);
             event(picker,start,MotionEvent.ACTION_UP,inset+strip.getWidth()-cap/2f,picker.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
         });
-        check((Integer)field(activity,"gray")==255, "Tap compact white end selects pure white");
+        check((Integer)field(get(activity,"paint"),"gray")==255, "Tap compact white end selects pure white");
         float light = inset + cap + .92f * (strip.getWidth()-2*cap-1);
         test.runOnMainSync(() -> {
             event(picker,start,MotionEvent.ACTION_DOWN,picker.getWidth()*.5f,picker.getHeight()/2f,.5f,MotionEvent.TOOL_TYPE_FINGER);
             event(picker,start,MotionEvent.ACTION_MOVE,light,picker.getHeight()/2f,.5f,MotionEvent.TOOL_TYPE_FINGER);
             event(picker,start,MotionEvent.ACTION_UP,light,picker.getHeight()/2f,0,MotionEvent.TOOL_TYPE_FINGER);
         });
-        int gray = (Integer)field(activity,"gray");
+        int gray = (Integer)field(get(activity,"paint"),"gray");
         check(DotPattern.whiteCount(gray)>50 && DotPattern.whiteCount(gray)<64, "New lighter shades selectable");
         check(Arrays.equals(original,((ToneDocument)field(pad,"document")).snapshot()), "Picker touches never paint");
         report.append("Shortened dotted picker exposes all 65 densities; compact black/white ends and intermediate shades select without painting.\n");
@@ -1574,6 +1574,9 @@ final class PaintChecks {
                 new MotionEvent.PointerProperties[]{properties},new MotionEvent.PointerCoords[]{coords},0,0,1,1,0,0,
                 tool == MotionEvent.TOOL_TYPE_STYLUS ? InputDevice.SOURCE_STYLUS : InputDevice.SOURCE_TOUCHSCREEN,0);
         view.dispatchTouchEvent(event); event.recycle();
+    }
+    private static Object get(Object owner, String name) {
+        try { return field(owner,name); } catch (Exception error) { throw new IllegalStateException(error); }
     }
     private static Object field(Object owner, String name) throws Exception {
         Field field=owner.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(owner);

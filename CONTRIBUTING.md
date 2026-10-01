@@ -5,7 +5,8 @@ include the tablet model, firmware version, app version, steps to reproduce, and
 what you expected to happen. Remove device serial numbers and personal drawings
 from logs and screenshots before sharing them.
 
-See [the development guide](docs/BUILDING.md) for prerequisites and build commands.
+See [the development guide](docs/BUILDING.md) for prerequisites and build commands,
+and [the code structure](docs/ARCHITECTURE.md) for an overview and how to add a tool.
 Before submitting code, run the host checks and build/lint checks documented there.
 For changes to pen input, display refresh, or orientation, also describe what you
 tested on a tablet. If you cannot run device checks, say so in the pull request.

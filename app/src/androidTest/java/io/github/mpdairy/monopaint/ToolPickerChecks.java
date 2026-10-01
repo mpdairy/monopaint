@@ -29,11 +29,11 @@ final class ToolPickerChecks {
             main(test,() -> {
                 SharedPreferences.Editor edit=prefs.edit().putBoolean("large_settings_text",false);
                 for(String tool:extra)edit.putBoolean("tool_visible_"+tool,true);
-                edit.apply();call(activity,"rebuildTools");
+                edit.apply();call(get(activity,"toolbar"),"rebuildTools");
                 if(get(activity,"toolPicker")!=null)((PopupWindow)get(activity,"toolPicker")).dismiss();
             });
-        main(test,() -> {prefs.edit().putBoolean("shape_chosen",false).apply();call(activity,"refreshToolSelection");});
-        View shapes=(View)((Map<?,?>)get(activity,"selectionButtons")).get("tool:SHAPES");
+        main(test,() -> {prefs.edit().putBoolean("shape_chosen",false).apply();call(get(activity,"toolbar"),"refreshToolSelection");});
+        View shapes=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get("tool:SHAPES");
         check((Integer)get(shapes,"iconResource")==R.drawable.ic_shapes,"Unchosen Shapes uses combined icon");
         tap(test,shapes);
         PopupWindow first=(PopupWindow)get(activity,"toolPicker");
@@ -47,11 +47,11 @@ final class ToolPickerChecks {
             main(test,() -> {
                 prefs.edit().putBoolean("toolbox_right",right).apply();
                 call(activity,"requestQuarter",new Class<?>[]{int.class},quarter);call(activity,"applyToolboxSide");
-                library.select(ToolSettings.Tool.PENCIL);call(activity,"refreshToolSelection");
+                library.select(ToolSettings.Tool.PENCIL);call(get(activity,"toolbar"),"refreshToolSelection");
             });test.waitForIdleSync();
             report.append("Checking rotation ").append(rotation).append(" right=").append(right).append(".\n");
             for(String tool:new String[]{"SHAPES","BRUSH","PENCIL","AIRBRUSH","ERASER","SOFTEN","FILL"}) {
-                View anchor=(View)((Map<?,?>)get(activity,"selectionButtons")).get("tool:"+tool);
+                View anchor=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get("tool:"+tool);
                 main(test,() -> anchor.requestRectangleOnScreen(new android.graphics.Rect(0,0,anchor.getWidth(),anchor.getHeight()),true));
                 test.waitForIdleSync();tap(test,anchor);
                 check(get(activity,"toolPicker")==null&&library.current().tool==ToolSettings.Tool.valueOf(tool),"First tap only selects "+tool);
@@ -184,7 +184,7 @@ final class ToolPickerChecks {
                 float expected=((android.widget.TextView)choice).getTextSize();
                 main(test,() -> dialog[0].dismiss());test.waitForIdleSync();
                 for(String tool:new String[]{"BRUSH","SHAPES","PENCIL","AIRBRUSH","ERASER","SOFTEN","FILL"}) {
-                    View anchor=(View)((Map<?,?>)get(activity,"selectionButtons")).get("tool:"+tool);tap(test,anchor);
+                    View anchor=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get("tool:"+tool);tap(test,anchor);
                     if(get(activity,"toolPicker")==null)tap(test,anchor);
                     PopupWindow popup=(PopupWindow)get(activity,"toolPicker");View panel=popup.getContentView();
                     if(tool.equals("BRUSH"))tap(test,find(panel,"Flat Brush"));
@@ -196,7 +196,7 @@ final class ToolPickerChecks {
                     main(test,popup::dismiss);test.waitForIdleSync();
                 }
                 zoomLock(test,activity,library);
-                View layerAnchor=(View)get(activity,"layersButton");tap(test,layerAnchor);
+                View layerAnchor=(View)get(get(activity,"toolbar"),"layersButton");tap(test,layerAnchor);
                 PopupWindow layers=(PopupWindow)get(activity,"layersPopup");
                 android.widget.TextView addLayer=(android.widget.TextView)find(layers.getContentView(),"Add layer");
                 check(addLayer.getTextSize()==expected&&addLayer.getTypeface().isBold(),"Layers matches the chosen settings font");
@@ -204,11 +204,11 @@ final class ToolPickerChecks {
             } finally {if(dialog[0]!=null)main(test,dialog[0]::dismiss);}
         }
         // Saved presets use the same panel while retaining their separate settings.
-        main(test,() -> {library.select(ToolSettings.Tool.PENCIL);call(activity,"refreshToolSelection");});
+        main(test,() -> {library.select(ToolSettings.Tool.PENCIL);call(get(activity,"toolbar"),"refreshToolSelection");});
         PopupWindow[] popup={null};ToolSettings regular=library.current();
-        main(test,() -> {popup[0]=(PopupWindow)call(activity,"settings");find(popup[0].getContentView(),"Add to Toolbar").performClick();});
+        main(test,() -> {popup[0]=(PopupWindow)call(activity,"showToolSettings");find(popup[0].getContentView(),"Add to Toolbar").performClick();});
         check(!popup[0].isShowing()&&!library.activeId().isEmpty(),"Save custom tool from common panel");String id=library.activeId();
-        main(test,() -> {popup[0]=(PopupWindow)call(activity,"settings");((SeekBar)find(popup[0].getContentView(),"Hardness")).setProgress(23);});
+        main(test,() -> {popup[0]=(PopupWindow)call(activity,"showToolSettings");((SeekBar)find(popup[0].getContentView(),"Hardness")).setProgress(23);});
         check(library.current().hardness==23&&library.builtin(ToolSettings.Tool.PENCIL).equals(regular),"Preset editing leaves regular tool intact");
         main(test,() -> find(popup[0].getContentView(),"Delete custom tool").performClick());
         check(!popup[0].isShowing()&&library.activeId().isEmpty()&&library.presets().stream().noneMatch(p -> p.id.equals(id)),"Delete custom tool from common panel");
@@ -216,7 +216,7 @@ final class ToolPickerChecks {
 
     private static void zoomLock(Instrumentation test,PaintActivity activity,ToolLibrary library)throws Exception {
         Object pad=get(activity,"pad");ToolSettings selected=library.current();String preset=library.activeId();
-        View anchor=(View)get(activity,"zoomButton");
+        View anchor=(View)get(get(activity,"toolbar"),"zoomButton");
         main(test,() -> {call(pad,"fitPage");anchor.requestRectangleOnScreen(new android.graphics.Rect(0,0,anchor.getWidth(),anchor.getHeight()),true);});
         test.waitForIdleSync();
         boolean original=(Boolean)get(activity,"navigationLocked");
@@ -235,13 +235,13 @@ final class ToolPickerChecks {
         return new int[]{R.drawable.ic_shape_line,R.drawable.ic_shape_rectangle,R.drawable.ic_shape_square,R.drawable.ic_shape_oval,R.drawable.ic_shape_circle}[shape.ordinal()];
     }
     private static void shapeShortcuts(Instrumentation test,PaintActivity activity,SharedPreferences prefs,ToolLibrary library)throws Exception {
-        main(test,() -> {library.select(ToolSettings.Tool.SHAPES);library.edit(library.current().shape(ToolSettings.Shape.RECTANGLE));call(activity,"refreshToolSelection");});
+        main(test,() -> {library.select(ToolSettings.Tool.SHAPES);library.edit(library.current().shape(ToolSettings.Shape.RECTANGLE));call(get(activity,"toolbar"),"refreshToolSelection");});
         PopupWindow[] popup={null};ToolSettings regular=library.current();
-        main(test,() -> {popup[0]=(PopupWindow)call(activity,"settings");find(popup[0].getContentView(),"Add to Toolbar").performClick();});
+        main(test,() -> {popup[0]=(PopupWindow)call(activity,"showToolSettings");find(popup[0].getContentView(),"Add to Toolbar").performClick();});
         String id=library.activeId();test.waitForIdleSync();
-        View shortcut=(View)((Map<?,?>)get(activity,"selectionButtons")).get(id);
+        View shortcut=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get(id);
         check((Integer)get(shortcut,"iconResource")==R.drawable.ic_shape_rectangle,"Rectangle shortcut uses rectangle icon");
-        View builtin=(View)((Map<?,?>)get(activity,"selectionButtons")).get("tool:SHAPES");tap(test,builtin);
+        View builtin=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get("tool:SHAPES");tap(test,builtin);
         check(get(activity,"toolPicker")==null&&library.activeId().isEmpty(),"Builtin first tap selects from saved shortcut");
         main(test,() -> shortcut.requestRectangleOnScreen(new android.graphics.Rect(0,0,shortcut.getWidth(),shortcut.getHeight()),true));test.waitForIdleSync();
         tap(test,shortcut);check(get(activity,"toolPicker")==null&&library.activeId().equals(id),"Shortcut first tap selects without opening");
@@ -255,10 +255,10 @@ final class ToolPickerChecks {
         main(test,() -> popup[0].dismiss());test.waitForIdleSync();
         ToolLibrary decoded=ToolLibrary.decode(java.util.Base64.getDecoder().decode(prefs.getString("tools","")));
         check(decoded.current().shape==ToolSettings.Shape.CIRCLE&&decoded.activeId().equals(id),"Saved shape and selection persist");
-        main(test,() -> call(activity,"rebuildTools"));test.waitForIdleSync();
-        View rebuilt=(View)((Map<?,?>)get(activity,"selectionButtons")).get(id);
+        main(test,() -> call(get(activity,"toolbar"),"rebuildTools"));test.waitForIdleSync();
+        View rebuilt=(View)((Map<?,?>)get(get(activity,"toolbar"),"selectionButtons")).get(id);
         check((Integer)get(rebuilt,"iconResource")==R.drawable.ic_shape_circle,"Rebuilt shortcut keeps selected shape icon");
-        main(test,() -> {popup[0]=(PopupWindow)call(activity,"settings");find(popup[0].getContentView(),"Delete custom tool").performClick();});
+        main(test,() -> {popup[0]=(PopupWindow)call(activity,"showToolSettings");find(popup[0].getContentView(),"Delete custom tool").performClick();});
     }
     private static void position(PaintActivity activity,View panel,View anchor)throws Exception {
         check(panel.isAttachedToWindow(),"Popup detached while checking "+((ToolLibrary)get(activity,"library")).current().description()+"; active popup="+get(activity,"toolPicker"));

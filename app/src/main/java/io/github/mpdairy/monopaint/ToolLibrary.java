@@ -94,9 +94,11 @@ final class ToolLibrary {
         if (trimmed.isEmpty() || trimmed.length() > 40) throw new IllegalArgumentException("Use a name of 1–40 characters");
         return trimmed;
     }
+    /** Current preset format. When appending a tool, bump this and extend {@link #toolCount}. */
+    private static final int FORMAT = 0x54535041;
     byte[] encode() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
-        out.writeInt(0x54535041);
+        out.writeInt(FORMAT);
         for (ToolSettings settings : builtins) write(out, settings);
         for (ToolSettings settings : builtins) if (settings.isBrush())
             for (ToolSettings remembered : heads[settings.tool.ordinal()]) write(out, remembered);
@@ -109,9 +111,9 @@ final class ToolLibrary {
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
             int version = in.readInt();
-            if (version < 0x54535031 || version > 0x54535041) throw new IOException("Unknown preset format");
+            if (version < 0x54535031 || version > FORMAT) throw new IOException("Unknown preset format");
             ToolLibrary library = new ToolLibrary();
-            int builtinCount = version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
+            int builtinCount = toolCount(version);
             for (int index = 0; index < builtinCount; index++) {
                 ToolSettings.Tool tool = ToolSettings.Tool.values()[index];
                 ToolSettings settings = read(in, version);
@@ -142,6 +144,11 @@ final class ToolLibrary {
             return library;
         } catch (IllegalArgumentException invalid) { throw new IOException("Invalid tool settings", invalid); }
     }
+    /** Tools are appended over time; each format version knows how many it stores. */
+    private static int toolCount(int version) {
+        return version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8
+                : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5;
+    }
     private static void write(DataOutputStream out, ToolSettings settings) throws IOException {
         out.writeByte(settings.tool.ordinal()); out.writeInt(settings.maximum); out.writeInt(settings.tip);
         out.writeInt(settings.softness); out.writeBoolean(settings.tilt); out.writeInt(settings.hardness);
@@ -152,7 +159,7 @@ final class ToolLibrary {
     }
     private static ToolSettings read(DataInputStream in, int version) throws IOException {
         int tool = in.readUnsignedByte();
-        if (tool >= (version >= 0x54535040 ? 10 : version >= 0x5453503f ? 9 : version >= 0x5453503b ? 8 : version >= 0x5453503a ? 7 : version >= 0x54535037 ? 6 : 5)) throw new IOException("Unknown tool");
+        if (tool >= toolCount(version)) throw new IOException("Unknown tool");
         int maximum = in.readInt(), tip = in.readInt();
         // Keep old preset identities/order/sizes; old hard erasers now start gently feathered.
         if (version == 0x54535031) {
