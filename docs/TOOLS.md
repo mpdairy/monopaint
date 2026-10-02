@@ -23,9 +23,9 @@ width and pressure settings.
 
 | | Head | |
 |:-:|---|---|
-| <img src="icons/tip_round.svg" width="32"> <img src="icons/brush.svg" width="32"> | **Round** | Even in every direction. |
-| <img src="icons/tip_flat.svg" width="32"> <img src="icons/brush_flat.svg" width="32"> | **Flat** | Square edge that turns to follow pen tilt. Extra **Height** setting (1 px, or 1–20% of the width). |
-| <img src="icons/tip_filbert.svg" width="32"> <img src="icons/brush_filbert.svg" width="32"> | **Filbert** | Rounded oval that follows pen tilt. With oil paint it becomes a crescent shape. |
+| <img src="icons/brush.svg" width="32"> | **Round** | Even in every direction. |
+| <img src="icons/brush_flat.svg" width="32"> | **Flat** | Square edge that turns to follow pen tilt. Extra **Height** setting (1 px, or 1–20% of the width). |
+| <img src="icons/brush_filbert.svg" width="32"> | **Filbert** | Rounded oval that follows pen tilt. With oil paint it becomes a crescent shape. |
 
 **Oil paint:** the brush starts each stroke loaded with your shade and runs out
 along the stroke. As it empties it lays down more of the paint it picks up from
