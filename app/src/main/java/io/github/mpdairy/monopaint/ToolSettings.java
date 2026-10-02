@@ -114,11 +114,26 @@ final class ToolSettings {
         this(v.tool, v.minimum, v.maximum, v.tip, v.softness, v.tilt, v.hardness, v.tolerance, v.strength, v.pressureResponse,
                 v.head, v.angle, v.bristles, v.headThickness, v.gradient, v.shape, v.filled, v.outlineWidth, v.carry, v.paintLoad, v.loadingSpeed, v.minimumLoad);
     }
+    /** First-install settings; the toolbar's tools were tuned by hand on a Manta. */
     static ToolSettings defaults(Tool tool) {
-        ToolSettings settings=new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : tool.water ? 48 : 64, 3, 70, tool == Tool.PENCIL, 40);
+        ToolSettings settings=new ToolSettings(tool, tool == Tool.SOFTEN ? 32 : tool.water ? 48 : 64, tool == Tool.PENCIL ? 1 : 3, 70, tool == Tool.PENCIL, 40);
         // A light touch should already move paint: the pen's curve starts gentle.
         if (tool.water) return settings.minimum(8).pressureResponse(25).strength(tool.flowing ? 100 : 85);
-        return tool==Tool.FILL?settings.gradient(Gradient.FLAT):settings;
+        switch (tool) {
+            case BRUSH: return settings.size(90).minimum(1);
+            case PENCIL: return settings.size(81);
+            case ERASER: return settings.minimum(35);
+            case SOFTEN: return settings.size(57).minimum(19);
+            case AIRBRUSH: return settings.size(86).minimum(36).softness(88).strength(18);
+            case FILL: return settings.gradient(Gradient.FLAT);
+            default: return settings;
+        }
+    }
+    /** First-install settings for one brush head of a brush tool. */
+    static ToolSettings defaults(Tool tool, Head head) {
+        ToolSettings settings = defaults(tool).head(head).automaticHead();
+        if (tool != Tool.BRUSH) return settings;
+        return head == Head.FLAT ? settings.size(41).minimum(32) : head == Head.FILBERT ? settings.size(64).minimum(53) : settings;
     }
 
     /** Mutable copy used to derive a changed, validated settings object. */

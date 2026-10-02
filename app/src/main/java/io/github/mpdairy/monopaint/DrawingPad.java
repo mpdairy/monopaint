@@ -53,13 +53,6 @@ final class DrawingPad extends View {
 
     // Strokes
     private DrawingStroke stroke;
-    private final Runnable sprayStep = new Runnable() {
-        @Override public void run() {
-            if (!(stroke instanceof AirbrushStroke) || !app.resumed || !hasWindowFocus()) return;
-            ((AirbrushStroke)stroke).advance(SystemClock.uptimeMillis());
-            renderDirty(); flush(false); postDelayed(this, 32);
-        }
-    };
 
     // Wet paint
     WetWatercolor wet;
@@ -350,8 +343,7 @@ final class DrawingPad extends View {
             if (p >= 0 && stroke != null && (action == MotionEvent.ACTION_MOVE || event.getPointerId(index) == pointer)) {
                 drawingInput = true;
                 for (int h = 0; h < event.getHistorySize(); h++) sampleEvent(event, p, h);
-                // Keep the airbrush's final motion segment; other tools retain the 0.12 pen-up behavior.
-                if (action == MotionEvent.ACTION_MOVE || stroke instanceof AirbrushStroke) sampleEvent(event, p, -1);
+                if (action == MotionEvent.ACTION_MOVE) sampleEvent(event, p, -1);
             }
         }
         renderDirty(); flush(false);
@@ -388,7 +380,6 @@ final class DrawingPad extends View {
         stroke = ToolStrokes.create(document, settings, paint.gray, wet, paint.transparentPaint, erasing);
         // Supernote encodes signed X degrees in ORIENTATION, Y in TILT.
         sampleEvent(event, index, -1);
-        if (stroke instanceof AirbrushStroke) postDelayed(sprayStep, 32);
         return true;
     }
     /** A pen stroke, shape or fill drag is in progress. */
@@ -417,20 +408,13 @@ final class DrawingPad extends View {
         pagePoint(x, y);
         // The page stays device-relative, as do Supernote's signed tilt-degree axes.
         // Transform positions only; treating ORIENTATION as Android azimuth corrupts tilt.
-        if (stroke instanceof AirbrushStroke) {
-            boolean up = current && (event.getActionMasked() == MotionEvent.ACTION_UP
-                    || event.getActionMasked() == MotionEvent.ACTION_POINTER_UP);
-            if (up) ((AirbrushStroke)stroke).endAt(samplePoint[0], samplePoint[1], event.getEventTime());
-            else ((AirbrushStroke)stroke).sampleAt(samplePoint[0], samplePoint[1], pressure,
-                    current ? event.getEventTime() : event.getHistoricalEventTime(history));
-        } else stroke.sample(samplePoint[0], samplePoint[1], pressure, tiltX, tiltY);
+        stroke.sample(samplePoint[0], samplePoint[1], pressure, tiltX, tiltY);
     }
 
     /** Ends or cancels whatever gesture is running, committing finished work. */
     void finishStroke() {
         if (navigating) touchBlocked = true;
         endNavigation();
-        removeCallbacks(sprayStep);
         if (shapeStroke != null) {
             removeCallbacks(shapeFrame); shapeFrameScheduled = false;
             renderShape(shapeStroke.cancel(display, viewportBitmap != null)); shapeStroke = null; pointer = -1;

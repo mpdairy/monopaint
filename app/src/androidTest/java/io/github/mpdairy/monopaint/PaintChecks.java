@@ -750,7 +750,7 @@ final class PaintChecks {
                 try {
                     View root=dialog.getContentView();
                     check(findButton(root,"Manage custom preset")==null&&findButton(root,"Add to Toolbar")==null,"Custom settings have no management or add button");
-                    String slider=tool==ToolSettings.Tool.FILL?"Tolerance":tool==ToolSettings.Tool.AIRBRUSH?"Airbrush diameter":tool==ToolSettings.Tool.SHAPES?"Shape outline width":"Maximum diameter";
+                    String slider=tool==ToolSettings.Tool.FILL?"Tolerance":tool==ToolSettings.Tool.SHAPES?"Shape outline width":"Maximum diameter";
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(41);
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(53);
                     if(ToolSettings.defaults(tool).isBrush()) {
@@ -1637,7 +1637,7 @@ final class PaintChecks {
     private static void rasterBaseline() {
         for (int gray : GrayPalette.VALUES) {
             ToneDocument doc = new ToneDocument(256, 128);
-            PressureStroke stroke = new PressureStroke(doc, 64, gray);
+            PressureStroke stroke = new PressureStroke(doc, ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(64).minimum(2), gray);
             Bitmap expected = Bitmap.createBitmap(256, 128, Bitmap.Config.ARGB_8888); expected.eraseColor(Color.WHITE);
             Canvas canvas = new Canvas(expected); Paint paint = new Paint(); paint.setColor(Color.rgb(gray,gray,gray));
             float[] xs = {-.5f, 20.3f, 63.9f, 97.5f, 143.1f, 200.9f, 255.5f};

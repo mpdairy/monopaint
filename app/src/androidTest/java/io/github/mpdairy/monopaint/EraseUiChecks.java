@@ -91,7 +91,8 @@ final class EraseUiChecks {
                 for(ToolSettings.Tool tool:new ToolSettings.Tool[]{ToolSettings.Tool.PENCIL,ToolSettings.Tool.AIRBRUSH}) {
                     ((View)buttons.get("tool:"+tool)).performClick();
                     check((Boolean)get(get(activity,"paint"),"eraseMode"),"Mode follows supported tools");
-                    replay(pad,160,240);
+                    // Pixel centers, so the default 1px upright pencil tip covers one.
+                    replay(pad,160.5f,240.5f);
                     check(doc.opacity(160,240)<255,"Tool erases: "+tool);check(doc.undo(),"Tool undo");
                 }
                 tools.select(ToolSettings.Tool.AIRBRUSH);String preset=tools.add().id;call(get(activity,"toolbar"),"rebuildTools");

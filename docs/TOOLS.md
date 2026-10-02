@@ -9,7 +9,7 @@ Tap a tool to select it. Tap it again to open its settings.
 | <img src="icons/brush.svg" width="24"><br>**Brush** | Pressure-sensitive paintbrush. |
 | <img src="icons/brush_pen.svg" width="24"><br>**Brush pen** | Clear water that drags paint around. |
 | <img src="icons/pencil.svg" width="24"><br>**Pencil** | Textured pencil. Lean it for broader strokes. |
-| <img src="icons/airbrush.svg" width="24"><br>**Airbrush** | Soft spray. Hold still to build up color. |
+| <img src="icons/airbrush.svg" width="24"><br>**Airbrush** | Soft spray. Go over an area again to build up color. |
 | <img src="icons/fill.svg" width="24"><br>**Fill** | Flat or gradient flood fill. |
 | <img src="icons/shapes.svg" width="24"><br>**Shapes** | Lines, rectangles, squares, ovals and circles. |
 | <img src="icons/eraser.svg" width="24"><br>**Eraser** | Erases to reveal the layers below. |

@@ -152,7 +152,7 @@ final class ToolPickerChecks {
         check(find(panel,control)!=null&&find(panel,control).isShown(),tool+" exposes its controls immediately");
         main(test,() -> {
             if(!tool.equals("FILL")) {
-                ((SeekBar)find(panel,tool.equals("AIRBRUSH")?"Airbrush diameter":"Maximum diameter")).setProgress(53);
+                ((SeekBar)find(panel,"Maximum diameter")).setProgress(53);
                 check(library.current().maximum==55,"Size control retained for "+tool);
             }
             ((SeekBar)find(panel,control)).setProgress(61);

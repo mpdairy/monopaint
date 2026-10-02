@@ -219,18 +219,15 @@ final class ToneDocument {
         if(target==current&&resultAlpha<=opacity(x,y)) return;
         setPixel(x,y,rawTone(target,resultAlpha),resultAlpha);
     }
-    /** Cumulative source-over spray, always recomputed from the untouched stroke base. */
+    /** Source-over toward {@code gray} on the current pixel, always moving at least one step, like {@link #eraseTone}. */
     void sprayTone(int x,int y,int gray,float strength) {
-        int key=(y/TILE)*columns()+x/TILE;
-        int i=y*width+x,base=tones[i]&255,coverage=alpha[i]&255;
-        if(captured[key]) {
-            if(sprayBaseKey!=key || sprayBaseTile==null) {sprayBaseKey=key;sprayBaseTile=before.get(key);}
-            int w=Math.min(TILE,width-(x/TILE)*TILE),offset=(y%TILE)*w+x%TILE;
-            base=sprayBaseTile[offset]&255;coverage=sprayBaseTile[sprayBaseTile.length/2+offset]&255;
-        }
+        if(x<0||y<0||x>=width||y>=height||strength<=0) return;
+        strength=Math.min(1,strength);
+        int i=y*width+x,tone=tones[i]&255,coverage=alpha[i]&255;
         float a=strength*255+coverage*(1-strength);
-        int result=a==0?255:Math.round((gray*strength*255+base*coverage*(1-strength))/a);
-        setPixel(x,y,result,Math.round(a));
+        int result=Math.round((gray*strength*255+tone*coverage*(1-strength))/a);
+        if(result==tone&&tone!=gray&&coverage>0) result+=gray>tone?1:-1;
+        setPixel(x,y,result,Math.min(255,Math.max(coverage+1,Math.round(a))));
     }
     /** Remove coverage from the gesture's original layer, retaining its pigment. */
     void eraseFromBase(int x,int y,float strength) {

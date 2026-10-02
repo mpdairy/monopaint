@@ -30,7 +30,7 @@ final class ToolStroke implements DrawingStroke {
             if(Float.isFinite(tx)&&Float.isFinite(ty)&&Math.abs(tx)<=90&&Math.abs(ty)<=90)
                 angle=(float)Math.atan2(Math.tan(Math.toRadians(ty)),Math.tan(Math.toRadians(tx)));
         }
-        if(settings.tool==ToolSettings.Tool.ERASER || settings.tool==ToolSettings.Tool.SOFTEN) {
+        if(settings.tool==ToolSettings.Tool.ERASER || settings.tool==ToolSettings.Tool.SOFTEN || settings.tool==ToolSettings.Tool.AIRBRUSH) {
             float spacing=Math.max(.5f,diameter*.12f);
             if(!started) {
                 started=true;dab(x,y,diameter,p,0,0);distanceToDab=spacing;
@@ -57,6 +57,9 @@ final class ToolStroke implements DrawingStroke {
     }
     private void dab(float x,float y,float diameter,float pressure,float dx,float dy) {
         if(settings.tool==ToolSettings.Tool.ERASER) ToneDabs.erase(document,x,y,diameter/2,settings.softness,pressure);
+        // Flow 50% matches the eraser's strength.
+        else if(settings.tool==ToolSettings.Tool.AIRBRUSH)
+            ToneDabs.soft(document,x,y,diameter/2,settings.softness,pressure,settings.strength/50f,erasing?ToneDocument.ERASE:gray);
         else neighborhood=ToneDabs.soften(document,x,y,diameter/2,dx,dy,settings.strength,neighborhood);
     }
     @Override public boolean finish() { return document.finish(); }

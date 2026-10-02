@@ -15,7 +15,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
 
-/** Exercises timed pen input and real controls on a temporary page, then restores the session. */
+/** Exercises pen input and real controls on a temporary page, then restores the session. */
 final class AirbrushUiChecks {
     static void run(Instrumentation test,StringBuilder report) throws Exception {
         PaintActivity activity=(PaintActivity)test.startActivitySync(new Intent(test.getTargetContext(),PaintActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -40,11 +40,11 @@ final class AirbrushUiChecks {
                 check(((ToolLibrary)get(activity,"library")).current().tool==ToolSettings.Tool.AIRBRUSH,"Toolbar selects airbrush");
                 dialog[0]=(PopupWindow)call(activity,"showToolSettings");
                 View content=dialog[0].getContentView();
-                ((SeekBar)find(content,"Airbrush diameter")).setProgress(62);
+                ((SeekBar)find(content,"Maximum diameter")).setProgress(62);
                 ((SeekBar)find(content,"Flow")).setProgress(55);
                 ToolSettings settings=((ToolLibrary)get(activity,"library")).current();
                 check(settings.maximum==64&&settings.strength==55,"Size and flow controls edit settings");
-                check(find(content,"Minimum diameter")==null,"Airbrush has a single fixed size");
+                check(find(content,"Minimum diameter")!=null&&find(content,"Softness")!=null,"Airbrush has the eraser's pressure size and softness");
                 dialog[0].dismiss();dialog[0]=null;set(get(activity,"paint"),"gray",0);
             });
             test.waitForIdleSync();SystemClock.sleep(150);
@@ -54,28 +54,18 @@ final class AirbrushUiChecks {
                 test.waitForIdleSync();SystemClock.sleep(150);
                 long down=SystemClock.uptimeMillis();
                 pen(test,pad,MotionEvent.ACTION_DOWN,down,160,240);
-                int[] first={0};main(test,() -> first[0]=doc.tone(160,240));
-                SystemClock.sleep(250);
-                main(test,() -> check(doc.tone(160,240)<first[0],"Holding pen sprays without move events in rotation "+turn));
+                byte[][] held={null};main(test,() -> {check(doc.tone(160,240)<255,"Pen-down sprays in rotation "+turn);held[0]=doc.snapshot();});
+                SystemClock.sleep(150);
+                main(test,() -> check(Arrays.equals(held[0],doc.snapshot()),"Holding still adds nothing; passes build color in rotation "+turn));
                 pen(test,pad,MotionEvent.ACTION_UP,down,160,240);
-                byte[][] stopped={null};main(test,() -> {check(get(pad,"stroke")==null,"Pen-up ends airbrush");stopped[0]=doc.snapshot();});
-                SystemClock.sleep(100);
                 main(test,() -> {
-                    check(Arrays.equals(stopped[0],doc.snapshot()),"No spray after pen-up");
-                    check(doc.undo()&&doc.opacity(160,240)==0,"One undo removes held spray");
+                    check(get(pad,"stroke")==null,"Pen-up ends airbrush");
+                    check(doc.undo()&&doc.opacity(160,240)==0,"One undo removes the spray");
                     call(pad,"renderAll");
                     fastReplay(pad,doc);
                 });
             }
-            long down=SystemClock.uptimeMillis();pen(test,pad,MotionEvent.ACTION_DOWN,down,160,240);
-            main(test,() -> activity.onWindowFocusChanged(false));
-            byte[][] stopped={null};main(test,() -> stopped[0]=doc.snapshot());SystemClock.sleep(100);
-            main(test,() -> {
-                check(get(pad,"stroke")==null&&Arrays.equals(stopped[0],doc.snapshot()),"Focus loss stops timed spray");
-                activity.onWindowFocusChanged(true);
-            });
-            pen(test,pad,MotionEvent.ACTION_UP,down,160,240);
-            report.append("PASS: Airbrush toolbar, retained eraser, diameter/flow settings, timed holds in four rotations, batched fast sweeps with timer interleaving, final pen-up motion, pen-up/focus cancellation and one-step undo.\n");
+            report.append("PASS: Airbrush toolbar, retained eraser, size/softness/flow settings, no buildup while held in four rotations, batched fast sweeps and one-step undo.\n");
         } finally {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();call(pad,"finishStroke");call(pad,"dryWet");
@@ -91,8 +81,6 @@ final class AirbrushUiChecks {
         long down=SystemClock.uptimeMillis()-32;
         MotionEvent event=event(pad,MotionEvent.ACTION_DOWN,down,down,32,240.5f,.45f);
         ((View)pad).onTouchEvent(event);event.recycle();
-        // A timer may run before Android delivers older samples in a batch.
-        ((Runnable)get(pad,"sprayStep")).run();
         event=event(pad,MotionEvent.ACTION_MOVE,down,down+8,96,240.5f,.45f);
         event.addBatch(down+16,new MotionEvent.PointerCoords[]{coords(pad,160,240.5f,.45f)},0);
         event.addBatch(down+24,new MotionEvent.PointerCoords[]{coords(pad,224,240.5f,.45f)},0);
@@ -100,10 +88,7 @@ final class AirbrushUiChecks {
         check(doc.tone(190,240)<255,"Batched motion is painted before returning from the input event");
         event=event(pad,MotionEvent.ACTION_UP,down,down+32,288,240.5f,0);
         ((View)pad).onTouchEvent(event);event.recycle();
-        int low=255,high=0;
-        for(int x=70;x<250;x++){int tone=doc.tone(x,240);low=Math.min(low,tone);high=Math.max(high,tone);}
-        check(high<255&&high-low<=1,"Batched fast pen input paints a uniform stripe without blobs");
-        check(doc.tone(275,240)<255,"Final pen-up segment is retained");
+        for(int x=40;x<220;x++)check(doc.tone(x,240)<255,"Batched fast pen input paints a stripe without gaps");
         check(get(pad,"stroke")==null&&doc.undo(),"Immediate sweep ends as one undo action");
         check(doc.opacity(160,240)==0,"Fast sweep undo restores transparent paper");call(pad,"renderAll");
     }

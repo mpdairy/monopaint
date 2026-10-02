@@ -160,7 +160,7 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   accepting an eyedropper sample returns to painting. Tapping the eraser color
   again returns to the previously selected shade. Brush heads retain their
   shape, size, tilt and pressure response; pencil retains its grain, and airbrush
-  retains its soft flow and timed buildup. Erasing removes selected-layer coverage
+  retains its softness, flow and pressure size. Erasing removes selected-layer coverage
   to reveal layers underneath, with one-step undo. It settles wet paint and bypasses
   wet/transparent paint while retaining those settings for subsequent painting.
   The mode follows supported tools and presets and is remembered across restarts.

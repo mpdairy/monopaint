@@ -7,11 +7,11 @@ final class EraseChecks {
         ToneDocument doc=layered();
         byte[] original=doc.snapshot();
         ToolSettings settings=ToolSettings.defaults(ToolSettings.Tool.AIRBRUSH).size(64).strength(70);
-        AirbrushStroke erase=new AirbrushStroke(doc,settings,0,true);
-        erase.sampleAt(64.5f,64.5f,.45f,0);
+        ToolStroke erase=new ToolStroke(doc,settings,0,true);
+        erase.sample(40,64.5f,.45f,0,0);erase.sample(88,64.5f,.45f,0,0);
         int first=doc.opacity(64,64);
-        for(int t=64;t<=256;t+=32)erase.advance(t);
-        check(doc.opacity(64,64)<first,"Held airbrush removes more coverage");
+        erase.sample(40,64.5f,.45f,0,0);
+        check(doc.opacity(64,64)<first,"Another pass removes more coverage");
         check(doc.opacity(64,64)<doc.opacity(82,64),"Soft edge retains more coverage");
         erase.finish();byte[] erased=doc.snapshot();
         check(doc.compositeTone(64,64)<160,"Erasing reveals darker lower layer, never white paint");
@@ -27,15 +27,15 @@ final class EraseChecks {
         doc.finish();check(!Arrays.equals(original,doc.snapshot()),"Pencil removes pigment with its grain");
         check(doc.undo()&&Arrays.equals(original,doc.snapshot()),"Pencil undo restores layer");
         ToneDocument empty=new ToneDocument(128,128);
-        erase=new AirbrushStroke(empty,settings,255,true);erase.sampleAt(64,64,.45f,0);
+        erase=new ToolStroke(empty,settings,255,true);erase.sample(64,64,.45f,0,0);
         check(!erase.finish()&&empty.opacity(64,64)==0,"Erasing empty layer adds no paint or undo");
         ToneDocument painted=new ToneDocument(128,128),removed=layered();
-        AirbrushStroke paint=new AirbrushStroke(painted,settings,0),rub=new AirbrushStroke(removed,settings,255,true);
-        for(int t=0;t<=160;t+=16) {paint.sampleAt(32+t*.4f,64.5f,.3f,t);rub.sampleAt(32+t*.4f,64.5f,.3f,t);}
+        ToolStroke paint=new ToolStroke(painted,settings,0),rub=new ToolStroke(removed,settings,255,true);
+        for(int t=0;t<=160;t+=16) {paint.sample(32+t*.4f,64.5f,.3f,0,0);rub.sample(32+t*.4f,64.5f,.3f,0,0);}
         paint.finish();rub.finish();
         for(int y=0;y<128;y++)for(int x=0;x<128;x++)
-            check(Math.abs(255-painted.opacity(x,y)-removed.opacity(x,y))<=1,"Airbrush erase matches paint exposure");
-        System.out.println("PASS: brush-mode soft erasing, layer reveal, pencil grain, cumulative exposure, empty layers and exact undo/redo");
+            check(Math.abs(255-painted.opacity(x,y)-removed.opacity(x,y))<=1,"Airbrush erase mirrors airbrush paint");
+        System.out.println("PASS: brush-mode soft erasing, layer reveal, pencil grain, mirrored paint and erase, empty layers and exact undo/redo");
     }
     private static ToneDocument layered() {
         byte[] base=new byte[128*128];Arrays.fill(base,(byte)24);

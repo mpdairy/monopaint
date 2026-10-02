@@ -128,10 +128,8 @@ use the latest position and pen-up commits the exact endpoint. Use
 input handling, the coalesced preview frame, and direct display submission.
 Both modes restore and verify every saved page afterward.
 Use `-e airbrushOnly true` for airbrush toolbar selection, retained standalone
-Eraser, diameter/flow controls, stationary timed spray in all four orientations,
-immediate movement without a timer wait, batched fast sweeps with interleaved
-hold timers, the final pen-up segment,
-pen-up/focus interruption, and single-stroke undo. It restores the original
+Eraser, size/softness/flow controls, no buildup while held in all four
+orientations, batched fast sweeps, and single-stroke undo. It restores the original
 book and settings afterward.
 Use `-e paletteOnly true` for pen/finger input in the sidebar and grid editor in all four orientations
 and both hands: icon-anchored placement without covering the color bar, direct

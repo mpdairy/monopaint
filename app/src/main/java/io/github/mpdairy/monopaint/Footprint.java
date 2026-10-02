@@ -32,8 +32,9 @@ final class Footprint extends View {
             float x = getWidth()*(i == 0 ? .3f : .7f);
             int diameter = i == 0 ? s.minimum : pencil && !s.tilt ? s.tip : s.maximum;
             float r = diameter/2f;
-            if (s.tool == ToolSettings.Tool.SOFTEN || (s.tool == ToolSettings.Tool.ERASER && s.softness > 0)) {
-                float edge = s.tool == ToolSettings.Tool.ERASER ? s.softness/100f : 1;
+            boolean softRound = s.tool == ToolSettings.Tool.ERASER || s.tool == ToolSettings.Tool.AIRBRUSH;
+            if (s.tool == ToolSettings.Tool.SOFTEN || (softRound && s.softness > 0)) {
+                float edge = softRound ? s.softness/100f : 1;
                 paint.setShader(new RadialGradient(x, y, r, new int[]{Color.BLACK, Color.BLACK, Color.WHITE},
                         new float[]{0, Math.max(.001f, 1-edge), 1}, Shader.TileMode.CLAMP));
             }

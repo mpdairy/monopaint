@@ -21,7 +21,7 @@ final class ToolLibrary {
         for (ToolSettings.Tool tool : ToolSettings.Tool.values()) {
             builtins[tool.ordinal()] = ToolSettings.defaults(tool);
             if (builtins[tool.ordinal()].isBrush()) for (ToolSettings.Head head : ToolSettings.Head.values())
-                heads[tool.ordinal()][head.ordinal()] = ToolSettings.defaults(tool).head(head).automaticHead();
+                heads[tool.ordinal()][head.ordinal()] = ToolSettings.defaults(tool, head);
         }
         current = builtins[0];
     }

@@ -22,7 +22,7 @@ final class ToolControls {
             case PENCIL: pencil(form, textSize); break;
             case ERASER: eraser(form, textSize); break;
             case SOFTEN: soften(form, textSize); break;
-            case AIRBRUSH: airbrush(form); break;
+            case AIRBRUSH: airbrush(form, textSize); break;
             case BRUSH_PEN: case WET_BRUSH_PEN: brushPen(form, current, textSize); break;
             case FILL: fill(form, current); break;
             case SHAPES: shapes(form, current); break;
@@ -62,10 +62,15 @@ final class ToolControls {
                 s -> s.minimum, s -> s.maximum, s -> s.tip, (s, tip) -> s.options(tip, s.soft, s.tilt));
     }
 
-    private static void eraser(SettingsForm form, float textSize) {
+    /** The eraser and airbrush share a soft round footprint sized by pressure. */
+    private static void softRound(SettingsForm form, float textSize) {
         form.footprint(84, textSize);
         sizes(form, "diameter", 128);
         form.percent("Softness", s -> s.softness, ToolSettings::softness);
+    }
+
+    private static void eraser(SettingsForm form, float textSize) {
+        softRound(form, textSize);
         form.hint("0% erases cleanly. Higher values fade with rubbing.");
     }
 
@@ -84,10 +89,10 @@ final class ToolControls {
         if (!current.tool.flowing) form.percent("Carry original paint", s -> s.carry, ToolSettings::carry);
     }
 
-    private static void airbrush(SettingsForm form) {
-        form.slider("Airbrush diameter", s -> "Diameter\n" + s.maximum + " px", s -> 2, s -> 128, s -> s.maximum, ToolSettings::size);
+    private static void airbrush(SettingsForm form, float textSize) {
+        softRound(form, textSize);
         form.percent("Flow", s -> s.strength, ToolSettings::strength);
-        form.hint("Press harder for stronger spray. Hold or move slowly to build color. Size stays fixed.");
+        form.hint("Pressure sets the size. Go over an area again to build up color.");
     }
 
     private static void fill(SettingsForm form, ToolSettings current) {

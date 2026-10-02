@@ -21,10 +21,8 @@ final class ToolStrokes {
                 // A hard eraser is a solid round stamp; softness needs per-dab fading.
                 if (settings.softness == 0) return new PressureStroke(document, settings, 255, wet, false, erasing);
                 return new ToolStroke(document, settings, gray, erasing);
-            case PENCIL: case SOFTEN:
+            case PENCIL: case SOFTEN: case AIRBRUSH:
                 return new ToolStroke(document, settings, gray, erasing);
-            case AIRBRUSH:
-                return new AirbrushStroke(document, settings, gray, erasing);
             default:
                 throw new IllegalArgumentException(settings.tool + " is not a stroke tool");
         }

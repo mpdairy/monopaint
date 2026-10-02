@@ -46,7 +46,7 @@ final class PaintPreferences {
     /** Saved palette shades; never empty unless the user deleted every shade. */
     ArrayList<Integer> paletteShades() {
         ArrayList<Integer> shades = new ArrayList<>();
-        String saved = store.getString("palette_shades", "0,128,192,255");
+        String saved = store.getString("palette_shades", "0,162,225,255");
         if (saved.isEmpty()) return shades;
         for (String item : saved.split(",")) {
             try {

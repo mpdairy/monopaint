@@ -86,8 +86,8 @@ final class BrushPerformanceChecks {
                     doc.begin();for(int y=0;y<doc.height;y++)for(int x=0;x<doc.width;x++)doc.paintTone(x,y,0);doc.finish();
                 }
                 long start=System.nanoTime();
-                DrawingStroke stroke=tool==ToolSettings.Tool.AIRBRUSH?new AirbrushStroke(doc,settings,0)
-                        :tool==ToolSettings.Tool.ERASER?new ToolStroke(doc,settings,255):new PressureStroke(doc,settings,0);
+                DrawingStroke stroke=tool==ToolSettings.Tool.BRUSH?new PressureStroke(doc,settings,0)
+                        :new ToolStroke(doc,settings,tool==ToolSettings.Tool.ERASER?255:0);
                 for(int i=0;i<120;i++)stroke.sample(100+i*4,220+(float)Math.sin(i*.08)*80,.45f,0,60);
                 stroke.finish();if(run>=0)times[run]=System.nanoTime()-start;
             }

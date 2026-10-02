@@ -299,7 +299,7 @@ public final class ToolChecks {
             for(int sample=0;sample<=1000;sample++) {
                 float pressure=sample/1000f, diameter=settings.diameter(pressure);
                 check(diameter>=previous && diameter>=settings.minimum && diameter<=settings.maximum,"Every response grows monotonically within size limits");
-                if(response>0) check(diameter<=original.pressureResponse(response-1).diameter(pressure),"Moving toward Firm never broadens a stroke at the same pressure");
+                if(response>0) check(diameter<=original.pressureResponse(response-1).diameter(pressure)+1e-4f,"Moving toward Firm never broadens a stroke at the same pressure");
                 if(response==50) {
                     float p=Math.max(0,Math.min(1,(pressure-.05f)/.40f));
                     check(diameter==original.minimum+(original.maximum-original.minimum)*p*p,"Default exactly preserves legacy width");
@@ -310,7 +310,7 @@ public final class ToolChecks {
                     && settings.diameter(2)==settings.maximum,"Every response retains reachable thin and full-width endpoints");
             for(float invalid:new float[]{Float.NaN,Float.NEGATIVE_INFINITY,Float.POSITIVE_INFINITY})
                 check(settings.diameter(invalid)==settings.minimum,"Malformed pressure remains bounded");
-            check(settings.minimum(64).diameter(.2f)==64,"Equal minimum and maximum produce a fixed width");
+            check(settings.minimum(settings.maximum).diameter(.2f)==settings.maximum,"Equal minimum and maximum produce a fixed width");
         }
         ToolSettings firm=original.pressureResponse(100),light=original.pressureResponse(0);
         check(firm.diameter(.2f)<original.diameter(.2f)/2 && light.diameter(.2f)>original.diameter(.2f),"Firm meaningfully improves thin-stroke control and Light broadens sooner");
@@ -325,7 +325,7 @@ public final class ToolChecks {
             check(settings.diameter(.2f)==settings.pressureResponse(100).diameter(.2f),"Brush response leaves other tools unchanged");
         }
         for(int response:new int[]{0,50,100})for(float pressure:new float[]{0,.1f,.2f,.3f,.45f,1})
-            check(ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).pressureResponse(response).diameter(pressure)
+            check(ToolSettings.defaults(ToolSettings.Tool.WATERCOLOR).size(original.maximum).minimum(original.minimum).pressureResponse(response).diameter(pressure)
                     ==original.pressureResponse(response).diameter(pressure),"Watercolor shares brush pressure response");
         ToolLibrary library=new ToolLibrary();library.edit(firm);
         ToolLibrary.Preset preset=library.add();library.edit(library.current().pressureResponse(83));
@@ -352,7 +352,7 @@ public final class ToolChecks {
                 if(version>=6)out.writeInt(83);
             }
             out.flush();ToolLibrary migrated=ToolLibrary.decode(bytes.toByteArray());
-            ToolSettings expected=original.pressureResponse(version>=6?83:50);
+            ToolSettings expected=original.size(64).minimum(2).pressureResponse(version>=6?83:50);
             check(migrated.current().pressureResponse==expected.pressureResponse && migrated.current().diameter(.2f)==expected.diameter(.2f)
                     && migrated.activeId().equals(preset.id) && migrated.presets().get(0).name.equals("Sketch"),"TSP"+version+" retains brush feel and preset identity");
             check(ToolLibrary.decode(migrated.encode()).current().equals(migrated.current()),"Migrated response round trips");

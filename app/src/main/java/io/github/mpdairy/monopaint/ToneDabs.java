@@ -6,16 +6,25 @@ final class ToneDabs {
         erase(doc,cx,cy,radius,100,1);
     }
     static void erase(ToneDocument doc, float cx, float cy, float radius, int softness, float pressure) {
+        soft(doc,cx,cy,radius,softness,pressure,1,ToneDocument.ERASE);
+    }
+    /**
+     * A round dab that fades toward its edge over {@code softness}%. It erases when {@code gray}
+     * is {@link ToneDocument#ERASE}, otherwise sprays {@code gray}; {@code flow} scales its strength.
+     */
+    static void soft(ToneDocument doc, float cx, float cy, float radius, int softness, float pressure, float flow, int gray) {
         int l = Math.max(0,(int)Math.floor(cx-radius)), t = Math.max(0,(int)Math.floor(cy-radius));
         int r = Math.min(doc.width,(int)Math.ceil(cx+radius)), b = Math.min(doc.height,(int)Math.ceil(cy+radius));
         for (int y=t;y<b;y++) for (int x=l;x<r;x++) {
             float q = ((x+.5f-cx)*(x+.5f-cx)+(y+.5f-cy)*(y+.5f-cy))/(radius*radius);
             if (q >= 1) continue;
-            if (softness == 0) { doc.eraseTone(x,y,1); continue; }
-            float feather = softness/100f;
+            if (softness == 0 && gray == ToneDocument.ERASE) { doc.eraseTone(x,y,1); continue; }
+            float feather = Math.max(.01f, softness/100f);
             float edge = Math.min(1,(1-q)/feather);
-            float alpha = (.08f + .20f*pressure) * edge * edge;
-            if (alpha > .001f) doc.eraseTone(x,y,alpha);
+            float alpha = Math.min(1, (.08f + .20f*pressure) * edge * edge * flow);
+            if (alpha <= .001f) continue;
+            if (gray == ToneDocument.ERASE) doc.eraseTone(x,y,alpha);
+            else doc.sprayTone(x,y,gray,alpha);
         }
     }
     static void soften(ToneDocument doc, float cx, float cy, float radius) {
