@@ -1,4 +1,4 @@
-MonoPaint 0.9 adds oil paint brushes that run out of paint and smudge.
+MonoPaint 0.9 adds oil paint brushes that run out of paint and smudge, and an easier airbrush.
 
 - Oil paint: turn it on for any brush in its settings. Each stroke starts with
   solid paint in your shade, then runs out along the stroke and smudges the
@@ -11,6 +11,11 @@ MonoPaint 0.9 adds oil paint brushes that run out of paint and smudge.
   thin rounded sliver.
 - Brush pen: a Carry original paint setting pushes the paint it picks up
   further along the stroke.
+- Airbrush now sprays like the eraser: pressure sets the size, Flow sets how
+  much each pass adds, and a Softness setting feathers the edge. Go over an
+  area again to build up color.
+- New installs start with sizes tuned for the brush heads, pencil, eraser,
+  blending stump and airbrush, and a lighter starting palette.
 
 Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
 Update with `adb install -r monopaint.apk` to preserve drawings and settings.
