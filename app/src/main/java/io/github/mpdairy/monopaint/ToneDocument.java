@@ -200,6 +200,12 @@ final class ToneDocument {
         coverage=255-transparentTone(255-coverage,gray);
         setPixel(x,y,rawTone(result,coverage),coverage);
     }
+    /** Moves the gesture's base tone toward {@code gray} by {@code strength}, covering at least that much. */
+    void mixTone(int x,int y,int gray,float strength) {
+        int base=strokeBaseTone(x,y),result=Math.round(base+(gray-base)*strength);
+        int coverage=Math.max(opacity(x,y),Math.max(Math.round(255*strength),255-result));
+        setPixel(x,y,rawTone(result,coverage),coverage);
+    }
     /** Strongest pencil contact in this gesture, carrying the chosen pigment and its coverage. */
     void pencilTone(int x,int y,int gray,float strength) {
         int key=(y/TILE)*columns()+x/TILE,base=strokeBaseTone(x,y),coverage=opacity(x,y);

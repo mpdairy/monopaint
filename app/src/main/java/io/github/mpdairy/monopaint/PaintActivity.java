@@ -97,6 +97,8 @@ public final class PaintActivity extends Activity implements ControlHost {
     private boolean dismissingTouch;
     boolean pageActionPending;
     final SelectionFeedback selectionFeedback = new SelectionFeedback();
+    /** Rubbing in the color bar or palette loads a brush with limited paint. */
+    final PaintRub paintRub = new PaintRub(this::loadPaint);
     final SelectionFeedback layerFeedback = new SelectionFeedback();
 
     @Override protected void attachBaseContext(Context base) {
@@ -631,6 +633,12 @@ public final class PaintActivity extends Activity implements ControlHost {
         if (paint.gray != value) updateColorBar(() -> paint.gray = value);
         if (pad.hasGradient()) pad.previewGradient(value);
         if (paletteEditor != null) paletteEditor.colorChanged(value);
+    }
+    /** Loads a brush with limited paint by as far as the pen rubbed in the color bar or palette. */
+    void loadPaint(float travel) {
+        ToolSettings current = library.current();
+        if (busy() || !current.limitsPaint()) return;
+        library.edit(current.loadedBy(travel)); saveToolState(); toolbar.refreshToolSelection();
     }
     /** The pen or key left the shade strip: commit or cancel what it previewed. */
     void endShadeGesture(boolean committed) {

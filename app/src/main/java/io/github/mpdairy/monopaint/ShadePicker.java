@@ -76,6 +76,7 @@ final class ShadePicker extends View {
     }
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (app.busy()) return true;
+        app.paintRub.track(event);
         int action = event.getActionMasked();
         boolean up = (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP)
                 && event.getPointerId(event.getActionIndex()) == activePointer;

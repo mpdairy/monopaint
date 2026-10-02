@@ -63,14 +63,14 @@ public final class ShapeChecks {
         ToolLibrary restored=ToolLibrary.decode(library.encode());
         check(restored.current().equals(library.current()) && restored.activeId().equals(preset.id),"Shape favorite round trip");
         check(restored.builtin(ToolSettings.Tool.SHAPES).equals(regular),"Regular shape stays independent");
-        // Actual immediately preceding format: nine tools and 48-byte settings records.
+        // Format before Shapes: nine tools and 48-byte settings records.
         library=new ToolLibrary();library.select(ToolSettings.Tool.AIRBRUSH);library.edit(library.current().strength(72));library.add("Spray");
         DataInputStream in=new DataInputStream(new ByteArrayInputStream(library.encode()));
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);
         in.readInt();out.writeInt(0x5453503f);byte[] record=new byte[48];
-        for(int i=0;i<25;i++){in.readFully(record);if(i<9 || i>11)out.write(record);in.skipBytes(6);}
+        for(int i=0;i<25;i++){in.readFully(record);if(i<9 || i>11)out.write(record);in.skipBytes(22);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
-        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.skipBytes(6);}
+        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.skipBytes(22);}
         check(in.read()==-1,"Old format fixture consumes every byte");
         restored=ToolLibrary.decode(bytes.toByteArray());
         check(restored.current().equals(library.current()) && restored.activeId().equals(library.activeId()),"Previous version retains selected favorite");

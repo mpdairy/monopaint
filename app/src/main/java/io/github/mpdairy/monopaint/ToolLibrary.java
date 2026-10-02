@@ -94,8 +94,8 @@ final class ToolLibrary {
         if (trimmed.isEmpty() || trimmed.length() > 40) throw new IllegalArgumentException("Use a name of 1–40 characters");
         return trimmed;
     }
-    /** Current preset format. When appending a tool, bump this and extend {@link #toolCount}. */
-    private static final int FORMAT = 0x54535043;
+    /** Current preset format. When appending a tool, bump this and extend {@link #toolCount}; when appending a field, bump this and read it from the new version. */
+    private static final int FORMAT = 0x54535047;
     byte[] encode() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream out = new DataOutputStream(bytes);
         out.writeInt(FORMAT);
@@ -156,6 +156,7 @@ final class ToolLibrary {
         out.writeByte(settings.head.ordinal()); out.writeInt(settings.angle);
         out.writeInt(settings.bristles); out.writeInt(settings.headThickness); out.writeByte(settings.gradient.ordinal());
         out.writeByte(settings.shape.ordinal()); out.writeBoolean(settings.filled); out.writeInt(settings.outlineWidth);
+        out.writeInt(settings.carry); out.writeInt(settings.paintLoad); out.writeInt(settings.loadingSpeed); out.writeInt(settings.minimumLoad);
     }
     private static ToolSettings read(DataInputStream in, int version) throws IOException {
         int tool = in.readUnsignedByte();
@@ -179,13 +180,17 @@ final class ToolLibrary {
         int shape=version>=0x54535040?in.readUnsignedByte():0;
         boolean filled=version>=0x54535040 && in.readBoolean();
         int outlineWidth=version>=0x54535040?in.readInt():3;
+        int carry=version>=0x54535044?in.readInt():0;
+        int paintLoad=version>=0x54535045?in.readInt():ToolSettings.UNLIMITED_PAINT;
+        int loadingSpeed=version>=0x54535046?in.readInt():ToolSettings.DEFAULT_LOADING_SPEED;
+        int minimumLoad=version>=0x54535047?in.readInt():ToolSettings.DEFAULT_MINIMUM_LOAD;
         if(shape>=ToolSettings.Shape.values().length) throw new IOException("Unknown shape");
         if(gradient>=ToolSettings.Gradient.values().length) throw new IOException("Unknown gradient type");
         if (head >= ToolSettings.Head.values().length) throw new IOException("Unknown brush head");
         // Earlier builds ignored Flat's stored thickness and always drew 1px.
         // Preserve that appearance until the user changes the new height slider.
         if (version < 0x5453503d && head == ToolSettings.Head.FLAT.ordinal()) headThickness=0;
-        return new ToolSettings(ToolSettings.Tool.values()[tool], minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, ToolSettings.Head.values()[head], angle, bristles, headThickness, ToolSettings.Gradient.values()[gradient], ToolSettings.Shape.values()[shape], filled, outlineWidth).automaticHead();
+        return new ToolSettings(ToolSettings.Tool.values()[tool], minimum, maximum, tip, softness, tilt, hardness, tolerance, strength, pressureResponse, ToolSettings.Head.values()[head], angle, bristles, headThickness, ToolSettings.Gradient.values()[gradient], ToolSettings.Shape.values()[shape], filled, outlineWidth, carry, paintLoad, loadingSpeed, minimumLoad).automaticHead();
     }
     static final class Preset {
         final String id, name; final ToolSettings settings;

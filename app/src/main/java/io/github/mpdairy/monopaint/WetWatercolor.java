@@ -80,6 +80,10 @@ final class WetWatercolor {
         paintMask(mask, stride, x, y, w, h, gray, false);
     }
     void paintMask(int[] mask, int stride, int x, int y, int w, int h, int gray, boolean transparent) {
+        paintMask(mask, stride, x, y, w, h, gray, transparent, 1);
+    }
+    /** {@code strength}, from 0 to 1, moves each pixel only that far toward the paint, as a brush running out of it does. */
+    void paintMask(int[] mask, int stride, int x, int y, int w, int h, int gray, boolean transparent, float strength) {
         // Rehydrate the local neighborhood lazily: existing drawing is pigment too.
         // The whole canvas is eligible, without scanning/allocating it on a toggle.
         int marginLeft = margin(-gravityX), marginTop = margin(-gravityY);
@@ -95,17 +99,18 @@ final class WetWatercolor {
             if (tile.touched.get(index)) continue;
             tile.touched.set(index);
             strokePixels++;
-            float pigment = 255 - gray;
+            float pigment = (255 - gray) * strength;
             if (wholeCanvas) {
                 float old = tile.pigment[index];
-                if (transparent) pigment = old + (255 - old) * (255 - gray) / 510f;
+                if (transparent) pigment = old + (255 - old) * (255 - gray) * strength / 510f;
+                else pigment = old + (255 - gray - old) * strength;
                 // Opaque paint starts crisp, then fades into the pigment underneath.
                 // Clear water introduces no white pigment; it only wakes diffusion.
                 tile.target[index] = old * (.6f * wetness) + pigment * (1 - .6f * wetness);
                 tile.pigment[index] = pigment;
                 clearWater(tile, index);
-                if(transparent) document.glazeTone(px,py,gray);
-                else document.paintTone(px,py,gray);
+                if(transparent) document.glazeTone(px,py,Math.round(255 - (255 - gray) * strength));
+                else document.paintTone(px,py,Math.round(255 - pigment));
                 composite(tile, index, px, py);
                 wake(tile);
                 continue;
@@ -136,6 +141,15 @@ final class WetWatercolor {
      * fresh, but never makes that water darker than the paint was.
      */
     void waterMask(int[] mask, int stride, int x, int y, int w, int h, float pull, boolean flowing) {
+        waterMask(mask, stride, x, y, w, h, pull, flowing, 0);
+    }
+    /**
+     * {@code carry}, from 0 to 1, slows how fast the dragging pen trades its load for the
+     * paint under it, so it pushes what it picked up, white too, further along the stroke.
+     * The slowing is squared so the middle of the range already carries a long way;
+     * at 1 the pen keeps its first load for the whole stroke.
+     */
+    void waterMask(int[] mask, int stride, int x, int y, int w, int h, float pull, boolean flowing, float carry) {
         int marginLeft = margin(-gravityX), marginTop = margin(-gravityY);
         int marginRight = margin(gravityX), marginBottom = margin(gravityY);
         if (wholeCanvas) hydrate(x - marginLeft, y - marginTop, x + w + marginRight, y + h + marginBottom);
@@ -185,7 +199,7 @@ final class WetWatercolor {
             composite(tile, index, px, py);
             wake(tile, WATER_FRAMES);
         }
-        if (!flowing) load += (under - load) * PICKUP;
+        if (!flowing) load += (under - load) * PICKUP * (1 - carry) * (1 - carry);
         wakeAround(x - marginLeft, y - marginTop, x + w + marginRight, y + h + marginBottom);
     }
     private Tile tileAt(int x, int y) {

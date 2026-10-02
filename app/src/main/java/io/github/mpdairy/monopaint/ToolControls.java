@@ -42,6 +42,10 @@ final class ToolControls {
             form.hint("1 px minimum; up to 20% of the pressure-sized width.");
         }
         form.percent("Pressure response", "Pressure", s -> s.pressureResponse, ToolSettings::pressureResponse);
+        form.check("Oil paint", ToolSettings::limitsPaint, ToolSettings::oilPaint);
+        form.visibleWhen((View)form.percent("Loading speed", s -> s.loadingSpeed, ToolSettings::loadingSpeed).getParent(), ToolSettings::limitsPaint);
+        form.visibleWhen((View)form.percent("Minimum load", s -> s.minimumLoad, ToolSettings::minimumLoad).getParent(), ToolSettings::limitsPaint);
+        form.hint("Paint runs out along the stroke, then smudges. Rub the pen around in a color to load more.");
         if (current.tool == ToolSettings.Tool.WATERCOLOR) form.hint("Black dots; white adds no ink.");
         else if (current.tool == ToolSettings.Tool.FLAT_WASH) form.hint("Even gray; darker marks stay.");
         else if (current.tool == ToolSettings.Tool.WET_WATERCOLOR)
@@ -75,12 +79,9 @@ final class ToolControls {
     private static void brushPen(SettingsForm form, ToolSettings current, float textSize) {
         form.footprint(84, textSize);
         sizes(form, "diameter", 128);
-        form.hint("Upright is the minimum size; lean the pen to widen it.");
         form.percent("Strength", s -> s.strength, ToolSettings::strength);
         form.percent("Pressure response", "Pressure", s -> s.pressureResponse, ToolSettings::pressureResponse);
-        form.hint(current.tool.flowing
-                ? "Clear water that stays wet; paint it touches flows through it like ink, evening out fast in fresh water and slowly as it dries. Press harder for more water. Strength sets the most. Lower pressure response gives more with a light touch. Edges stay sharp on a dry canvas."
-                : "Clear water that moves the paint it touches; press harder to pull more. Strength sets the most it pulls. Lower pressure response pulls more with a light touch. Edges stay sharp on a dry canvas.");
+        if (!current.tool.flowing) form.percent("Carry original paint", s -> s.carry, ToolSettings::carry);
     }
 
     private static void airbrush(SettingsForm form) {

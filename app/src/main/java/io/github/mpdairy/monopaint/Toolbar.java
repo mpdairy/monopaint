@@ -293,6 +293,7 @@ final class Toolbar {
             for (int j = i; j < Math.min(i+2, shades.size()); j++) {
                 PaletteSwatch swatch = new PaletteSwatch(app, shades.get(j), false);
                 sidebarSwatches.add(swatch); describe(swatch, j);
+                swatch.setOnTouchListener((v, event) -> { app.paintRub.track(event); return false; });
                 swatch.setOnClickListener(v -> {
                     if (app.busy()) return;
                     app.hideGradientHint(); app.selectShade(swatch.tone); app.pad.applyGradient(); app.saveToolState();

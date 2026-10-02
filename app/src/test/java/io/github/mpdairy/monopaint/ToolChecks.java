@@ -11,24 +11,51 @@ public final class ToolChecks {
     private static void brushPenMigration() throws Exception {
         // Ten tools before the brush pen, eleven before the wet brush pen.
         brushPenMigration(0x54535041, 10); brushPenMigration(0x54535042, 11);
+        beforeOilField(0x54535045, 62); beforeOilField(0x54535046, 66);
         ToolSettings wetPen=ToolSettings.defaults(ToolSettings.Tool.WET_BRUSH_PEN);
         check(wetPen.tool.water && wetPen.tool.flowing && !ToolSettings.Tool.BRUSH_PEN.flowing && wetPen.pull(.45f)==1,"The wet brush pen lays fully fresh flowing water at full pressure");
+    }
+    /** A format whose records stop after {@code kept} bytes, before the newer oil paint fields. */
+    private static void beforeOilField(int version, int kept) throws Exception {
+        ToolLibrary library=new ToolLibrary();library.select(ToolSettings.Tool.BRUSH);library.edit(library.current().oilPaint(true).paintLoad(30));library.add("Oil");
+        java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
+        in.readInt();out.writeInt(version);byte[] record=new byte[kept];int skipped=70-kept;
+        for(int i=0;i<25;i++){in.readFully(record);in.skipBytes(skipped);out.write(record);}
+        out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
+        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);in.skipBytes(skipped);out.write(record);}
+        check(in.read()==-1,"Paint load format fixture consumes every byte");
+        ToolLibrary restored=ToolLibrary.decode(bytes.toByteArray());
+        check(restored.current().equals(library.current()) && restored.current().paintLoad==30 && restored.current().loadingSpeed==ToolSettings.DEFAULT_LOADING_SPEED && restored.current().minimumLoad==ToolSettings.DEFAULT_MINIMUM_LOAD,"Oil brushes keep their paint and gain default loading");
     }
     private static void brushPenMigration(int version, int tools) throws Exception {
         ToolLibrary library=new ToolLibrary();library.select(ToolSettings.Tool.AIRBRUSH);library.edit(library.current().strength(72));library.add("Spray");
         java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
         java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
+        // Those formats predate the carry and oil paint fields that end each record.
         in.readInt();out.writeInt(version);byte[] record=new byte[54];
-        for(int i=0;i<25;i++){in.readFully(record);if(i<tools || i>=12)out.write(record);}
+        for(int i=0;i<25;i++){in.readFully(record);in.skipBytes(16);if(i<tools || i>=12)out.write(record);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
-        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);}
+        for(int i=0;i<count;i++){out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);in.skipBytes(16);out.write(record);}
         check(in.read()==-1,"Previous format fixture consumes every byte");
         ToolLibrary restored=ToolLibrary.decode(bytes.toByteArray());
         check(restored.current().equals(library.current()) && restored.activeId().equals(library.activeId()),"Previous format retains the selected favorite");
         check(restored.builtin(ToolSettings.Tool.BRUSH_PEN).equals(ToolSettings.defaults(ToolSettings.Tool.BRUSH_PEN)),"Migration adds a default Brush pen");
         restored.select(ToolSettings.Tool.BRUSH_PEN);restored.edit(restored.current().size(40));
         check(ToolLibrary.decode(restored.encode()).builtin(ToolSettings.Tool.BRUSH_PEN).maximum==40,"Brush pen settings persist");
+        check(restored.current().carry==0,"Earlier brush pens trade their load quickly");
+        restored.edit(restored.current().carry(70));
+        check(ToolLibrary.decode(restored.encode()).builtin(ToolSettings.Tool.BRUSH_PEN).carry==70,"Carry persists");
+        check(!restored.current().equals(restored.current().carry(0)),"Carry participates in settings identity");
+        ToolSettings brush=restored.builtin(ToolSettings.Tool.BRUSH);
+        check(brush.paintLoad==ToolSettings.UNLIMITED_PAINT && !Float.isFinite(brush.paintLength()),"Earlier brushes never run out of paint");
+        restored.select(ToolSettings.Tool.BRUSH);restored.edit(brush.paintLoad(40));
+        check(ToolLibrary.decode(restored.encode()).builtin(ToolSettings.Tool.BRUSH).paintLoad==40 && brush.paintLoad(40).paintLength()==400,"Paint load persists");
+        restored.edit(restored.current().loadingSpeed(80));
+        check(brush.loadingSpeed==ToolSettings.DEFAULT_LOADING_SPEED && ToolLibrary.decode(restored.encode()).builtin(ToolSettings.Tool.BRUSH).loadingSpeed==80,"Loading speed persists");
+        try {brush.paintLoad(0);throw new AssertionError("Empty paint load accepted");}catch(IllegalArgumentException expected) {}
         ToolSettings pen=ToolSettings.defaults(ToolSettings.Tool.BRUSH_PEN);
+        try {pen.carry(101);throw new AssertionError("Carry above 100% accepted");}catch(IllegalArgumentException expected) {}
         check(pen.diameter(.1f,0,0)==pen.minimum && pen.diameter(.45f,0,0)==pen.minimum,"An upright brush pen stays at its minimum size at any pressure");
         check(pen.diameter(.1f,70,0)==pen.maximum && pen.diameter(.1f,30,0)>pen.minimum && pen.diameter(.1f,30,0)<pen.maximum,"Leaning widens the brush pen up to its maximum");
         ToolSettings strong=pen.strength(100);
@@ -59,15 +86,15 @@ public final class ToolChecks {
         try {ToolLibrary.decode(invalid);throw new AssertionError("Unknown gradient accepted");}catch(IOException expected) {}
         System.out.println("PASS: gradient type defaults, immutable edits, regular/favorite independence, persistence and pre-gradient migration");
     }
-    /** Strip the new gradient byte to construct the actual previous 47-byte wire records. */
+    /** Strip the gradient byte and later fields to construct the actual previous 47-byte wire records. */
     private static byte[] beforeGradient(ToolLibrary library) throws Exception {
         java.io.DataInputStream in=new java.io.DataInputStream(new java.io.ByteArrayInputStream(library.encode()));
         java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();java.io.DataOutputStream out=new java.io.DataOutputStream(bytes);
         in.readInt();out.writeInt(0x5453503d);byte[] record=new byte[47];
-        for(int i=0;i<25;i++){in.readFully(record);if(i<8 || i>11)out.write(record);in.readUnsignedByte();in.skipBytes(6);}
+        for(int i=0;i<25;i++){in.readFully(record);if(i<8 || i>11)out.write(record);in.readUnsignedByte();in.skipBytes(22);}
         out.writeUTF(in.readUTF());int count=in.readInt();out.writeInt(count);
         for(int i=0;i<count;i++) {
-            out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.readUnsignedByte();in.skipBytes(6);
+            out.writeUTF(in.readUTF());out.writeUTF(in.readUTF());in.readFully(record);out.write(record);in.readUnsignedByte();in.skipBytes(22);
         }
         check(in.read()==-1,"Legacy fixture consumes every record");return bytes.toByteArray();
     }

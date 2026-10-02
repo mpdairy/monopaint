@@ -6,7 +6,7 @@ import java.util.Arrays;
 public final class WetWatercolorChecks {
     public static void main(String[] args) throws Exception {
         blendingAndHistory(); dryPaperAndLinework(); dryGaps(); drying(); pausedStrokes(false); pausedStrokes(true);
-        liveStroke(); boundedSlices(); adaptiveBudget(); presets(); gravity(); brushPen(false); brushPen(true); wetBrushPen(); flowingSlices();
+        liveStroke(); boundedSlices(); adaptiveBudget(); presets(); gravity(); brushPen(false); brushPen(true); carriedPaint(255); carriedPaint(128); wetBrushPen(); flowingSlices();
         System.out.println("PASS: live wet blending, gravity drift, brush pen seeping and sharp dry edges, wet brush pen ink flow by freshness, adaptive work limits, bounded spatial/time slices, pause/resume, retained water, dry boundaries/linework, drying, exact undo/redo, saved tones and TSP9 migration");
     }
     private static void check(boolean pass, String message) { if (!pass) throw new AssertionError(message); }
@@ -55,6 +55,27 @@ public final class WetWatercolorChecks {
     private static void brushPen(boolean wetCanvas) {
         int light = brushPenTones(wetCanvas, .15f)[0], full = brushPenTones(wetCanvas, 1)[0];
         check(full < light, "Pressing harder pulls more paint into the water (light " + light + ", full " + full + ")");
+    }
+    /** Carry drags white or gray from the left further into a dry black block; without it the pen trades its load within a few dabs. */
+    private static void carriedPaint(int shade) {
+        int none = carriedTone(shade, 0), half = carriedTone(shade, .5f), full = carriedTone(shade, 1);
+        String tones = " (0% " + none + ", 50% " + half + ", 100% " + full + ")";
+        check(none < half && half + 20 < full, "More carry pushes " + shade + " further into black" + tones);
+        check(Math.abs(full - shade / 2) <= 2, "Full carry keeps its first load the whole stroke, laid at the pen's strength" + tones);
+    }
+    private static int carriedTone(int shade, float carry) {
+        ToneDocument doc = new ToneDocument(200, 64);
+        doc.begin(); for (int y = 0; y < 64; y++) for (int x = 0; x < 200; x++) doc.paintTone(x, y, x < 50 ? shade : 0); doc.finish();
+        byte[] dry = doc.snapshot();
+        WetWatercolor wet = new WetWatercolor(doc);
+        int[] mask = new int[8 * 16]; Arrays.fill(mask, 0xff000000);
+        doc.begin(); wet.beginStroke();
+        for (int x = 10; x <= 170; x += 3) wet.waterMask(mask, 8, x, 24, 8, 16, 1, false, carry);
+        wet.finishStroke(); settle(wet);
+        int tone = doc.tone(100, 32);
+        check(doc.tone(100, 22) == 0, "Carried paint keeps sharp edges on dry paper");
+        check(doc.undo() && Arrays.equals(doc.snapshot(), dry), "One undo removes the carried paint");
+        return tone;
     }
     /** Wet a spot, let it age, then bridge it to a black block: the ink runs through the fresh bridge and seeps unevenly into the older spot. */
     private static void wetBrushPen() {

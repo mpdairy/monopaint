@@ -4,8 +4,8 @@ cd "$(dirname "$0")/.."
 test_classes=$(mktemp -d)
 trap 'rm -rf "$test_classes"' EXIT
 javac -d "$test_classes" \
-  app/src/main/java/io/github/mpdairy/monopaint/{GrayPalette,DotPattern,ToneDocument,DocumentCodec,DrawingBook,BookCodec,DrawingFiles,RecoveryCodec,ToolSettings,ToolLibrary,BrushDirection,BristleTexture,WetWatercolor,WetWorkBudget,FloodFill,ToneDabs,DrawingStroke,AirbrushStroke,ShapeStroke,ShapeGeometry,DirtyRegions}.java \
-  app/src/test/java/io/github/mpdairy/monopaint/{LayerChecks,DocumentChecks,ToolChecks,BookChecks,DrawingFilesChecks,BristleChecks,WetWatercolorChecks,FlatWashChecks,CanvasPaintChecks,GradientFillChecks,AirbrushChecks,EraseChecks,ShapeChecks}.java
+  app/src/main/java/io/github/mpdairy/monopaint/{GrayPalette,DotPattern,ToneDocument,DocumentCodec,DrawingBook,BookCodec,DrawingFiles,RecoveryCodec,ToolSettings,ToolLibrary,BrushDirection,BristleTexture,WetWatercolor,WetWorkBudget,FloodFill,ToneDabs,DrawingStroke,AirbrushStroke,ShapeStroke,ShapeGeometry,DirtyRegions,PaintLoad}.java \
+  app/src/test/java/io/github/mpdairy/monopaint/{LayerChecks,DocumentChecks,ToolChecks,BookChecks,DrawingFilesChecks,BristleChecks,WetWatercolorChecks,FlatWashChecks,CanvasPaintChecks,GradientFillChecks,AirbrushChecks,EraseChecks,ShapeChecks,PaintLoadChecks}.java
 javac -d "$test_classes" app/src/main/java/io/github/mpdairy/monopaint/RotationSuggestion.java app/src/test/java/io/github/mpdairy/monopaint/RotationSuggestionChecks.java
 java -cp "$test_classes" io.github.mpdairy.monopaint.RotationSuggestionChecks
 java -cp "$test_classes" io.github.mpdairy.monopaint.DocumentChecks
@@ -28,3 +28,5 @@ javac -d "$test_classes" app/src/main/java/io/github/mpdairy/monopaint/CanvasVie
 java -cp "$test_classes" io.github.mpdairy.monopaint.ViewportChecks
 
 java -cp "$test_classes" io.github.mpdairy.monopaint.ShapeChecks
+
+java -cp "$test_classes" io.github.mpdairy.monopaint.PaintLoadChecks

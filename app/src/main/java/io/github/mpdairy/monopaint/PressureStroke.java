@@ -19,8 +19,12 @@ final class PressureStroke implements DrawingStroke {
     private final Paint paint = new Paint();
     private final int[] pixels;
     private final RectF footprint = new RectF();
+    /** The brush's running-out paint, or null when it never runs out. */
+    private final PaintLoad load;
     private float previousX, previousY, previousRadius, previousAngle, previousPull;
-    private boolean started;
+    /** Which side of a crescent head leads the stroke: +1, -1, or 0 until the pen first moves. */
+    private float lead;
+    private boolean started, dabbed;
 
     PressureStroke(ToneDocument document, int maximum, int gray) {
         this(document,ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(maximum),gray);
@@ -50,7 +54,10 @@ final class PressureStroke implements DrawingStroke {
         this.document = document; this.settings = canvasControls && settings.isBrush() ? settings.asBrush() : settings; this.maximum = settings.maximum; this.gray = gray;
         this.wet = canvasControls ? wet : settings.tool == ToolSettings.Tool.WET_WATERCOLOR
                 ? (wet == null ? new WetWatercolor(document) : wet) : null;
-        batchFlat=this.wet==null && settings.head==ToolSettings.Head.FLAT;
+        load = canvasControls && !erasing && settings.limitsPaint()
+                ? new PaintLoad(document, gray, settings.paintLength()) : null;
+        // Running-out paint changes with every dab, so dabs cannot be unioned.
+        batchFlat=this.wet==null && load==null && settings.head==ToolSettings.Head.FLAT;
         side = (int)Math.ceil(BrushStamp.extent(settings, maximum / 2f) * 2) + 4 + (batchFlat?66:0);
         mask = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888);
         pixels = new int[side * side]; canvas = new Canvas(mask);
@@ -83,9 +90,19 @@ final class PressureStroke implements DrawingStroke {
         float spacing = settings.head == ToolSettings.Head.FLAT ? Math.max(.5f,settings.flatHeight(Math.min(radius,previousRadius)*2)*.2f)
                 : Math.max(.5f, BrushStamp.minor(settings, Math.min(radius, previousRadius)) * .4f);
         int steps = Math.max(1, (int)Math.ceil(travel / spacing));
-        if(batchFlat && steps>1) batch(x,y,radius,turn,steps);
+        float moved = (float)Math.hypot(x - previousX, y - previousY), stepDistance = moved / steps;
+        if (BrushStamp.crescent(settings) && moved >= .5f) {
+            // The head's short axis, rotated into the page; the crescent's hollow faces the way the pen moves.
+            double heading = Math.toRadians(previousAngle + turn / 2);
+            lead = -Math.sin(heading) * (x - previousX) + Math.cos(heading) * (y - previousY) >= 0 ? 1 : -1;
+        }
+        if (BrushStamp.crescent(settings) && lead == 0) {
+            // A crescent waits for a direction instead of stamping a whole oval where the pen lands.
+        } else if(batchFlat && steps>1) batch(x,y,radius,turn,steps);
         else for (int i = 1; i <= steps; i++) {
             float t = (float)i / steps;
+            // A narrower, lighter stroke spends its paint more slowly.
+            if (load != null) load.travel(stepDistance * (previousRadius + (radius - previousRadius) * t) * 2 / maximum);
             dab(previousX + (x - previousX) * t, previousY + (y - previousY) * t,
                     previousRadius + (radius - previousRadius) * t, previousAngle + turn * t, previousPull + (pull - previousPull) * t);
         }
@@ -113,7 +130,7 @@ final class PressureStroke implements DrawingStroke {
                 // subpixel and rotated-edge rounding from the original raster.
                 int stampX=(int)Math.floor(cx-e)-1,stampY=(int)Math.floor(cy-e)-1;
                 int saved=canvas.save();canvas.translate(stampX-left,stampY-top);
-                BrushStamp.draw(canvas,paint,cx-stampX,cy-stampY,size,settings,previousAngle+turn*f,footprint);
+                BrushStamp.draw(canvas,paint,cx-stampX,cy-stampY,size,settings,previousAngle+turn*f,footprint,0);
                 canvas.restoreToCount(saved);footprint.offset(stampX-left,stampY-top);
                 l=Math.min(l,footprint.left);t=Math.min(t,footprint.top);
                 r=Math.max(r,footprint.right);bottom=Math.max(bottom,footprint.bottom);
@@ -129,7 +146,8 @@ final class PressureStroke implements DrawingStroke {
         int w = Math.min(side, (int)Math.ceil(x + extent) + 1 - left);
         int h = Math.min(side, (int)Math.ceil(y + extent) + 1 - top);
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-        BrushStamp.draw(canvas, paint, x - left, y - top, radius, settings, angle, footprint);
+        BrushStamp.draw(canvas, paint, x - left, y - top, radius, settings, angle, footprint, lead);
+        dabbed = true;
         int cropX=0,cropY=0;
         if (wet == null) {
             // Preserve the rasterizer's original origin, but copy and process
@@ -148,8 +166,15 @@ final class PressureStroke implements DrawingStroke {
     private void applyMask(int left,int top,int cropX,int cropY,int w,int h,float pull) {
         mask.getPixels(pixels, 0, w, cropX, cropY, w, h);
         if(erasing || settings.tool==ToolSettings.Tool.ERASER) document.eraseMask(pixels,w,left,top,w,h);
-        else if (wet != null && settings.tool.water) wet.waterMask(pixels, w, left, top, w, h, pull, settings.tool.flowing);
-        else if (wet != null) wet.paintMask(pixels, w, left, top, w, h, gray, transparent);
+        else if (wet != null && settings.tool.water) wet.waterMask(pixels, w, left, top, w, h, pull, settings.tool.flowing, settings.carry / 100f);
+        else if (wet != null) {
+            if (load == null) wet.paintMask(pixels, w, left, top, w, h, gray, transparent);
+            else {
+                load.pickUp(pixels, w, left, top, w, h);
+                wet.paintMask(pixels, w, left, top, w, h, load.tone(), transparent, load.deposit());
+            }
+        }
+        else if (load != null) load.dab(pixels, w, left, top, w, h, transparent);
         else if (transparent) document.transparentMask(pixels, w, left, top, w, h, gray);
         else if (settings.tool == ToolSettings.Tool.FLAT_WASH)
             document.flatWashMask(pixels, w, left, top, w, h, gray);
@@ -157,5 +182,8 @@ final class PressureStroke implements DrawingStroke {
             document.washMask(pixels, w, left, top, w, h, gray);
         else document.paintMask(pixels, w, left, top, w, h, gray);
     }
-    @Override public boolean finish() { mask.recycle(); return wet == null ? document.finish() : wet.finishStroke(); }
+    @Override public boolean finish() {
+        // A crescent tapped without moving still leaves its sliver.
+        if (started && !dabbed) { lead = 1; dab(previousX, previousY, previousRadius, previousAngle, previousPull); }
+        mask.recycle(); return wet == null ? document.finish() : wet.finishStroke(); }
 }
