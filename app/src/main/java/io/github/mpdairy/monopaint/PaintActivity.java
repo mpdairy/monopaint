@@ -556,9 +556,9 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     private void fileMenu(View anchor) {
         closePagePanel();
-        String[] names = {"New drawing", "Open drawing", "Save drawing", "Save drawing as…", "Settings"};
-        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_settings};
-        Runnable[] actions = {this::newDrawing, this::openDrawing, this::saveDrawing, this::saveDrawingAs, this::appSettings};
+        String[] names = {"New drawing", "Open drawing", "Save drawing", "Save drawing as…", "Export PNG…", "Settings"};
+        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_export, R.drawable.ic_settings};
+        Runnable[] actions = {this::newDrawing, this::openDrawing, this::saveDrawing, this::saveDrawingAs, this::exportPng, this::appSettings};
         dismiss(filePopup); dismiss(layersPopup);
         LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this); scroll.addView(rows);
@@ -751,7 +751,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     }
     void orientDialog(AlertDialog dialog) { orientDialog(dialog, 440); }
     /** Turns a dialog's content with the app; Android places it in portrait. */
-    private void orientDialog(AlertDialog dialog, int desiredWidth) {
+    void orientDialog(AlertDialog dialog, int desiredWidth) {
         android.view.Window window = dialog.getWindow();
         if (window == null) return;
         int width = Math.min(dp(desiredWidth), root.getWidth()-dp(32));
@@ -811,6 +811,10 @@ public final class PaintActivity extends Activity implements ControlHost {
             if (book == savedBook) { drawingName = path; recovery(); }
             message("Saved " + path);
         }));
+    }
+    private void exportPng() {
+        pad.dryWet();
+        PngExport.show(this, book.snapshot(), drawingName);
     }
     private void openDrawing() {
         showSaveError();

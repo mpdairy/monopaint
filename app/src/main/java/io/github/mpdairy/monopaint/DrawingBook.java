@@ -88,5 +88,11 @@ final class DrawingBook {
             activePage=book.current().layerSnapshot();
             packedActivePage=book.currentPacked();
         }
+        int count(){return pages.size();}
+        /** Decodes one page without selecting it or touching the live book's undo history. */
+        ToneDocument page(int i) throws IOException {
+            if(i==index)return new ToneDocument(activePage.width,activePage.height,activePage.layers,activePage.active);
+            return DocumentCodec.read(new ByteArrayInputStream(pages.get(i)));
+        }
     }
 }

@@ -8,7 +8,7 @@ import java.util.Arrays;
 /** Dependency-free host checks: run with scripts/test_document.sh. */
 public final class DocumentChecks {
     public static void main(String[] args) throws Exception {
-        calibration(); transactions(); maskAndClipping(); watercolor(); clearCanvas(); persistence();
+        calibration(); transactions(); maskAndClipping(); smoothEdges(); watercolor(); clearCanvas(); persistence();
         System.out.println("PASS: calibration, coordinate anchoring, opaque logical tones, gesture undo/redo, clipping, codec and damaged-file rejection");
     }
     private static void calibration() {
@@ -71,6 +71,29 @@ public final class DocumentChecks {
         check(doc.tone(0,0) == 80 && doc.tone(1,0) == 255, "Opaque mask");
         doc.begin(); doc.setTone(0,0,255); doc.finish();
         check(doc.tone(0,0) == 255 && doc.tone(0,1) == 80, "White overpainting retains neighbors");
+    }
+    /** Anti-aliased edges: partial mask alpha covers partly, and only the strongest contact in a gesture counts. */
+    private static void smoothEdges() {
+        int half = 0x80000000, quarter = 0x40000000, full = 0xff000000;
+        ToneDocument doc = new ToneDocument(4, 1);
+        doc.begin(); doc.paintMask(new int[]{half, quarter, full, 0}, 4, 0, 0, 4, 1, 0);
+        int partial = doc.tone(0, 0);
+        check(partial > 120 && partial < 135 && doc.tone(1, 0) > partial && doc.tone(2, 0) == 0 && doc.tone(3, 0) == 255,
+                "Edge pixels cover by their mask share (" + partial + ")");
+        doc.paintMask(new int[]{half, half, quarter, half}, 4, 0, 0, 4, 1, 0);
+        check(doc.tone(0, 0) == partial && doc.tone(1, 0) == partial && doc.tone(2, 0) == 0,
+                "Overlapping edges keep the strongest contact instead of compounding");
+        doc.paintMask(new int[]{full, 0, 0, 0}, 4, 0, 0, 4, 1, 0);
+        check(doc.tone(0, 0) == 0, "Full contact replaces an earlier edge");
+        doc.finish();
+        check(doc.undo() && doc.tone(0, 0) == 255 && doc.tone(1, 0) == 255, "Smooth edges undo exactly");
+        // Over a transparent layer the edge is the brush's pigment at partial coverage, so it composites cleanly.
+        doc = new ToneDocument(1, 1); doc.begin(); doc.paintMask(new int[]{half}, 1, 0, 0, 1, 1, 60); doc.finish();
+        check(doc.opacity(0, 0) > 120 && doc.opacity(0, 0) < 135 && doc.compositeTone(0, 0) > 60 && doc.compositeTone(0, 0) < 255,
+                "A partial edge carries the brush's tone at partial coverage");
+        doc = new ToneDocument(2, 1); doc.begin(); doc.paintMask(new int[]{full, full}, 2, 0, 0, 2, 1, 0); doc.finish();
+        doc.begin(); doc.eraseMask(new int[]{half, full}, 2, 0, 0, 2, 1); doc.eraseMask(new int[]{quarter, 0}, 2, 0, 0, 2, 1); doc.finish();
+        check(doc.opacity(0, 0) > 120 && doc.opacity(0, 0) < 135 && doc.opacity(1, 0) == 0, "Smooth eraser edges remove only their share");
     }
     private static void watercolor() throws Exception {
         int width=19,height=17,stride=25;

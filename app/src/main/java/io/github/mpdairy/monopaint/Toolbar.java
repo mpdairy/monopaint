@@ -132,7 +132,7 @@ final class Toolbar {
     }
     private ToolButton railButton(String title, int icon, Runnable action) {
         ToolButton button = app.iconButton(title, icon, action);
-        if (app.prefs.largeToolbarIcons()) button.iconHalf = 18;
+        button.iconHalf = 18;
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(60), dp(60));
         params.gravity = Gravity.CENTER_HORIZONTAL; params.setMargins(dp(2), dp(2), dp(2), dp(2));
         toolRail.addView(button, params);
@@ -145,7 +145,7 @@ final class Toolbar {
     }
     private void addZoom() {
         zoomButton = railButton("Zoom", R.drawable.ic_zoom, app::toggleNavigationLock);
-        zoomButton.iconHalf = app.prefs.largeToolbarIcons() ? 16 : 12;
+        zoomButton.iconHalf = 16;
         zoomButton.overlay = (canvas, button) -> drawLock(canvas, button, app.navigationLocked);
         markActive(zoomButton, false); refreshZoom();
     }
@@ -157,7 +157,7 @@ final class Toolbar {
             else select.run();
         });
         control.settingsArrow = app.getDrawable(R.drawable.ic_chevron); control.selectionOutline = true;
-        if (app.prefs.largeToolbarIcons()) control.iconOffset = -4;
+        control.iconOffset = -4;
         control.setContentDescription(name + ". Tap to select; tap again for settings.");
         selectionButtons.put(key, control);
         control.marked = selectedKey().equals(key); markActive(control, control.marked);

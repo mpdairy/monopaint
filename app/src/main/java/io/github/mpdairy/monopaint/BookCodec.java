@@ -68,6 +68,20 @@ final class BookCodec {
             return new DrawingBook(width,height,pages,active,selected);
         }
     }
+    /** Decodes only the first page, for previews; skips the rest of the book. */
+    static ToneDocument readFirstPage(InputStream input) throws IOException {
+        BufferedInputStream buffered=new BufferedInputStream(input);buffered.mark(4);
+        byte[] magic=new byte[4];int read=0,n;
+        while(read<4&&(n=buffered.read(magic,read,4-read))>0)read+=n;
+        buffered.reset();
+        if(read==4&&magic[0]=='T'&&magic[1]=='S'&&magic[2]=='M'&&(magic[3]=='1'||magic[3]=='2'||magic[3]=='3'))
+            return DocumentCodec.read(buffered);
+        ZipInputStream zip=new ZipInputStream(buffered);
+        for(ZipEntry entry;(entry=zip.getNextEntry())!=null;)
+            if(entry.getName().equals("pages/1.tsm"))
+                return DocumentCodec.read(new ByteArrayInputStream(bounded(zip,MAX_PAGE_BYTES)));
+        throw new IOException("Missing first page");
+    }
     private static byte[] bounded(InputStream input,int limit) throws IOException {
         ByteArrayOutputStream output=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int read;
         while((read=input.read(buffer))!=-1) {

@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
 
@@ -12,6 +13,9 @@ final class PressureStroke implements DrawingStroke {
     private final ToneDocument document;
     private final WetWatercolor wet;
     private final boolean transparent, batchFlat, erasing;
+    /** Smooth edges: each segment's stamps fill as one anti-aliased outline. */
+    private final boolean sweep;
+    private final Path outline = new Path();
     private final int maximum, gray, side;
     private final ToolSettings settings;
     private final Bitmap mask;
@@ -39,16 +43,20 @@ final class PressureStroke implements DrawingStroke {
         this(document,settings,gray,textureSeed,null);
     }
     private PressureStroke(ToneDocument document, ToolSettings settings, int gray, int textureSeed, WetWatercolor wet) {
-        this(document, settings, gray, wet, false, false, false);
+        this(document, settings, gray, wet, false, false, false, false);
     }
     PressureStroke(ToneDocument document, ToolSettings settings, int gray, WetWatercolor wet, boolean transparent) {
-        this(document, settings, gray, wet, transparent, true, false);
+        this(document, settings, gray, wet, transparent, true, false, false);
     }
     PressureStroke(ToneDocument document, ToolSettings settings, int gray, WetWatercolor wet, boolean transparent, boolean erasing) {
-        this(document, settings, gray, erasing ? null : wet, transparent, true, erasing);
+        this(document, settings, gray, wet, transparent, erasing, false);
+    }
+    /** @param smooth anti-alias dry brush and eraser edges instead of laying whole pixels */
+    PressureStroke(ToneDocument document, ToolSettings settings, int gray, WetWatercolor wet, boolean transparent, boolean erasing, boolean smooth) {
+        this(document, settings, gray, erasing ? null : wet, transparent, true, erasing, smooth);
     }
     private PressureStroke(ToneDocument document, ToolSettings settings, int gray, WetWatercolor wet,
-                           boolean transparent, boolean canvasControls, boolean erasing) {
+                           boolean transparent, boolean canvasControls, boolean erasing, boolean smooth) {
         this.erasing = erasing;
         this.transparent = transparent;
         this.document = document; this.settings = canvasControls && settings.isBrush() ? settings.asBrush() : settings; this.maximum = settings.maximum; this.gray = gray;
@@ -56,12 +64,15 @@ final class PressureStroke implements DrawingStroke {
                 ? (wet == null ? new WetWatercolor(document) : wet) : null;
         load = canvasControls && !erasing && settings.limitsPaint()
                 ? new PaintLoad(document, gray, settings.paintLength()) : null;
+        // Wet paint softens its own edges, and washes deposit whole dots.
+        sweep = smooth && this.wet == null
+                && (this.settings.tool == ToolSettings.Tool.BRUSH || this.settings.tool == ToolSettings.Tool.ERASER);
         // Running-out paint changes with every dab, so dabs cannot be unioned.
         batchFlat=this.wet==null && load==null && settings.head==ToolSettings.Head.FLAT;
-        side = (int)Math.ceil(BrushStamp.extent(settings, maximum / 2f) * 2) + 4 + (batchFlat?66:0);
+        side = (int)Math.ceil(BrushStamp.extent(settings, maximum / 2f) * 2) + 4 + (batchFlat||sweep?66:0);
         mask = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888);
         pixels = new int[side * side]; canvas = new Canvas(mask);
-        paint.setColor(Color.BLACK); paint.setAntiAlias(false);
+        paint.setColor(Color.BLACK); paint.setAntiAlias(sweep);
         document.begin();
         if (this.wet != null) this.wet.beginStroke();
     }
@@ -98,7 +109,7 @@ final class PressureStroke implements DrawingStroke {
         }
         if (BrushStamp.crescent(settings) && lead == 0) {
             // A crescent waits for a direction instead of stamping a whole oval where the pen lands.
-        } else if(batchFlat && steps>1) batch(x,y,radius,turn,steps);
+        } else if(sweep || batchFlat && steps>1) batch(x,y,radius,turn,steps);
         else for (int i = 1; i <= steps; i++) {
             float t = (float)i / steps;
             // A narrower, lighter stroke spends its paint more slowly.
@@ -109,13 +120,18 @@ final class PressureStroke implements DrawingStroke {
         // Keep the head frame continuous across the 180-degree boundary.
         previousX = x; previousY = y; previousRadius = radius; previousAngle += turn; previousPull = pull;
     }
-    /** Dry flat stamps are idempotent: union them before copying pixels into the document. */
+    /**
+     * Dry flat stamps are idempotent: union them before copying pixels into the document.
+     * Smooth strokes union every head, starting each run from the previous stamp so runs
+     * overlap, and the brush spends a run's paint at once.
+     */
     private void batch(float x,float y,float radius,float turn,int steps) {
         float distance=(float)Math.hypot(x-previousX,y-previousY);
         int chunk=Math.max(1,(int)Math.floor(64*steps/Math.max(1,distance)));
+        if(sweep)dabbed=true;
         for(int first=1;first<=steps;first+=chunk) {
-            int last=Math.min(steps,first+chunk-1);
-            float a=(float)first/steps,b=(float)last/steps;
+            int last=Math.min(steps,first+chunk-1),from=sweep?first-1:first;
+            float a=(float)from/steps,b=(float)last/steps;
             float x0=previousX+(x-previousX)*a,y0=previousY+(y-previousY)*a;
             float x1=previousX+(x-previousX)*b,y1=previousY+(y-previousY)*b;
             float extent=BrushStamp.extent(settings,Math.max(previousRadius+(radius-previousRadius)*a,
@@ -123,18 +139,25 @@ final class PressureStroke implements DrawingStroke {
             int left=(int)Math.floor(Math.min(x0,x1)-extent)-1,top=(int)Math.floor(Math.min(y0,y1)-extent)-1;
             canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR);
             float l=side,t=side,r=0,bottom=0;
-            for(int i=first;i<=last;i++) {
+            outline.reset();
+            for(int i=from;i<=last;i++) {
                 float f=(float)i/steps,cx=previousX+(x-previousX)*f,cy=previousY+(y-previousY)*f;
                 float size=previousRadius+(radius-previousRadius)*f,e=BrushStamp.extent(settings,size);
-                // Keep the individual stamp's local origin to retain Android's
-                // subpixel and rotated-edge rounding from the original raster.
-                int stampX=(int)Math.floor(cx-e)-1,stampY=(int)Math.floor(cy-e)-1;
-                int saved=canvas.save();canvas.translate(stampX-left,stampY-top);
-                BrushStamp.draw(canvas,paint,cx-stampX,cy-stampY,size,settings,previousAngle+turn*f,footprint,0);
-                canvas.restoreToCount(saved);footprint.offset(stampX-left,stampY-top);
+                if(sweep) {
+                    if(load!=null && i>=first) load.travel(distance/steps*size*2/maximum);
+                    BrushStamp.outline(outline,cx-left,cy-top,size,settings,previousAngle+turn*f,footprint,lead);
+                } else {
+                    // Keep the individual stamp's local origin to retain Android's
+                    // subpixel and rotated-edge rounding from the original raster.
+                    int stampX=(int)Math.floor(cx-e)-1,stampY=(int)Math.floor(cy-e)-1;
+                    int saved=canvas.save();canvas.translate(stampX-left,stampY-top);
+                    BrushStamp.draw(canvas,paint,cx-stampX,cy-stampY,size,settings,previousAngle+turn*f,footprint,0);
+                    canvas.restoreToCount(saved);footprint.offset(stampX-left,stampY-top);
+                }
                 l=Math.min(l,footprint.left);t=Math.min(t,footprint.top);
                 r=Math.max(r,footprint.right);bottom=Math.max(bottom,footprint.bottom);
             }
+            if(sweep)canvas.drawPath(outline,paint);
             int cropX=Math.max(0,(int)Math.floor(l)-1),cropY=Math.max(0,(int)Math.floor(t)-1);
             int w=Math.min(side,(int)Math.ceil(r)+1)-cropX,h=Math.min(side,(int)Math.ceil(bottom)+1)-cropY;
             if(w>0 && h>0)applyMask(left+cropX,top+cropY,cropX,cropY,w,h,1);

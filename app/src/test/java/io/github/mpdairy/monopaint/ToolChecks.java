@@ -691,6 +691,11 @@ public final class ToolChecks {
             softDeposit+=255-soft.tone(x,y);hardDeposit+=255-hard.tone(x,y);
         }
         check(softDeposit>hardDeposit*3&&hardDeposit>0,"Soft pencil deposits substantially more graphite");
+        ToneDocument layered=uniform(128,128,255);
+        for(int i=0;i<12;i++){layered.begin();ToneDabs.pencil(layered,64,64,96,48,.4f,1,0);layered.finish();}
+        int white=0,black=0,gray=0;
+        for(int y=52;y<76;y++)for(int x=40;x<88;x++){int tone=layered.tone(x,y);if(tone==255)white++;else if(tone==0)black++;else gray++;}
+        check(white==0&&black>0&&gray>black/4,"Layered pencil fills paper tooth with grays, not white beside black");
     }
     private static void check(boolean pass,String message){if(!pass)throw new AssertionError(message);}
 }

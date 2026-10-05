@@ -14,3 +14,8 @@ activity after a successful install and verify it returns to the previous
 drawing/page. Do not leave the app closed or claim its session was restored
 without checking. Preserve existing app data; never uninstall or clear data as
 part of a routine update.
+
+# Changelog
+
+Record every user-facing change in `CHANGELOG.md` under **Unreleased** as part
+of the change, in plain language for artists rather than developers.

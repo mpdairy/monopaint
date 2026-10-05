@@ -2,9 +2,15 @@ package io.github.mpdairy.monopaint;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.widget.*;
+import java.util.HashMap;
 
 /** A folder picker for the app's private drawing library. */
 final class DrawingBrowser {
@@ -18,10 +24,12 @@ final class DrawingBrowser {
     private TextView location, status;
     private Button up, newFolder;
     private EditText name;
-    private ListView list;
+    private AbsListView list;
     private DrawingFiles.Entry[] entries = new DrawingFiles.Entry[0];
     private String folder;
     private int request;
+    // First-page previews by drawing path; null while loading or if unreadable.
+    private final HashMap<String, Bitmap> previews = new HashMap<>();
     private boolean chosen, working;
 
     DrawingBrowser(Activity activity, DocumentStore store, boolean saving, String current,
@@ -47,7 +55,13 @@ final class DrawingBrowser {
         newFolder.setOnClickListener(v -> createFolder());
         actions.addView(newFolder, new LinearLayout.LayoutParams(0, dp(52), 1)); content.addView(actions);
         status = new TextView(activity); content.addView(status);
-        list = new ListView(activity); content.addView(list, new LinearLayout.LayoutParams(-1, dp(260)));
+        if (saving) list = new ListView(activity);
+        else {
+            // Opening shows first-page tiles in columns, like the page overview.
+            GridView grid = new GridView(activity); grid.setNumColumns(GridView.AUTO_FIT); grid.setColumnWidth(dp(120));
+            grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH); grid.setVerticalSpacing(dp(8)); list = grid;
+        }
+        content.addView(list, new LinearLayout.LayoutParams(-1, dp(saving ? 260 : 480)));
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (working) return;
             DrawingFiles.Entry entry = entries[position];
@@ -70,7 +84,7 @@ final class DrawingBrowser {
         dialog = builder.create();
         dialog.setOnDismissListener(d -> { if (!chosen) cancelled.run(); });
         dialog.show();
-        orient(dialog);
+        if (activity instanceof PaintActivity) ((PaintActivity) activity).orientDialog(dialog, saving ? 440 : 600);
         if (saving) dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> save());
         navigate(folder);
     }
@@ -96,15 +110,56 @@ final class DrawingBrowser {
             list.setAdapter(new ArrayAdapter<String>(activity, android.R.layout.simple_list_item_1, labels) {
                 @Override public View getView(int position, View recycled, android.view.ViewGroup parent) {
                     TextView row = (TextView) super.getView(position, recycled, parent);
+                    DrawingFiles.Entry entry = entries[position];
                     row.setTextColor(Color.BLACK); row.setMinHeight(dp(56));
-                    row.setCompoundDrawablesRelativeWithIntrinsicBounds(entries[position].folder ? R.drawable.ic_folder : R.drawable.ic_save, 0, 0, 0);
-                    row.setCompoundDrawablePadding(dp(12));
+                    row.setCompoundDrawablePadding(dp(saving ? 12 : 4));
+                    if (saving) {
+                        row.setCompoundDrawablesRelativeWithIntrinsicBounds(entry.folder ? R.drawable.ic_folder : R.drawable.ic_save, 0, 0, 0);
+                    } else {
+                        row.setGravity(android.view.Gravity.CENTER_HORIZONTAL | android.view.Gravity.BOTTOM);
+                        row.setMaxLines(2); row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                        row.setMinHeight(dp(170)); row.setPadding(dp(4), dp(4), dp(4), dp(4));
+                        Drawable icon = entry.folder ? null : preview(DrawingFiles.child(folder, entry.name));
+                        if (icon == null) {
+                            icon = activity.getDrawable(entry.folder ? R.drawable.ic_folder : R.drawable.ic_save);
+                            icon.setBounds(0, 0, dp(48), dp(48));
+                        }
+                        row.setCompoundDrawablesRelative(null, icon, null, null);
+                    }
                     row.setContentDescription((entries[position].folder ? "Folder " : "Drawing ") + labels[position]);
                     return row;
                 }
             });
             status.setText(found.length == 0 ? "This folder is empty" : ""); setWorking(false);
         }));
+    }
+
+    /** The drawing's first page as shown in the page overview, loading it on first use. */
+    private Drawable preview(String path) {
+        if (!previews.containsKey(path)) {
+            previews.put(path, null);
+            int rotation = activity instanceof PaintActivity ? ((PaintActivity) activity).appRotation : 0;
+            store.firstPage(path, (page, error) -> {
+                Bitmap thumbnail = page == null ? null : framed(PageOverview.turned(PageOverview.thumbnail(page), rotation));
+                activity.runOnUiThread(() -> {
+                    if (thumbnail == null || !alive()) return;
+                    previews.put(path, thumbnail); list.invalidateViews();
+                });
+            });
+        }
+        Bitmap bitmap = previews.get(path);
+        if (bitmap == null) return null;
+        float scale = Math.min(dp(96) / (float) bitmap.getWidth(), dp(120) / (float) bitmap.getHeight());
+        BitmapDrawable drawable = new BitmapDrawable(activity.getResources(), bitmap);
+        drawable.setBounds(0, 0, Math.round(bitmap.getWidth() * scale), Math.round(bitmap.getHeight() * scale));
+        return drawable;
+    }
+    private static Bitmap framed(Bitmap page) {
+        if (page == null) return null;
+        Bitmap framed = page.copy(Bitmap.Config.ARGB_8888, true);
+        Paint line = new Paint(); line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(2);
+        new Canvas(framed).drawRect(1, 1, framed.getWidth() - 1, framed.getHeight() - 1, line);
+        return framed;
     }
 
     private void save() {

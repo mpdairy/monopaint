@@ -30,9 +30,14 @@ public final class BookChecks {
         check(restored.count()==7&&restored.index()==3&&Arrays.equals(active,restored.current().snapshot()),"Immutable snapshot retains count and active page");
         restored.select(0);check(restored.current().tone(10,10)==80,"Page order and tones survive");
         for(int i=2;i<7;i++){restored.select(i);check(restored.current().tone(i-2,i-2)==100+i-2,"Every page survives save/open");}
+        check(BookCodec.readFirstPage(new ByteArrayInputStream(zip)).tone(10,10)==80,"Preview reads only page one");
+        DrawingBook.Snapshot pages=restored.snapshot();
+        check(pages.page(0).tone(10,10)==80&&pages.page(pages.index).tone(4,4)==104&&restored.index()==6,"Snapshot pages decode without selecting");
+        check((restored.current().exportPixels(true)[4*restored.width+4]&0xff)==DotPattern.exportGray(104),"Export pixels use calibrated tones");
         ByteArrayOutputStream legacy=new ByteArrayOutputStream();DocumentCodec.write(legacy,first.width,first.height,first.snapshot());
         DrawingBook old=BookCodec.read(new ByteArrayInputStream(legacy.toByteArray()));
         check(old.count()==1&&Arrays.equals(first.snapshot(),old.current().snapshot()),"Older drawings open as page one");
+        check(Arrays.equals(first.snapshot(),BookCodec.readFirstPage(new ByteArrayInputStream(legacy.toByteArray())).snapshot()),"Older drawings preview page one");
         legacy.reset();first.setLayerOpacity(0,43);DocumentCodec.write(legacy,first.layerSnapshot());
         check(BookCodec.read(new ByteArrayInputStream(legacy.toByteArray())).current().layerOpacity(0)==43,"Standalone opacity page imports");
         for(int length:new int[]{0,10,zip.length-1,zip.length-22})reject(Arrays.copyOf(zip,length));

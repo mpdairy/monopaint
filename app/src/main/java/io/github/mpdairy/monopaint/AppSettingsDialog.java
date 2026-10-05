@@ -13,7 +13,7 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.util.ArrayList;
 
-/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, Nomad simulation and toolbar contents. */
+/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, smooth edges, Nomad simulation and toolbar contents. */
 final class AppSettingsDialog {
     private final PaintActivity app;
     private final PaintPreferences prefs;
@@ -30,9 +30,6 @@ final class AppSettingsDialog {
         Button manualRotation = new Button(app);
         manualRotation.setText(app.landscape ? "Turn to portrait" : "Turn to landscape");
         content.addView(manualRotation);
-        label("Side toolbar icon size");
-        content.addView(SettingsForm.pair(app, "Medium", "Large", prefs.largeToolbarIcons(),
-                large -> { prefs.setLargeToolbarIcons(large); app.toolbar.rebuildTools(); }));
         label("Settings text size");
         RadioGroup textSizes = SettingsForm.pair(app, "Medium", "Large", prefs.largeSettingsText(), large -> {
             prefs.setLargeSettingsText(large);
@@ -46,6 +43,11 @@ final class AppSettingsDialog {
         gravity.setChecked(prefs.wetGravity());
         gravity.setOnCheckedChangeListener((button, checked) -> prefs.setWetGravity(checked));
         content.addView(gravity);
+        CheckBox smooth = new CheckBox(app);
+        smooth.setText("Smooth brush edges (better for PNG exports; adds a tiny bit of lag)"); smooth.setContentDescription("Smooth brush edges");
+        smooth.setChecked(prefs.smoothEdges());
+        smooth.setOnCheckedChangeListener((button, checked) -> prefs.setSmoothEdges(checked));
+        content.addView(smooth);
         CheckBox nomad = new CheckBox(app);
         nomad.setText("Nomad Simulation Mode"); nomad.setContentDescription("Nomad Simulation Mode");
         nomad.setChecked(app.nomadMode());

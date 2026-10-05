@@ -78,6 +78,14 @@ final class DocumentStore {
             } catch (Exception e) { result.complete(null, e); }
         });
     }
+    /** The first page of a saved drawing, for browsing; never loads the whole book. */
+    void firstPage(String name, Result<ToneDocument> result) {
+        IO.execute(() -> {
+            try (FileInputStream input = new AtomicFile(files.drawing(name)).openRead()) {
+                result.complete(BookCodec.readFirstPage(input), null);
+            } catch (Exception e) { result.complete(null, e); }
+        });
+    }
     void recover(Result<RecoveryCodec.Recovered> result) {
         IO.execute(() -> {
             try {

@@ -45,8 +45,7 @@ final class ToolbarChecks {
                 call(pad,"finishStroke");call(pad,"dryWet");
                 set(get(activity,"paint"),"wetCanvas",false);set(get(activity,"paint"),"transparentPaint",false);call(activity,"refreshPaintModes");
                 for(ToolSettings.Tool tool:ToolSettings.Tool.values()) prefs.edit().remove("tool_visible_"+tool.name()).apply();
-                prefs.edit().remove("tool_visible_LAYERS").remove("tool_visible_ZOOM").remove("toolbar_order")
-                        .remove("large_toolbar_icons").apply();
+                prefs.edit().remove("tool_visible_LAYERS").remove("tool_visible_ZOOM").remove("toolbar_order").apply();
                 set(activity,"library",new ToolLibrary());set(activity,"drawingName","");
                 call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(doc));
                 doc.begin();
@@ -129,18 +128,14 @@ final class ToolbarChecks {
                     dialog[0]=(AlertDialog)call(activity,"appSettings");
                 });
                 test.waitForIdleSync();
-                for(boolean large:new boolean[]{true,false}) {
-                    tap(test,findRadio(dialog[0].getWindow().getDecorView(),large?"Large":"Medium"));
-                    main(test,() -> {
-                        check(prefs.getBoolean("large_toolbar_icons",true)==large,"Icon size persists");
-                        for(Object button:buttons(activity).values())
-                            check((Integer)get(button,"iconHalf")== (large?18:14),"Size applies to regular and favorite icons");
-                        check((Integer)get(get(get(activity,"toolbar"),"layersButton"),"iconHalf")== (large?18:14),"Layers icon follows size");
-                        check((Integer)get(get(get(activity,"toolbar"),"zoomButton"),"iconHalf")== (large?16:12),"Zoom icon follows size");
-                        check((Integer)get(get(activity,"eyedropperButton"),"iconHalf")==14,"Header icon size stays unchanged");
-                    });
-                    if(large)screenshot(test,activity,"toolbar-large-"+quarter+"-"+right+".png");
-                }
+                main(test,() -> {
+                    for(Object button:buttons(activity).values())
+                        check((Integer)get(button,"iconHalf")==18,"Regular and favorite icons are large");
+                    check((Integer)get(get(get(activity,"toolbar"),"layersButton"),"iconHalf")==18,"Layers icon is large");
+                    check((Integer)get(get(get(activity,"toolbar"),"zoomButton"),"iconHalf")==16,"Zoom icon is large");
+                    check((Integer)get(get(activity,"eyedropperButton"),"iconHalf")==14,"Header icon size stays unchanged");
+                });
+                screenshot(test,activity,"toolbar-large-"+quarter+"-"+right+".png");
                 // Exercise the move targets through the rotated dialog, not only performClick.
                 tap(test,description(dialog[0].getWindow().getDecorView(),"Move Layers down"));
                 tap(test,description(dialog[0].getWindow().getDecorView(),"Move Layers up"));
@@ -196,7 +191,7 @@ final class ToolbarChecks {
                     String key="tool_visible_"+tool.name();
                     if(originalPrefs.containsKey(key))editor.putBoolean(key,(Boolean)originalPrefs.get(key));else editor.remove(key);
                 }
-                for(String key:new String[]{"tool_visible_LAYERS","tool_visible_ZOOM","toolbar_order","large_toolbar_icons"}) {
+                for(String key:new String[]{"tool_visible_LAYERS","tool_visible_ZOOM","toolbar_order"}) {
                     Object value=originalPrefs.get(key);
                     if(value instanceof Boolean)editor.putBoolean(key,(Boolean)value);
                     else if(value instanceof String)editor.putString(key,(String)value);else editor.remove(key);

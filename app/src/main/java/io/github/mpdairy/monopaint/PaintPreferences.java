@@ -20,8 +20,6 @@ final class PaintPreferences {
     /** Left-handed layout: the toolbar sits on the right. */
     boolean toolboxRight() { return flag("toolbox_right", false); }
     void setToolboxRight(boolean value) { setFlag("toolbox_right", value); }
-    boolean largeToolbarIcons() { return flag("large_toolbar_icons", true); }
-    void setLargeToolbarIcons(boolean value) { setFlag("large_toolbar_icons", value); }
     boolean largeSettingsText() { return flag("large_settings_text", false); }
     void setLargeSettingsText(boolean value) { setFlag("large_settings_text", value); }
     boolean nomadMode() { return flag("nomad_mode", false); }
@@ -29,6 +27,9 @@ final class PaintPreferences {
     /** Wet paint runs toward whichever page edge the tablet tilts down. */
     boolean wetGravity() { return flag("wet_gravity", false); }
     void setWetGravity(boolean value) { setFlag("wet_gravity", value); }
+    /** Dry brush strokes anti-alias their edges, for cleaner exports. */
+    boolean smoothEdges() { return flag("smooth_edges", false); }
+    void setSmoothEdges(boolean value) { setFlag("smooth_edges", value); }
     boolean navigationLocked() { return flag("navigation_locked", true); }
     void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
     /** Whether the user has picked a shape, so Shapes shows that shape's icon. */

@@ -76,6 +76,7 @@ final class PaintChecks {
         brushHeadRaster();report.append("Flat/filbert raster, rotated bounds, thin marks and gap-free interpolated strokes pass.\n");
         headThicknessRaster();wideFlatRaster();report.append("Flat height spans 1px to 20% through 256px width; rotated strokes stay continuous and Filbert retains its thickness.\n");
         roundedFilbertRaster(test);
+        smoothEdgeRaster(test,report);
         headingOnlyRaster();report.append("Tilt rotates Flat/Filbert without changing size, shape or contact center.\n");
         flatLeanPressureRaster();report.append("Flat and Filbert respect pressure-sized widths under tilt, including continuous 1px hairlines.\n");
         brushTiltRaster();report.append("Brush tilt follows signed lean direction with angle offset, upright fallback, shortest turns and exact undo.\n");
@@ -1128,6 +1129,21 @@ final class PaintChecks {
         test.runOnMainSync(() -> findButton(activity,"Undo").performClick());
         check(doc.tone(600,800)==0,"Eraser is one undo action");
         test.runOnMainSync(() -> {
+            findButton(activity,"Brush").performClick();
+            event(view,start,MotionEvent.ACTION_DOWN,600,800,.45f,MotionEvent.TOOL_TYPE_ERASER);
+            event(view,start,MotionEvent.ACTION_UP,600,800,0,MotionEvent.TOOL_TYPE_ERASER);
+        });
+        check(doc.tone(600,800)>0&&doc.tone(640,800)==0&&library.current().tool==ToolSettings.Tool.BRUSH,
+                "A stylus's eraser end erases with the Eraser tool and keeps the selected tool");
+        test.runOnMainSync(() -> {
+            findButton(activity,"Undo").performClick();
+            event(view,start,SystemClock.uptimeMillis(),MotionEvent.ACTION_DOWN,600,800,.45f,MotionEvent.TOOL_TYPE_STYLUS,MotionEvent.BUTTON_STYLUS_PRIMARY);
+            event(view,start,SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,600,800,0,MotionEvent.TOOL_TYPE_STYLUS,0);
+        });
+        check(doc.tone(600,800)>0&&doc.tone(640,800)==0&&library.current().tool==ToolSettings.Tool.BRUSH,
+                "Holding the stylus side button erases with the Eraser tool and keeps the selected tool");
+        test.runOnMainSync(() -> { findButton(activity,"Undo").performClick(); findButton(activity,"Eraser").performClick(); });
+        test.runOnMainSync(() -> {
             library.edit(library.current().softness(0));
             event(view,start,MotionEvent.ACTION_DOWN,600,800,.45f);
             event(view,start,MotionEvent.ACTION_MOVE,620,800,.45f);
@@ -1426,6 +1442,67 @@ final class PaintChecks {
             sheet.compress(Bitmap.CompressFormat.PNG,100,out);
         }finally{sheet.recycle();}
     }
+    /** A wavy pressure stroke, hard or smooth, timed in nanoseconds into {@code nanos[0]}. */
+    private static ToneDocument wavyStroke(ToolSettings settings,int gray,boolean transparent,boolean smooth,long[] nanos) {
+        ToneDocument doc=new ToneDocument(260,120);
+        long start=System.nanoTime();
+        PressureStroke stroke=new PressureStroke(doc,settings,gray,null,transparent,false,smooth);
+        for(int i=0;i<=200;i++) {
+            float t=i/200f;
+            stroke.sample(20+220*t,60+35*(float)Math.sin(t*Math.PI*3),.1f+.35f*(float)Math.sin(t*Math.PI),0,0);
+        }
+        stroke.finish();nanos[0]+=System.nanoTime()-start;return doc;
+    }
+    /** Smooth brush edges anti-alias dry strokes; hard strokes keep whole pixels. Writes smooth-edges-comparison.png. */
+    private static void smoothEdgeRaster(Instrumentation test,StringBuilder report) throws Exception {
+        ToolSettings round=ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(40);
+        ToolSettings[] brushes={round,ToolSettings.defaults(ToolSettings.Tool.BRUSH,ToolSettings.Head.FILBERT),
+                ToolSettings.defaults(ToolSettings.Tool.BRUSH,ToolSettings.Head.FLAT),round.oilPaint(true).paintLoad(60),round};
+        String[] labels={"Round","Filbert","Flat","Oil paint","Transparent"};
+        int scale=2;
+        Bitmap sheet=Bitmap.createBitmap(2*260*scale,brushes.length*(120*scale+20),Bitmap.Config.ARGB_8888);sheet.eraseColor(Color.WHITE);
+        Canvas canvas=new Canvas(sheet);Paint ink=new Paint();ink.setColor(Color.BLACK);ink.setTextSize(16);
+        long[] hardTime={0},smoothTime={0};
+        for(int b=0;b<brushes.length;b++) {
+            boolean transparent=b==4;
+            ToneDocument hard=wavyStroke(brushes[b],0,transparent,false,hardTime),smooth=wavyStroke(brushes[b],0,transparent,true,smoothTime);
+            int hardEdges=0,smoothEdges=0;long hardInk=0,smoothInk=0;
+            int solid=transparent?ToneDocument.transparentTone(255,0):0;
+            for(int y=0;y<120;y++)for(int x=0;x<260;x++) {
+                int h=hard.tone(x,y),s=smooth.tone(x,y);
+                if(h!=255&&Math.abs(h-solid)>8)hardEdges++;
+                if(s!=255&&Math.abs(s-solid)>8)smoothEdges++;
+                check(s>=solid-1,labels[b]+" smooth edges never darken past the paint");
+                hardInk+=255-h;smoothInk+=255-s;
+            }
+            // Oil paint smears its own fading tone, so only solid strokes start with whole pixels.
+            if(b!=3)check(hardEdges==0,labels[b]+" hard strokes lay whole pixels");
+            check(smoothEdges>hardEdges+100,labels[b]+" smooth strokes shade their edges ("+smoothEdges+" vs "+hardEdges+")");
+            check(Math.abs(smoothInk-hardInk)<hardInk*.04,labels[b]+" smooth strokes keep the same weight ("+smoothInk+" vs "+hardInk+")");
+            byte[] painted=smooth.snapshot();
+            check(smooth.undo()&&marks(smooth)==0&&smooth.redo()&&Arrays.equals(painted,smooth.snapshot()),labels[b]+" smooth strokes undo exactly");
+            ToneDocument[] pair={hard,smooth};
+            for(int i=0;i<2;i++) {
+                Bitmap image=Bitmap.createBitmap(pair[i].exportPixels(true),260,120,Bitmap.Config.ARGB_8888);
+                Bitmap big=Bitmap.createScaledBitmap(image,260*scale,120*scale,false);image.recycle();
+                int top=b*(120*scale+20)+20;
+                canvas.drawBitmap(big,i*260*scale,top,null);big.recycle();
+                canvas.drawText(labels[b]+(i==0?" (hard)":" (smooth)"),i*260*scale+6,top-4,ink);
+            }
+        }
+        ToneDocument doc=new ToneDocument(64,64);
+        PressureStroke paint=new PressureStroke(doc,round,0,null,false,false,false);paint.sample(32,32,.45f,0,0);paint.finish();
+        PressureStroke erase=new PressureStroke(doc,ToolSettings.defaults(ToolSettings.Tool.ERASER).softness(0).size(20),255,null,false,false,true);
+        erase.sample(32,32,.45f,0,0);erase.finish();
+        int partial=0;for(int y=0;y<64;y++)for(int x=0;x<64;x++)if(doc.opacity(x,y)>0&&doc.opacity(x,y)<255)partial++;
+        check(partial>10&&doc.opacity(32,32)==0,"A smooth hard eraser leaves anti-aliased edges");
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(test.getTargetContext().getCacheDir(),"smooth-edges-comparison.png"))) {
+            sheet.compress(Bitmap.CompressFormat.PNG,100,out);
+        }finally{sheet.recycle();}
+        report.append("Smooth brush edges anti-alias dry strokes and the hard eraser, keep stroke weight and undo exactly; ")
+                .append(brushes.length).append(" strokes took ").append(hardTime[0]/1000000).append(" ms hard, ")
+                .append(smoothTime[0]/1000000).append(" ms smooth.\n");
+    }
     private static void headingOnlyRaster() {
         for(ToolSettings.Head head:new ToolSettings.Head[]{ToolSettings.Head.FLAT,ToolSettings.Head.FILBERT})
             for(int response:new int[]{0,50,100}) {
@@ -1667,11 +1744,14 @@ final class PaintChecks {
         event(view,start,SystemClock.uptimeMillis(),action,x,y,pressure,tool);
     }
     private static void event(View view, long start, long time, int action, float x, float y, float pressure, int tool) {
+        event(view,start,time,action,x,y,pressure,tool,0);
+    }
+    private static void event(View view, long start, long time, int action, float x, float y, float pressure, int tool, int buttons) {
         MotionEvent.PointerProperties properties = new MotionEvent.PointerProperties(); properties.id=0; properties.toolType=tool;
         MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords(); coords.x=x; coords.y=y; coords.pressure=pressure;
         MotionEvent event = MotionEvent.obtain(start,time,action,1,
-                new MotionEvent.PointerProperties[]{properties},new MotionEvent.PointerCoords[]{coords},0,0,1,1,0,0,
-                tool == MotionEvent.TOOL_TYPE_STYLUS ? InputDevice.SOURCE_STYLUS : InputDevice.SOURCE_TOUCHSCREEN,0);
+                new MotionEvent.PointerProperties[]{properties},new MotionEvent.PointerCoords[]{coords},0,buttons,1,1,0,0,
+                tool != MotionEvent.TOOL_TYPE_FINGER ? InputDevice.SOURCE_STYLUS : InputDevice.SOURCE_TOUCHSCREEN,0);
         view.dispatchTouchEvent(event); event.recycle();
     }
     private static Object get(Object owner, String name) {

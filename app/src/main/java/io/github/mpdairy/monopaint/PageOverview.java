@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
-import java.io.ByteArrayInputStream;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,11 +46,7 @@ final class PageOverview extends GridView implements AutoCloseable {
             Bitmap result=null;
             try {
                 if(closed)return;
-                ToneDocument document;
-                if(index==snapshot.index) {
-                    ToneDocument.Snapshot active=snapshot.activePage;
-                    document=new ToneDocument(active.width,active.height,active.layers,active.active);
-                } else document=DocumentCodec.read(new ByteArrayInputStream(snapshot.pages.get(index)));
+                ToneDocument document=snapshot.page(index);
                 if(!closed)result=thumbnail(document);
             } catch(java.io.IOException | RuntimeException error) {
                 android.util.Log.w(ProbeActivity.TAG,"Could not preview page "+(index+1),error);
@@ -85,6 +80,12 @@ final class PageOverview extends GridView implements AutoCloseable {
             }
         }
         return Bitmap.createBitmap(pixels,width,height,Bitmap.Config.ARGB_8888);
+    }
+    /** A copy turned by {@code -90*rotation} degrees, matching how the app shows a page. */
+    static Bitmap turned(Bitmap bitmap,int rotation) {
+        if(rotation%4==0)return bitmap;
+        android.graphics.Matrix turn=new android.graphics.Matrix();turn.setRotate(-90*rotation);
+        return Bitmap.createBitmap(bitmap,0,0,bitmap.getWidth(),bitmap.getHeight(),turn,false);
     }
     @Override public void close(){closed=true;worker.shutdownNow();thumbnails.evictAll();}
 

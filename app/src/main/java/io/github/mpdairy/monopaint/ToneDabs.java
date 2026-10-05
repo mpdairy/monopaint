@@ -92,10 +92,12 @@ final class ToneDabs {
             int hash=x*0x1f123bb5+y*0x05491333; hash^=hash>>>16; hash*=0x45d9f3b; hash^=hash>>>16;
             float grain=(hash&65535)/65535f;
             float hard=hardness/100f;
-            if(grain<.04f+.24f*hard) continue;
-            float alpha=(.18f+.82f*pressure)*(1-.78f*hard)*(.65f-.4f*hard+(.35f+.4f*hard)*grain)*Math.min(1,(1-q)*4);
+            // Paper tooth takes less graphite but never none, and its valleys never fill to full darkness,
+            // so layered strokes settle into gray texture rather than black beside white.
+            float tooth=.04f+.24f*hard,bite=grain<tooth?.3f*grain/tooth:.3f+.7f*(grain-tooth)/(1-tooth);
+            float alpha=(.18f+.82f*pressure)*(1-.78f*hard)*(.65f-.4f*hard+(.35f+.4f*hard)*bite)*Math.min(1,(1-q)*4);
             if(erasing) doc.eraseFromBase(x,y,alpha);
-            else doc.pencilTone(x,y,gray,alpha);
+            else doc.pencilTone(x,y,gray,alpha,.25f+.75f*bite);
         }
     }
     private ToneDabs() {}

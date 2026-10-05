@@ -16,7 +16,7 @@ final class PaintLoad {
     private final ToneDocument document;
     private final int gray;
     private final float length;
-    /** Each pixel takes the brush's first contact, so overlapping dabs do not compound. */
+    /** Each pixel takes the brush's first full contact, so overlapping dabs do not compound. */
     private final BitSet touched = new BitSet();
     private float picked, travelled, pickedAt, amount = 1;
     private boolean started;
@@ -43,7 +43,7 @@ final class PaintLoad {
         float under = 0; int count = 0;
         for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
             int px = x + col, py = y + row;
-            if (inside(mask, stride, col, row, px, py)) { under += document.strokeBaseTone(px, py); count++; }
+            if (edge(mask, stride, col, row, px, py) != 0) { under += document.strokeBaseTone(px, py); count++; }
         }
         float distance = travelled - pickedAt; pickedAt = travelled;
         if (count == 0) return;
@@ -53,14 +53,16 @@ final class PaintLoad {
         if (!lay) return;
         int tone = tone(); float deposit = deposit();
         for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
-            int px = x + col, py = y + row, index = py * document.width + px;
-            if (!inside(mask, stride, col, row, px, py) || touched.get(index)) continue;
-            touched.set(index);
-            if (transparent) document.glazeTone(px, py, Math.round(255 - (255 - tone) * deposit));
-            else document.mixTone(px, py, tone, deposit);
+            int px = x + col, py = y + row, index = py * document.width + px, edge = edge(mask, stride, col, row, px, py);
+            if (edge == 0 || touched.get(index)) continue;
+            // An anti-aliased edge covers only partly, so a later dab can still reach it fully.
+            if (edge == 255) touched.set(index);
+            if (transparent) document.glazeTone(px, py, Math.round(255 - (255 - tone) * deposit), edge);
+            else document.mixTone(px, py, tone, deposit, edge);
         }
     }
-    private boolean inside(int[] mask, int stride, int col, int row, int px, int py) {
-        return (mask[row * stride + col] >>> 24) != 0 && px >= 0 && py >= 0 && px < document.width && py < document.height;
+    /** The mask's coverage of an on-page pixel, out of 255, or 0 off the page. */
+    private int edge(int[] mask, int stride, int col, int row, int px, int py) {
+        return px >= 0 && py >= 0 && px < document.width && py < document.height ? mask[row * stride + col] >>> 24 : 0;
     }
 }

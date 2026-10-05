@@ -116,9 +116,13 @@ final class ToneDocument {
         int a=opacity(x,y), removed=Math.max(1,Math.round(a*strength));
         if(strength>0) setPixel(x,y,tones[y*width+x]&255,Math.max(0,a-removed));
     }
+    /** Anti-aliased edge pixels, with partial mask alpha, remove only that share of the gesture's original coverage. */
     void eraseMask(int[] mask,int stride,int x,int y,int w,int h) {
-        for(int row=0;row<h;row++) for(int col=0;col<w;col++)
-            if((mask[row*stride+col]>>>24)!=0) eraseTone(x+col,y+row,1);
+        for(int row=0;row<h;row++) for(int col=0;col<w;col++) {
+            int c=mask[row*stride+col]>>>24, px=x+col, py=y+row;
+            if(c==255) eraseTone(px,py,1);
+            else if(c!=0 && px>=0 && py>=0 && px<width && py<height) eraseFromBase(px,py,c/255f);
+        }
     }
     private final boolean[] captured;
     private final LinkedHashMap<Integer, byte[]> before = new LinkedHashMap<>();
@@ -172,6 +176,15 @@ final class ToneDocument {
         for(int y=0;y<height;y++) for(int x=0;x<width;x++) result[y*width+x]=(byte)compositeTone(x,y);
         return result;
     }
+    /** Opaque RGB pixels of the composite, calibrated as in {@link DotPattern#exportGray} or as raw logical tones. */
+    int[] exportPixels(boolean calibrated) {
+        int[] pixels=new int[width*height];
+        for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
+            int g=compositeTone(x,y); if(calibrated) g=DotPattern.exportGray(g);
+            pixels[y*width+x]=0xff000000|(g<<16)|(g<<8)|g;
+        }
+        return pixels;
+    }
     void begin() {
         if (editing) throw new IllegalStateException("Finish the current gesture first");
         if(!layerVisible(active)) throw new IllegalStateException("Show this layer before drawing on it.");
@@ -188,32 +201,52 @@ final class ToneDocument {
     private static int rawTone(int onWhite,int coverage) {
         return coverage==0?255:Math.max(0,Math.min(255,(onWhite*255-255*(255-coverage)+coverage/2)/coverage));
     }
-    void glazeTone(int x,int y,int gray) {
+    void glazeTone(int x,int y,int gray) { glazeTone(x,y,gray,255); }
+    /** @param edge anti-aliased share of the pixel the glaze covers, out of 255 */
+    void glazeTone(int x,int y,int gray,int edge) {
         if(gray==255) return;
-        int key=(y/TILE)*columns()+x/TILE;
-        int base=strokeBaseTone(x,y),coverage=opacity(x,y);
-        if(captured[key]) {
-            byte[] tile=before.get(key); int w=Math.min(TILE,width-(x/TILE)*TILE);
-            coverage=tile[tile.length/2+(y%TILE)*w+x%TILE]&255;
-        }
+        int base=strokeBaseTone(x,y),coverage=strokeBasePixel(x,y)&255;
         int result=transparentTone(base,gray);
         coverage=255-transparentTone(255-coverage,gray);
-        setPixel(x,y,rawTone(result,coverage),coverage);
+        cover(x,y,rawTone(result,coverage),coverage,edge);
     }
     /** Moves the gesture's base tone toward {@code gray} by {@code strength}, covering at least that much. */
-    void mixTone(int x,int y,int gray,float strength) {
+    void mixTone(int x,int y,int gray,float strength) { mixTone(x,y,gray,strength,255); }
+    void mixTone(int x,int y,int gray,float strength,int edge) {
         int base=strokeBaseTone(x,y),result=Math.round(base+(gray-base)*strength);
-        int coverage=Math.max(opacity(x,y),Math.max(Math.round(255*strength),255-result));
-        setPixel(x,y,rawTone(result,coverage),coverage);
+        int coverage=Math.max(edge==255?opacity(x,y):strokeBasePixel(x,y)&255,Math.max(Math.round(255*strength),255-result));
+        cover(x,y,rawTone(result,coverage),coverage,edge);
+    }
+    /** The active layer's pixel as this gesture found it: raw tone in the high byte, coverage in the low byte. */
+    private int strokeBasePixel(int x,int y) {
+        int key=(y/TILE)*columns()+x/TILE,i=y*width+x;
+        if(!captured[key]) return (tones[i]&255)<<8|(alpha[i]&255);
+        byte[] tile=before.get(key); int w=Math.min(TILE,width-(x/TILE)*TILE),offset=(y%TILE)*w+x%TILE;
+        return (tile[offset]&255)<<8|(tile[tile.length/2+offset]&255);
+    }
+    /**
+     * Lays what full contact leaves ({@code gray} at {@code coverage}) on {@code edge}/255 of the pixel,
+     * mixing premultiplied with the gesture's base. A partial edge never weakens a stronger contact
+     * from an overlapping dab, so smooth strokes do not darken where stamps overlap.
+     */
+    private void cover(int x,int y,int gray,int coverage,int edge) {
+        if(edge>=255) { setPixel(x,y,gray,coverage); return; }
+        if(edge<=0||x<0||y<0||x>=width||y>=height) return;
+        int base=strokeBasePixel(x,y),baseTone=base>>>8,baseAlpha=base&255,i=y*width+x;
+        float t=edge/255f,a=baseAlpha+(coverage-baseAlpha)*t;
+        float pigment=baseTone*baseAlpha+(gray*coverage-baseTone*baseAlpha)*t;
+        int resultAlpha=Math.round(a),result=resultAlpha==0?255:Math.max(0,Math.min(255,Math.round(pigment/a)));
+        int from=onWhite(baseTone,baseAlpha);
+        int reach=Math.abs(onWhite(result,resultAlpha)-from)+Math.abs(resultAlpha-baseAlpha);
+        if(reach>Math.abs(tone(x,y)-from)+Math.abs(opacity(x,y)-baseAlpha)) setPixel(x,y,result,resultAlpha);
     }
     /** Strongest pencil contact in this gesture, carrying the chosen pigment and its coverage. */
-    void pencilTone(int x,int y,int gray,float strength) {
-        int key=(y/TILE)*columns()+x/TILE,base=strokeBaseTone(x,y),coverage=opacity(x,y);
-        if(captured[key]) {
-            byte[] tile=before.get(key); int w=Math.min(TILE,width-(x/TILE)*TILE);
-            coverage=tile[tile.length/2+(y%TILE)*w+x%TILE]&255;
-        }
+    void pencilTone(int x,int y,int gray,float strength) { pencilTone(x,y,gray,strength,1); }
+    /** @param depth how far from white toward {@code gray} this pixel's paper tooth can ever darken, across gestures */
+    void pencilTone(int x,int y,int gray,float strength,float depth) {
+        int base=strokeBaseTone(x,y),coverage=strokeBasePixel(x,y)&255;
         int target=Math.round(base+(gray-base)*strength),current=tone(x,y);
+        if(gray<base) target=Math.max(target,Math.min(base,Math.round(255+(gray-255)*depth)));
         int resultAlpha=Math.round(coverage+(255-coverage)*strength);
         if((gray<base&&target>current)||(gray>base&&target<current)) return;
         if(target==current&&resultAlpha<=opacity(x,y)) return;
@@ -291,10 +324,12 @@ final class ToneDocument {
         writable(); tones[i]=(byte)gray; alpha[i]=(byte)coverage;
         left=Math.min(left,x); top=Math.min(top,y); right=Math.max(right,x+1); bottom=Math.max(bottom,y+1);
     }
-    /** Apply opaque logical raster pixels, generated by the accepted Android circle rasterizer. */
+    /** Apply opaque logical raster pixels, generated by the accepted Android circle rasterizer; anti-aliased edges cover partly. */
     void paintMask(int[] mask, int stride, int x, int y, int w, int h, int gray) {
         for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
-            if ((mask[row * stride + col] >>> 24) != 0) paintTone(x + col, y + row, gray);
+            int edge = mask[row * stride + col] >>> 24;
+            if (edge == 255) paintTone(x + col, y + row, gray);
+            else if (edge != 0) cover(x + col, y + row, gray, 255, edge);
         }
     }
     /** Half-strength multiply keeps even black translucent; white is clear water. */
@@ -303,9 +338,9 @@ final class ToneDocument {
     void transparentMask(int[] mask, int stride, int x, int y, int w, int h, int gray) {
         for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) {
             int px = x + col, py = y + row;
-            if ((mask[row * stride + col] >>> 24) != 0
-                    && px >= 0 && py >= 0 && px < width && py < height)
-                glazeTone(px, py, gray);
+            int edge = mask[row * stride + col] >>> 24;
+            if (edge != 0 && px >= 0 && py >= 0 && px < width && py < height)
+                glazeTone(px, py, gray, edge);
         }
     }
     /** Darken to the selected logical gray; repeated passes retain the same shade. */

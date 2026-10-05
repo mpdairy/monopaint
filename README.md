@@ -6,7 +6,7 @@ A small drawing app for **Supernote Manta**. Pressure-sensitive brushes, texture
 pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 
 [Download the latest APK](https://github.com/mpdairy/monopaint/releases/latest/download/monopaint.apk)
-· [Release notes](https://github.com/mpdairy/monopaint/releases)
+· [All releases and release notes](https://github.com/mpdairy/monopaint/releases)
 
 ## What it does
 

@@ -13,12 +13,9 @@ public final class ExportPng {
         DrawingBook book;
         try(InputStream in=new FileInputStream(args[0])) {book=BookCodec.read(in);}
         book.select(Integer.parseInt(args[1])-1);
-        ToneDocument page=book.current();int[] pixels=new int[page.width*page.height];
-        if(mode.equals("dots"))page.render(pixels,0,0,page.width,page.height);
-        else for(int y=0;y<page.height;y++)for(int x=0;x<page.width;x++) {
-            int g=page.compositeTone(x,y);if(mode.equals("calibrated"))g=DotPattern.exportGray(g);
-            pixels[y*page.width+x]=(g<<16)|(g<<8)|g;
-        }
+        ToneDocument page=book.current();int[] pixels;
+        if(mode.equals("dots")){pixels=new int[page.width*page.height];page.render(pixels,0,0,page.width,page.height);}
+        else pixels=page.exportPixels(mode.equals("calibrated"));
         BufferedImage image=new BufferedImage(page.width,page.height,BufferedImage.TYPE_INT_RGB);
         image.setRGB(0,0,page.width,page.height,pixels,0,page.width);
         File output=new File(args[2]);

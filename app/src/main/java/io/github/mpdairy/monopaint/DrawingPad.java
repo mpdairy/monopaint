@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -266,6 +267,18 @@ final class DrawingPad extends View {
         canvas.drawCircle(axis[0], axis[1], dp(4), gradientGuide);
         canvas.drawCircle(axis[2], axis[3], dp(4), gradientGuide);
     }
+    /** Removes the gradient guide, repainting its page area on the direct e-ink path too. */
+    private void clearGradientGuide() {
+        invalidate();
+        if (display == null) return;
+        float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY}; pageToView.mapPoints(axis);
+        RectF area = new RectF(Math.min(axis[0], axis[2]), Math.min(axis[1], axis[3]),
+                Math.max(axis[0], axis[2]), Math.max(axis[1], axis[3]));
+        area.inset(-dp(6), -dp(6)); viewToPage.mapRect(area);
+        Rect page = new Rect(); area.roundOut(page);
+        if (!page.intersect(0, 0, display.getWidth(), display.getHeight())) return;
+        queue(page); flush(true);
+    }
 
     // Direct e-ink presentation
 
@@ -333,7 +346,7 @@ final class DrawingPad extends View {
         boolean drawingInput = false;
         int action = event.getActionMasked(), index = event.getActionIndex();
         if ((action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN)
-                && pointer == -1 && event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS) {
+                && pointer == -1 && isPen(event, index)) {
             if (!penDown(event, index)) return true;
             drawingInput = stroke != null;
             if (!drawingInput) return true;
@@ -364,7 +377,11 @@ final class DrawingPad extends View {
             app.message("This layer is hidden. Open Layers to show it or select another layer."); return false;
         }
         PaintState paint = app.paint;
-        ToolSettings settings = app.library.current();
+        // A stylus's eraser end, or a stroke begun with its side button held, erases with
+        // the Eraser tool, whatever tool is selected.
+        boolean penEraser = event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
+                || (event.getButtonState() & MotionEvent.BUTTON_STYLUS_PRIMARY) != 0;
+        ToolSettings settings = penEraser ? app.library.builtin(ToolSettings.Tool.ERASER) : app.library.current();
         boolean erasing = paint.eraseMode && settings.supportsEraseMode();
         // Brushes paint into a wet canvas; the brush pen brings its own water, which on a
         // dry canvas wets only where it lands.
@@ -377,10 +394,15 @@ final class DrawingPad extends View {
         if (settings.tool == ToolSettings.Tool.SHAPES) { beginShape(settings, shade); return true; }
         if (settings.tool == ToolSettings.Tool.FILL) { beginFill(settings, shade); return true; }
         cancelWetCallback();
-        stroke = ToolStrokes.create(document, settings, paint.gray, wet, paint.transparentPaint, erasing);
+        stroke = ToolStrokes.create(document, settings, paint.gray, wet, paint.transparentPaint, erasing, app.prefs.smoothEdges());
         // Supernote encodes signed X degrees in ORIENTATION, Y in TILT.
         sampleEvent(event, index, -1);
         return true;
+    }
+    /** The pointer is a stylus tip or eraser end. */
+    private static boolean isPen(MotionEvent event, int index) {
+        int type = event.getToolType(index);
+        return type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER;
     }
     /** A pen stroke, shape or fill drag is in progress. */
     boolean penActive() { return pointer != -1; }
@@ -389,7 +411,7 @@ final class DrawingPad extends View {
         if (!unscaledPage) viewToPage.mapPoints(samplePoint);
     }
     @Override public boolean onHoverEvent(MotionEvent event) {
-        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS) {
+        if (isPen(event, 0)) {
             penGuardUntil = SystemClock.uptimeMillis()+250;
             if (navigating) { touchBlocked = true; endNavigation(); }
         }
@@ -434,7 +456,7 @@ final class DrawingPad extends View {
             renderDirty(); flush(true); gradientReady = true; applyGradient();
         }
         if (fillGesture) {
-            fillGesture = false; pointer = -1; invalidate();
+            fillGesture = false; pointer = -1; clearGradientGuide();
             getParent().requestDisallowInterceptTouchEvent(false);
         }
         cancelGradient();
@@ -517,6 +539,7 @@ final class DrawingPad extends View {
         fillGesture = false; pointer = -1; getParent().requestDisallowInterceptTouchEvent(false);
         float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY}; pageToView.mapPoints(axis);
         if (fillGradient == ToolSettings.Gradient.FLAT || Math.hypot(axis[2]-axis[0], axis[3]-axis[1]) < dp(8)) {
+            if (fillGradient != ToolSettings.Gradient.FLAT) clearGradientGuide();
             fill = new FloodFill(document, (int)fillStartX, (int)fillStartY, fillShade, fillTolerance);
             app.toolbar.operationStatus.setText("Filling…"); post(fillStep);
         } else {
@@ -551,7 +574,7 @@ final class DrawingPad extends View {
             gradientFill = new FloodFill(document, (int)fillStartX, (int)fillStartY, fillShade, fillTolerance,
                     fillStartX, fillStartY, fillEndX, fillEndY, shade, fillGradient);
             gradientWaiting = false; gradientReady = false;
-            invalidate(); post(gradientStep); return;
+            clearGradientGuide(); post(gradientStep); return;
         }
         gradientShade = shade;
         // Finish the current preview pass before starting the latest shade. Rapid
@@ -582,7 +605,7 @@ final class DrawingPad extends View {
         app.hideGradientHint(); removeCallbacks(gradientStep);
         if (!hasGradient()) return;
         if (gradientFill != null) gradientFill.cancel();
-        if (gradientWaiting) { gradientWaiting = false; invalidate(); }
+        if (gradientWaiting) { gradientWaiting = false; clearGradientGuide(); }
         gradientFill = null; gradientSample = null; gradientReady = false; gradientCommit = false;
         app.toolbar.operationStatus.setText(""); renderDirty(); flush(true);
         int original = fillOriginalGray;
@@ -629,7 +652,7 @@ final class DrawingPad extends View {
         if (action == MotionEvent.ACTION_DOWN) { touchBlocked = false; endNavigation(); }
         boolean pen = false;
         for (int i = 0; i < event.getPointerCount(); i++)
-            if (event.getToolType(i) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(i) == MotionEvent.TOOL_TYPE_ERASER) pen = true;
+            if (isPen(event, i)) pen = true;
         if (pen || pointer != -1 || pickPointer != -1 || fillGesture || hasGradient()
                 || SystemClock.uptimeMillis() < penGuardUntil) {
             touchBlocked = true; endNavigation();

@@ -12,7 +12,7 @@ Tap a tool to select it. Tap it again to open its settings.
 | <img src="icons/airbrush.svg" width="24"><br>**Airbrush** | Soft spray. Go over an area again to build up color. |
 | <img src="icons/fill.svg" width="24"><br>**Fill** | Flat or gradient flood fill. |
 | <img src="icons/shapes.svg" width="24"><br>**Shapes** | Lines, rectangles, squares, ovals and circles. |
-| <img src="icons/eraser.svg" width="24"><br>**Eraser** | Erases to reveal the layers below. |
+| <img src="icons/eraser.svg" width="24"><br>**Eraser** | Erases to reveal the layers below. A pen's eraser end or side button, if it has one, always uses this tool. |
 | <img src="icons/soften.svg" width="24"><br>**Blending stump** | Smudges shading in the direction you rub. |
 
 ### Brush heads
@@ -73,8 +73,9 @@ then just smudges. Rub the pen on the color bar or a swatch to reload it.
 
 ## Settings
 
-**Menu → Settings** has the drawing hand, rotation, icon and text sizes,
-**Wet canvas uses gravity** (wet paint runs downhill), Nomad Simulation Mode,
+**Menu → Settings** has the drawing hand, rotation, settings text size,
+**Wet canvas uses gravity** (wet paint runs downhill), **Smooth brush edges**
+(anti-aliased dry brush and hard eraser strokes; better for PNG exports; adds a tiny bit of lag), Nomad Simulation Mode,
 and which tools appear on the toolbar.
 
 ## Saving
