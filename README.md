@@ -22,7 +22,7 @@ pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 
 ## Sideload onto a Manta
 
-1. Download **monopaint.apk** from the latest release (not the source ZIP).
+1. Download **monopaint.apk** from the [latest release](https://github.com/mpdairy/monopaint/releases/latest) (not the source ZIP).
 2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
    on your computer and open a terminal in the folder containing `adb`.
 3. On the Manta, turn on **Settings → Security & Privacy → Sideloading**.
