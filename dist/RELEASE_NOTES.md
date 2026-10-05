@@ -1,26 +1,23 @@
-MonoPaint 0.91 adds PNG export, eraser-end pens, and optional smooth brush edges.
+**Experimental Nomad build.** This is MonoPaint 0.91 with the fast e-ink
+display path turned on for the Supernote Nomad. It is untested on a real Nomad.
+For everyday use, stay on the [regular release](https://github.com/mpdairy/monopaint/releases/latest).
 
-- Pens with an eraser end, like the Staedtler Noris digital jumbo, now erase
-  when flipped over, and holding a pen's side button while drawing erases too,
-  using the Eraser tool's settings. Your selected tool doesn't change, so the
-  regular tip keeps drawing with whatever tool you were using.
-- Export PNG: a new menu item saves the current page, or every page, as PNG
-  pictures in `Pictures/MonoPaint`. All pages are numbered from your chosen
-  name, like `sketch001.png`, `sketch002.png`, and so on. Grays match the
-  tablet's shading, and pictures are turned the way you're holding the tablet.
-  It asks before replacing earlier exports.
-- Smooth brush edges: a new option in Settings gives dry brush strokes and the
-  hard eraser soft, anti-aliased edges instead of stair-stepped pixels, so
-  exported PNGs look clean. Wet paint was already smooth. It's off by default,
-  since it makes drawing slightly laggier.
-- The side toolbar always uses large icons; the Medium choice is gone, since
-  the buttons were the same size either way.
-- Open drawing shows your drawings as a grid of first-page previews, like the
-  Pages overview, so you can find a drawing by how it looks.
+MonoPaint draws strokes straight to the e-ink panel for low-lag ink. Until now
+that only worked on the Manta, so on a Nomad it fell back to slower Android
+drawing. This build tries the fast path on any screen whose driver reports a
+sensible layout. Nothing else is changed from 0.91.
 
-Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
-Update with `adb install -r monopaint.apk` to preserve drawings and settings.
-The application ID and signing identity are unchanged from MonoPaint 0.9.
-Android version code 43 allows this release to update 0.9 and earlier builds.
+**Please test on a new drawing** and [open an issue](https://github.com/mpdairy/monopaint/issues)
+with your firmware version and what you saw:
+
+- Does ink appear right under the pen with little lag?
+- Do grays, white paint and the eraser look right?
+- Any garbled, shifted or striped ink, or screen glitches?
+- Did you see "Fast display unavailable; using standard drawing"?
+
+If something looks wrong, go back to the regular release by installing
+0.91 over this build (`adb install -r monopaint.apk`). Drawings and settings are
+kept either way: both builds use Android version code 43 and the same signing
+identity, so each installs over the other.
 
 `SHA256SUMS` contains the APK checksum. This is a signed, non-debuggable release build.

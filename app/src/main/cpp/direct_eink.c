@@ -52,11 +52,16 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
     if (ioctl(fd,0x48545201UL,info)!=0) {
         int error=errno; close(fd); fail(env,strerror(error)); return 0;
     }
-    // Restrict the experiment to the queried Manta layout, never guess an ABI
-    // from Android's model property (which incorrectly says Nomad here).
+    // Experimental Nomad build: accept any self-consistent queried layout, not
+    // only the verified Manta one. Never guess an ABI from Android's model
+    // property (which incorrectly says Nomad on the Manta).
     int width=(uint32_t)info[1]&0xffff, height=(uint32_t)info[1]>>16;
-    if (width!=1920 || height!=2560 || info[2]!=1920 || info[3]!=4915200) {
-        close(fd); fail(env,"Unsupported display buffer layout"); return 0;
+    if (width<=0 || height<=0 || info[2]<width || info[3]<=0
+            || (int64_t)info[2]*height>info[3]) {
+        char message[128];
+        snprintf(message,sizeof(message),"Unsupported display buffer layout %dx%d stride %d size %d",
+                 width,height,info[2],info[3]);
+        close(fd); fail(env,message); return 0;
     }
     AndroidBitmapInfo bitmap_info;
     if (AndroidBitmap_getInfo(env,background,&bitmap_info)!=ANDROID_BITMAP_RESULT_SUCCESS

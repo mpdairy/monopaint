@@ -35,6 +35,8 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/monopaint.apk dist/SHA256SUMS --clobber
           else
+            # Suffixed tags like v0.91-nomad are experimental: never the latest release.
+            case "$RELEASE_TAG" in *-*) kind=(--prerelease --latest=false) ;; *) kind=(--latest) ;; esac
             gh release create "$RELEASE_TAG" dist/monopaint.apk dist/SHA256SUMS \
-              --verify-tag --title "MonoPaint $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md --latest
+              --verify-tag --title "MonoPaint $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md "${kind[@]}"
           fi

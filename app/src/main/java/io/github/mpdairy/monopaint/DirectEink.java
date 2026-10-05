@@ -7,7 +7,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.view.View;
 
-/** Manta-only region presenter, using ordinary app permissions. */
+/** Region presenter for the Manta panel (Nomad experimentally), using ordinary app permissions. */
 final class DirectEink {
     static { System.loadLibrary("monopaint_display"); }
     static native String probe();
@@ -43,8 +43,8 @@ final class DirectEink {
         RectF bounds = new RectF(0,0,background.getWidth(),background.getHeight());
         toPanel.mapRect(bounds);
         Rect pixels = new Rect(); bounds.roundOut(pixels);
-        if (pixels.isEmpty() || pixels.width()>1920 || pixels.height()>2560)
-            throw new IllegalStateException("Panel patch outside supported display");
+        // Native open checks the patch against the queried panel layout.
+        if (pixels.isEmpty()) throw new IllegalStateException("Empty panel patch");
         x=pixels.left; y=pixels.top;
         sourceWidth=background.getWidth(); sourceHeight=background.getHeight();
         sourceToBuffer=new Matrix(toPanel); sourceToBuffer.postTranslate(-x,-y);
