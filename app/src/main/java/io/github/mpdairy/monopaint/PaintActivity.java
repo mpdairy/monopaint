@@ -76,6 +76,8 @@ public final class PaintActivity extends Activity implements ControlHost {
     QuarterTurnLayout paletteFrame, orientationFrame;
     NomadPreviewLayout previewFrame;
     DrawingPad pad;
+    FullscreenController fullscreen;
+    EdgeBars edgeBars;
     Toolbar toolbar;
     RotationPrompt rotationPrompt;
     CanvasGravity canvasGravity;
@@ -133,6 +135,8 @@ public final class PaintActivity extends Activity implements ControlHost {
         toolbar = new Toolbar(this);
         body.addView(toolbar.toolScroll, new LinearLayout.LayoutParams(dp(64), -1));
         toolbar.rebuildTools();
+        fullscreen = new FullscreenController(this);
+        edgeBars = new EdgeBars(this);
         pad = new DrawingPad(this); body.addView(pad, new LinearLayout.LayoutParams(0, -1, 1));
         root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
         orientationFrame = new QuarterTurnLayout(this);
@@ -326,18 +330,18 @@ public final class PaintActivity extends Activity implements ControlHost {
     }
     private void replaceBook(DrawingBook replacement) {
         if (replacement == null) { pad.replace(null); return; }
-        pad.finishStroke(); book = replacement; pad.showPage(book.current()); updatePages();
+        pad.finishStroke(); book = replacement; pad.showPage(book.current()); updatePages(); pad.post(fullscreen::pageChanged);
     }
     private void changePage(int index) {
         if (busy() || index < 0 || index >= book.count()) return;
         pad.finishStroke(); pad.dryWet();
-        try { book.select(index); pad.showPage(book.current()); updatePages(); recovery(); }
+        try { book.select(index); pad.showPage(book.current()); updatePages(); recovery(); fullscreen.pageChanged(); }
         catch (java.io.IOException error) { message("Could not open page: " + error.getMessage()); }
     }
     private void addPage() {
         if (busy()) return;
         pad.finishStroke(); pad.dryWet();
-        try { book.addPage(); pad.showPage(book.current()); updatePages(); recovery(); }
+        try { book.addPage(); pad.showPage(book.current()); updatePages(); recovery(); fullscreen.pageChanged(); }
         catch (java.io.IOException error) { message("Could not add page: " + error.getMessage()); }
     }
     /** The compact page row shown from the Pages button in Nomad layout. */
@@ -410,6 +414,7 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     /** Lays the screen out for the current rotation and drawing hand. */
     void applyToolboxSide() {
+        edgeBars.reset();
         closePagePanel(); closePaletteEditor();
         dismiss(filePopup); dismiss(layersPopup);
         boolean right = prefs.toolboxRight();
@@ -440,6 +445,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         pad.setLayoutParams(new LinearLayout.LayoutParams(landscape ? -1 : 0, landscape ? 0 : -1, 1));
         arrangeHeader(right);
         toolbar.rebuildTools();
+        fullscreen.applyVisibility();
         Ui.invalidateTree(palette);
         pad.updateViewport(); pad.invalidate(); pad.post(pad::connectDisplay);
     }
@@ -504,7 +510,10 @@ public final class PaintActivity extends Activity implements ControlHost {
         saveToolState(); recovery();
     }
 
+    void dispatchCancelledTouch(MotionEvent event) { super.dispatchTouchEvent(event); }
+
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        if (edgeBars != null && edgeBars.touch(event)) return true;
         boolean down = event.getActionMasked() == MotionEvent.ACTION_DOWN;
         if (down && rotateButton != null && rotateButton.getVisibility() == View.VISIBLE && Ui.outside(rotateButton, event))
             rotationPrompt.dismiss();
@@ -527,7 +536,7 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     private static void dismiss(PopupWindow popup) { if (popup != null) popup.dismiss(); }
     /** Closes every panel and popup and leaves the eyedropper. */
-    private void dismissPanels() {
+    void dismissPanels() {
         closePagePanel(); closePaletteEditor(); setPickingShade(false);
         dismiss(filePopup); dismiss(layersPopup); dismiss(toolPicker);
     }
@@ -570,9 +579,9 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     private void fileMenu(View anchor) {
         closePagePanel();
-        String[] names = {"New drawing", "Open drawing", "Save drawing", "Save drawing as…", "Export PNG…", "Settings"};
-        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_export, R.drawable.ic_settings};
-        Runnable[] actions = {this::newDrawing, this::openDrawing, this::saveDrawing, this::saveDrawingAs, this::exportPng, this::appSettings};
+        String[] names = {"New drawing", "Open drawing", "Save drawing", "Save drawing as…", "Export PNG…", "Fullscreen…", "Canvas size…", "Settings"};
+        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_export, R.drawable.ic_zoom, R.drawable.ic_new, R.drawable.ic_settings};
+        Runnable[] actions = {this::newDrawing, this::openDrawing, this::saveDrawing, this::saveDrawingAs, this::exportPng, () -> fullscreen.showModes(), () -> fullscreen.showCanvasChoice(), this::appSettings};
         dismiss(filePopup); dismiss(layersPopup);
         LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this); scroll.addView(rows);
@@ -629,8 +638,13 @@ public final class PaintActivity extends Activity implements ControlHost {
     }
     private interface HistoryStep { boolean apply(); }
     private void history(HistoryStep step) {
-        pad.dryWet();
-        if (step.apply()) { pad.renderDirty(); pad.present(); recovery(); }
+        pad.finishStroke(); pad.dryWet();
+        int width=pad.document.width, height=pad.document.height;
+        if (step.apply()) {
+            if(width!=pad.document.width || height!=pad.document.height) { pad.viewport.reset(); pad.canvasResized(); }
+            else { pad.renderDirty(); pad.present(); }
+            recovery();
+        }
     }
 
     // Color and paint modes
@@ -722,6 +736,9 @@ public final class PaintActivity extends Activity implements ControlHost {
     }
     /** Saves the current color, modes and tools. */
     void saveToolState() {
+        // The Nomad's side refresh can reuse Android's last surface without an
+        // app redraw. Commit the final marker now; live drags still use fast ink.
+        selectionFeedback.finishUpdate(shadePicker);
         try { prefs.savePaint(paint, library); }
         catch (java.io.IOException error) { message("Could not save tool settings: " + error.getMessage()); }
     }
@@ -886,6 +903,8 @@ public final class PaintActivity extends Activity implements ControlHost {
         if (pad != null) { pad.updateViewport(); pad.post(pad::connectDisplay); }
     }
     @Override protected void onPause() {
+        if (edgeBars != null) edgeBars.reset();
+        if (fullscreen != null) fullscreen.dismiss();
         if (pageOverview != null) pageOverview.dismiss();
         dismissPanels();
         resumed = false;
@@ -914,6 +933,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     @Override public void onBackPressed() {
         if (pagePanel != null) { closePagePanel(); return; }
         if (paletteEditor != null) { closePaletteEditor(); return; }
+        if (fullscreen != null && fullscreen.mode != 0) { fullscreen.setMode(0); return; }
         if (pad != null && (pad.hasGradient() || pad.fillGesture)) { pad.finishStroke(); return; }
         super.onBackPressed();
     }

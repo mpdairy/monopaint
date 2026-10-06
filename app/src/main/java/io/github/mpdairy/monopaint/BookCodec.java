@@ -6,7 +6,7 @@ import java.util.zip.*;
 
 /** One ZIP-based .tsm file: a manifest and ordered, checksummed logical-tone pages. */
 final class BookCodec {
-    private static final int MAGIC=0x54534231;
+    private static final int MAGIC=0x54534231, PAGE_SIZES_MAGIC=0x54534232;
     private static final int MAX_PAGE_BYTES=DrawingBook.MAX_PACKED_BYTES;
     static void write(OutputStream output,DrawingBook.Snapshot snapshot) throws IOException {
         ArrayList<byte[]> pages=new ArrayList<>(snapshot.pages);
@@ -22,7 +22,8 @@ final class BookCodec {
             @Override public void close() throws IOException {flush();}
         })) {
         ByteArrayOutputStream manifest=new ByteArrayOutputStream();DataOutputStream info=new DataOutputStream(manifest);
-        info.writeInt(MAGIC);info.writeInt(snapshot.width);info.writeInt(snapshot.height);info.writeInt(pages.size());info.writeInt(snapshot.index);
+        info.writeInt(PAGE_SIZES_MAGIC);info.writeInt(snapshot.width);info.writeInt(snapshot.height);info.writeInt(pages.size());info.writeInt(snapshot.index);
+        for(int choice:snapshot.canvasChoices)info.writeByte(choice);
         entry(zip,"manifest",manifest.toByteArray());
         for(int i=0;i<pages.size();i++)entry(zip,"pages/"+(i+1)+".tsm",pages.get(i));
         zip.finish();zip.flush();
@@ -44,12 +45,19 @@ final class BookCodec {
         try(ZipInputStream zip=new ZipInputStream(new ByteArrayInputStream(archive))) {
             ZipEntry entry=zip.getNextEntry();
             if(entry==null||!entry.getName().equals("manifest"))throw new IOException("Missing page manifest");
-            byte[] header=bounded(zip,20);if(header.length!=20)throw new IOException("Invalid page manifest");
+            byte[] header=bounded(zip,20+DrawingBook.MAX_PAGES);if(header.length<20)throw new IOException("Invalid page manifest");
             DataInputStream info=new DataInputStream(new ByteArrayInputStream(header));
-            if(info.readInt()!=MAGIC)throw new IOException("Unknown drawing format");
+            int magic=info.readInt();
+            if(magic!=MAGIC && magic!=PAGE_SIZES_MAGIC)throw new IOException("Unknown drawing format");
             int width=info.readInt(),height=info.readInt(),count=info.readInt(),active=info.readInt();
             try{ToneDocument.validateSize(width,height);}catch(IllegalArgumentException e){throw new IOException("Invalid page dimensions",e);}
             if(count<1||count>DrawingBook.MAX_PAGES||active<0||active>=count)throw new IOException("Invalid page count");
+            if(header.length!=(magic==MAGIC?20:20+count))throw new IOException("Invalid page manifest");
+            int[] choices=new int[count];
+            if(magic==PAGE_SIZES_MAGIC)for(int i=0;i<count;i++) {
+                choices[i]=info.readUnsignedByte();
+                if(choices[i]>2)throw new IOException("Invalid canvas choice");
+            }
             int entries=(archive[end+10]&255)|((archive[end+11]&255)<<8);
             if(entries!=count+1)throw new IOException("Incomplete page directory");
             ArrayList<byte[]> pages=new ArrayList<>();long total=0;ToneDocument selected=null;
@@ -60,12 +68,13 @@ final class BookCodec {
                 if(total>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Drawing is too large");
                 if(i==active) {
                     selected=DocumentCodec.read(new ByteArrayInputStream(bytes));
-                    if(selected.width!=width||selected.height!=height)throw new IOException("Page size mismatch");
-                } else DocumentCodec.validate(new ByteArrayInputStream(bytes),width,height);
+                    if(magic==MAGIC && (selected.width!=width||selected.height!=height))throw new IOException("Page size mismatch");
+                } else DocumentCodec.validate(new ByteArrayInputStream(bytes),magic==MAGIC?width:0,magic==MAGIC?height:0);
                 pages.add(bytes);
             }
             if(zip.getNextEntry()!=null)throw new IOException("Unexpected archive entry");
-            return new DrawingBook(width,height,pages,active,selected);
+            DrawingBook book=new DrawingBook(width,height,pages,active,selected);
+            book.restoreCanvasChoices(choices); return book;
         }
     }
     /** Decodes only the first page, for previews; skips the rest of the book. */

@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 /** Controlled app-local stylus replay. Measures firmware bitmap widths, never physical latency. */
 public final class WidthInstrumentation extends Instrumentation {
     private boolean displayProbeOnly, paletteOnly, palettePerfOnly;
+    private boolean edgeBarsOnly, fullscreenOnly;
     private boolean colorBarOnly;
     private boolean pageFeedbackOnly;
     private boolean paintOnly, shapesOnly, shapesPerfOnly;
@@ -49,6 +50,8 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onCreate(Bundle args) {
         super.onCreate(args);
         displayProbeOnly = args != null && "true".equals(args.getString("displayProbeOnly"));
+        edgeBarsOnly = args != null && "true".equals(args.getString("edgeBarsOnly"));
+        fullscreenOnly = args != null && "true".equals(args.getString("fullscreenOnly"));
         colorBarOnly = args != null && "true".equals(args.getString("colorBarOnly"));
         pageFeedbackOnly = args != null && "true".equals(args.getString("pageFeedbackOnly"));
         colorBarOnly |= pageFeedbackOnly;
@@ -78,9 +81,11 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (colorBarOnly || settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
+        if (edgeBarsOnly || fullscreenOnly || colorBarOnly || settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
-                if (colorBarOnly) ColorBarChecks.run(this,report,pageFeedbackOnly);
+                if (edgeBarsOnly) EdgeBarChecks.run(this,report);
+                else if (fullscreenOnly) FullscreenChecks.run(this,report);
+                else if (colorBarOnly) ColorBarChecks.run(this,report,pageFeedbackOnly);
                 else if (settingsOnly) ShapeUiChecks.run(this,report,false,false,false,false,true);
                 else if (pagesOnly) ShapeUiChecks.run(this,report,false,false,false,true);
                 else if (nomadOnly) ShapeUiChecks.run(this,report,false,false,true);

@@ -13,7 +13,7 @@ final class ToneDocument {
     static final int MAX_PIXELS = 1920 * 2560;
     private static final int TILE = 64;
     private static final int HISTORY_BYTES = 32 * 1024 * 1024;
-    final int width, height;
+    int width, height;
     private byte[] tones, alpha;
     private byte[] sprayBaseTile;
     private int sprayBaseKey=-1;
@@ -95,6 +95,28 @@ final class ToneDocument {
         revision++;
         addEdit(new Edit(old,new StackState(this))); markAllDirty();
     }
+    /** Add transparent paper around every layer without resampling existing pixels. */
+    void expand(int left, int top, int right, int bottom) {
+        idle();
+        if (left<0 || top<0 || right<0 || bottom<0) throw new IllegalArgumentException("Canvas margins cannot be negative");
+        long w=(long)width+left+right, h=(long)height+top+bottom;
+        if(w>4096 || h>4096) throw new IllegalArgumentException("This canvas is too large to expand further.");
+        validateSize((int)w,(int)h);
+        if(w==width && h==height)return;
+        StackState old=new StackState(this);
+        ArrayList<Layer> expanded=new ArrayList<>();
+        for(Layer layer:layers) {
+            byte[] ink=paper((int)w,(int)h), coverage=new byte[(int)(w*h)];
+            for(int y=0;y<height;y++) {
+                System.arraycopy(layer.tones,y*width,ink,(y+top)*(int)w+left,width);
+                System.arraycopy(layer.alpha,y*width,coverage,(y+top)*(int)w+left,width);
+            }
+            Layer next=new Layer(layer.name,layer.visible,ink,coverage); next.opacity=layer.opacity; expanded.add(next);
+        }
+        width=(int)w; height=(int)h; layers.clear(); layers.addAll(expanded);
+        captured=new boolean[columns()*((height+TILE-1)/TILE)];
+        selectLayer(active); stackEdit(old);
+    }
     private void markAllDirty() { left=0; top=0; right=width; bottom=height; }
     private void addEdit(Edit edit) {
         for(Edit discarded:redo) historyBytes-=discarded.bytes;
@@ -124,7 +146,7 @@ final class ToneDocument {
             else if(c!=0 && px>=0 && py>=0 && px<width && py<height) eraseFromBase(px,py,c/255f);
         }
     }
-    private final boolean[] captured;
+    private boolean[] captured;
     private final LinkedHashMap<Integer, byte[]> before = new LinkedHashMap<>();
     private final ArrayDeque<Edit> undo = new ArrayDeque<>(), redo = new ArrayDeque<>();
     private int historyBytes;
@@ -481,13 +503,15 @@ final class ToneDocument {
         final String[] names;
         final boolean[] visible;
         final int[] opacity;
-        final int active;
+        final int active, width, height;
         StackState(ToneDocument doc) {
-            layers=new ArrayList<>(doc.layers); active=doc.active;
+            layers=new ArrayList<>(doc.layers); active=doc.active; width=doc.width; height=doc.height;
             names=new String[layers.size()]; visible=new boolean[layers.size()]; opacity=new int[layers.size()];
             for(int i=0;i<layers.size();i++) { names[i]=layers.get(i).name; visible[i]=layers.get(i).visible; opacity[i]=layers.get(i).opacity; }
         }
         void restore(ToneDocument doc) {
+            doc.width=width; doc.height=height;
+            doc.captured=new boolean[doc.columns()*((height+TILE-1)/TILE)];
             doc.layers.clear(); doc.layers.addAll(layers);
             for(int i=0;i<layers.size();i++) { layers.get(i).name=names[i]; layers.get(i).visible=visible[i]; layers.get(i).opacity=opacity[i]; }
             doc.selectLayer(active);

@@ -86,7 +86,24 @@ expiry, no repeat while stationary, shake recall, fast pressed feedback before
 touch-to-rotate, cleared press state on dismissal, unchanged
 color width, and canvas reconnection. `rotation-new-landscape.png` captures the
 portrait-bottom-right / new-landscape-bottom-left example.
+Use `-e fullscreenOnly true` for two-finger double taps, all four
+control layouts, illustrated per-page Keep/Expand choices, unchanged artwork
+position through expansion, UI undo/redo, independent new pages and Back.
+It covers all four rotations and both drawing hands, restores the original
+book/page/settings and verifies every original page and layer. It saves
+`fullscreen-choice.png` in the app cache. Gesture recognition and variable-size
+page persistence also have desktop checks in `scripts/test_document.sh`.
+Use `-e edgeBarsOnly true` for bar swipes through Android's input dispatcher,
+including Supernote's system gesture listener. It checks all four bar layouts,
+first-swipe margin choice, fast exits with missing edge samples, short-swipe
+rejection, finger contact footprints at the bezel, stationary artwork, fast drawing
+after toggles, mixed-layout undo, two-finger double taps (with three-finger rejection),
+and Zoom-tool double taps in every rotation and both drawing hands.
+It restores the original drawing/page/settings and saves
+`edge-choice.png` in the app cache.
 Use `-e zoomOnly true` for the default/saved navigation lock, fast lock feedback,
+finger/pen double taps returning to actual 100% from above and below 100% while
+preserving the lock and artwork,
 locked pinch/pan rejection with pen drawing retained, pinch-to-fit, no Zoom panel
 or hold reset, the toolbar percentage, single-finger
 and active-pen palm rejection, cancellation, zoomed pen placement and undo,

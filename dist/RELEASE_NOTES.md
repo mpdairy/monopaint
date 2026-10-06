@@ -1,26 +1,38 @@
-MonoPaint 0.91 adds PNG export, eraser-end pens, and optional smooth brush edges.
+MonoPaint 0.95 adds Nomad support, hideable bars with optional canvas expansion, and a Zoom double tap for 100%.
 
-- Pens with an eraser end, like the Staedtler Noris digital jumbo, now erase
-  when flipped over, and holding a pen's side button while drawing erases too,
-  using the Eraser tool's settings. Your selected tool doesn't change, so the
-  regular tip keeps drawing with whatever tool you were using.
-- Export PNG: a new menu item saves the current page, or every page, as PNG
-  pictures in `Pictures/MonoPaint`. All pages are numbered from your chosen
-  name, like `sketch001.png`, `sketch002.png`, and so on. Grays match the
-  tablet's shading, and pictures are turned the way you're holding the tablet.
-  It asks before replacing earlier exports.
-- Smooth brush edges: a new option in Settings gives dry brush strokes and the
-  hard eraser soft, anti-aliased edges instead of stair-stepped pixels, so
-  exported PNGs look clean. Wet paint was already smooth. It's off by default,
-  since it makes drawing slightly laggier.
-- The side toolbar always uses large icons; the Medium choice is gone, since
-  the buttons were the same size either way.
-- Open drawing shows your drawings as a grid of first-page previews, like the
-  Pages overview, so you can find a drawing by how it looks.
+- MonoPaint now supports drawing on the Supernote Nomad, with a compact Pages
+  menu that leaves more room for the color bar.
+- Hide the bars for more drawing room. Swipe one finger from the canvas off a
+  bar's edge of the screen to hide or show just that bar, starting from any
+  layout. The artwork stays in place. Swipes that stop inside the canvas do
+  nothing, and Supernote's own gestures still work. On the Manta, upward swipes
+  now work reliably even though its touch screen loses the finger just before
+  the top edge.
+- A two-finger double tap hides both bars when both are showing, or brings both
+  back when neither is showing. With one bar showing, it undoes the last bar
+  change. The three-finger gesture is gone, and Fullscreen in the menu offers
+  all four bar layouts.
+- The first time you hide the bars on a page, illustrated buttons let you keep
+  the canvas size or expand it with blank margins that fill the screen, without
+  stretching the artwork. Each page has its own choice; revisit it in Canvas
+  size. Expansion can be undone, and showing the bars again never crops a page.
+  Existing drawings still open normally.
+- Quickly double-tap the Zoom tool to return to 100%, with the artwork back
+  where the page began; an expanded page reaches under the bars. A single tap
+  still locks or unlocks zoom and pan, and a double tap keeps your lock setting.
+- Export PNG has a **Change folder…** button. It opens at Supernote's EXPORT
+  folder, which the tablet's file manager shows (Pictures/MonoPaint doesn't).
+  The app remembers the folder you choose for later exports.
+- Nomad fixes: tilt-sensitive brushes like Flat follow the pen's tilt; color
+  bar markers follow the pen smoothly without leaving a trail and stay on the
+  chosen shade after a screen refresh; the wetness slider, swatches, buttons
+  and page controls use fast pressed feedback with softer-edged icons.
+- Page-navigation buttons clear before the page changes, avoiding repeated
+  flashes while the page counter and arrows update.
 
 Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
 Update with `adb install -r monopaint.apk` to preserve drawings and settings.
-The application ID and signing identity are unchanged from MonoPaint 0.9.
-Android version code 43 allows this release to update 0.9 and earlier builds.
+The application ID and signing identity are unchanged from MonoPaint 0.91.
+Android version code 44 allows this release to update 0.91 and earlier builds.
 
 `SHA256SUMS` contains the APK checksum. This is a signed, non-debuggable release build.

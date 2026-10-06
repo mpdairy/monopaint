@@ -18,6 +18,12 @@ final class ViewportChecks {
         v.reset(); near(v.scale(),.5f); near(v.x,0); near(v.y,0);
         v.configure(1000,1400,320,480); v.gesture(2,500,700,500,700);
         near(v.x,0); near(v.y,0);
+        v=new CanvasViewport();v.configure(500,700,1000,1400);
+        v.hold(.5f,64,48);v.configure(700,1000,1000,1400);
+        near(v.scale(),.5f);near(v.x,64);near(v.y,48);
+        v.gesture(1,200,200,230,230);v.configure(700,1000,1000,1400);
+        near(v.scale(),.5f);near(v.x,94);near(v.y,78);
+        v.reset();v.configure(700,1000,1000,1400);near(v.scale(),.7f);
         System.out.println("PASS: zoom focus, two-finger translation, page bounds, 800% limit, actual percentage and fit reset");
     }
     private static void near(float actual,float wanted) {

@@ -39,7 +39,8 @@ final class DrawingPad extends View {
     private Bitmap display;
     private ViewportBitmap viewportBitmap;
     final CanvasViewport viewport = new CanvasViewport();
-    private final Matrix pageToView = new Matrix(), viewToPage = new Matrix();
+    final Matrix pageToView = new Matrix();
+    private final Matrix viewToPage = new Matrix();
     private final float[] samplePoint = new float[2];
     private boolean unscaledPage = true;
     private int pageRotation = Surface.ROTATION_0;
@@ -143,30 +144,40 @@ final class DrawingPad extends View {
     void updateViewport() {
         if (display == null || getWidth() <= 0 || getHeight() <= 0) return;
         int width = display.getWidth(), height = display.getHeight();
-        pageToView.reset();
-        // Cancel our own UI rotation for the artwork; Android stays in portrait.
         if (pageRotation != app.appRotation) viewport.reset();
         pageRotation = app.appRotation;
-        if (pageRotation == Surface.ROTATION_90) { pageToView.setRotate(-90); pageToView.postTranslate(0, width); }
-        else if (pageRotation == Surface.ROTATION_180) { pageToView.setRotate(180); pageToView.postTranslate(width, height); }
-        else if (pageRotation == Surface.ROTATION_270) { pageToView.setRotate(90); pageToView.postTranslate(height, 0); }
         boolean swapped = pageRotation == Surface.ROTATION_90 || pageRotation == Surface.ROTATION_270;
         viewport.configure(getWidth(), getHeight(), swapped ? height : width, swapped ? width : height);
         float scale = viewport.scale();
-        pageToView.postScale(scale, scale);
-        pageToView.postTranslate(viewport.x, viewport.y);
+        place(pageToView, scale, viewport.x, viewport.y);
         pageToView.invert(viewToPage);
         unscaledPage = pageRotation == Surface.ROTATION_0 && pageToView.isIdentity();
         boolean wasScaled = viewportBitmap != null;
         // Keep one screen-sized raster and presenter throughout a pinch, including
         // its fitted endpoints. Changing format on each crossing stalls the gesture.
-        boolean scaled = navigating || viewport.zoom != 1 || scale != 1;
+        boolean scaled = navigating || viewport.zoom != 1 || scale != 1 || viewport.x != 0 || viewport.y != 0;
         if (viewportBitmap != null && (!scaled || viewportBitmap.bitmap.getWidth() != getWidth()
                 || viewportBitmap.bitmap.getHeight() != getHeight())) { viewportBitmap.close(); viewportBitmap = null; }
         if (scaled && viewportBitmap == null) viewportBitmap = new ViewportBitmap(getWidth(), getHeight());
         if (wasScaled != scaled) renderAll();
         else if (viewportBitmap != null) viewportBitmap.update(display, pageToView, null);
         pending.setEmpty(); app.toolbar.refreshZoom();
+    }
+    private void place(Matrix transform, float scale, float x, float y) {
+        int width = display.getWidth(), height = display.getHeight();
+        transform.reset();
+        // Cancel our own UI rotation for the artwork; Android stays in portrait.
+        if (pageRotation == Surface.ROTATION_90) { transform.setRotate(-90); transform.postTranslate(0, width); }
+        else if (pageRotation == Surface.ROTATION_180) { transform.setRotate(180); transform.postTranslate(width, height); }
+        else if (pageRotation == Surface.ROTATION_270) { transform.setRotate(90); transform.postTranslate(height, 0); }
+        transform.postScale(scale, scale);
+        transform.postTranslate(x, y);
+    }
+    /** The page at 100%, where its artwork sat when the page began; see {@link #actualSize}. */
+    Matrix homeToView() {
+        Matrix home = new Matrix();
+        place(home, 1, viewport.homeX(app.prefs.toolboxRight()), viewport.homeY());
+        return home;
     }
     private void viewportChanged() {
         disconnectDisplay(); updateViewport(); invalidate();
@@ -177,6 +188,8 @@ final class DrawingPad extends View {
         viewportChanged();
     }
     void fitPage() { endNavigation(); viewport.reset(); viewportChanged(); }
+    /** Reset scale and pan together, returning the artwork to where the page began. */
+    void actualSize() { endNavigation(); viewport.actualSize(app.prefs.toolboxRight()); viewportChanged(); }
     /** Starts a new book from this page, or from a blank page when null. */
     void replace(ToneDocument replacement) {
         suspend();
@@ -185,7 +198,7 @@ final class DrawingPad extends View {
         if (document == null && getWidth() > 0 && getHeight() > 0) document = blankPage();
         app.book = document == null ? null : new DrawingBook(document); app.updatePages();
         ensureDisplay(); updateViewport();
-        renderAll(); invalidate(); post(this::connectDisplay);
+        renderAll(); invalidate(); post(this::connectDisplay); post(app.fullscreen::pageChanged);
     }
     /** Shows another page of the current book, presenting it directly when possible. */
     void showPage(ToneDocument page) {
@@ -225,6 +238,14 @@ final class DrawingPad extends View {
         }
         pending.setEmpty();
         if (viewportBitmap != null) viewportBitmap.update(display, pageToView, null);
+    }
+    /** Rebuild size-dependent display resources after canvas expansion or its undo. */
+    void canvasResized() {
+        disconnectDisplay(); ensureDisplay(); updateViewport(); renderAll(); invalidate(); post(this::connectDisplay);
+    }
+    boolean blocksFullscreenGesture() {
+        return pointer!=-1 || pickPointer!=-1 || fillGesture || hasGradient()
+                || SystemClock.uptimeMillis()<penGuardUntil;
     }
     /** Re-renders the document's changed area and queues it for presentation. */
     void renderDirty() {
@@ -339,6 +360,7 @@ final class DrawingPad extends View {
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (app.paletteEditor != null || app.loading || document == null || fill != null || gradientCommit
                 || !app.resumed || !hasWindowFocus()) return true;
+        if (app.fullscreen.gesture(event, blocksFullscreenGesture())) { endNavigation(); return true; }
         if (navigationGesture(event)) return true;
         if (app.pickingShade || pickPointer != -1) { sampleShadeGesture(event); return true; }
         if (hasGradient()) return true;

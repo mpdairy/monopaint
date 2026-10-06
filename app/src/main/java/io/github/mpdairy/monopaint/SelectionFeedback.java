@@ -36,6 +36,11 @@ final class SelectionFeedback {
         Rect old = pending.get(owner);
         if (old == null) pending.put(owner, new Rect(area)); else old.union(area);
     }
+    /** Commit a finished interaction to Android's surface as well as the panel. */
+    void finishUpdate(View owner) {
+        Rect area = pending.remove(owner);
+        if (area != null) owner.invalidate(area);
+    }
     void close() {
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(syncBeforeDraw);
         observer = null; pending.clear();

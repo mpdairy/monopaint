@@ -125,7 +125,9 @@ final class ZoomUiChecks {
                 main(test,() -> {
                     DirectEink direct=(DirectEink)get(pad,"direct");check(direct!=null,"Fast e-ink reconnects after gesture");
                     Rect patch=direct.panelRegion(new Rect(0,0,view.getWidth(),view.getHeight()));
-                    check(patch.left>=0&&patch.top>=0&&patch.right<=metrics.widthPixels&&patch.bottom<=metrics.heightPixels,"Zoomed e-ink patch stays on screen");
+                    int driverWidth=activity.nomadPanel()?metrics.heightPixels:metrics.widthPixels;
+                    int driverHeight=activity.nomadPanel()?metrics.widthPixels:metrics.heightPixels;
+                    check(patch.left>=0&&patch.top>=0&&patch.right<=driverWidth&&patch.bottom<=driverHeight,"Zoomed e-ink patch stays in the driver buffer");
                     ViewportBitmap raster=(ViewportBitmap)get(pad,"viewportBitmap");int x=view.getWidth()/2,y=view.getHeight()/2;
                     if(quarter==0 && !hand) {
                         long start=System.nanoTime();
@@ -166,6 +168,7 @@ final class ZoomUiChecks {
                     check(((CanvasViewport)get(pad,"viewport")).zoom==1,"Pinch inward fits the whole page");
                 });
                 previewChecks(test,activity,pad,quarter,report);
+                ZoomButtonChecks.verify(test,activity);
             }
             main(test,() -> {
                 call(pad,"zoomBy",new Class<?>[]{float.class},100f);

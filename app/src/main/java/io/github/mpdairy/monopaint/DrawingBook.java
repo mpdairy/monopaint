@@ -14,9 +14,15 @@ final class DrawingBook {
     private final LinkedHashMap<Integer,ToneDocument> cache=new LinkedHashMap<>(4,.75f,true);
     private final java.util.HashMap<Integer,Long> packedRevisions=new java.util.HashMap<>();
     private int index;
+    private final ArrayList<Integer> canvasChoices=new ArrayList<>();
+    int canvasChoice() { return canvasChoices.get(index); }
+    void setCanvasChoice(int choice) {
+        if(choice<0 || choice>2)throw new IllegalArgumentException("Invalid canvas choice");
+        canvasChoices.set(index,choice);
+    }
 
     DrawingBook(ToneDocument first) {
-        width=first.width;height=first.height;pages.add(null);cache.put(0,first);
+        width=first.width;height=first.height;pages.add(null);canvasChoices.add(0);cache.put(0,first);
     }
     DrawingBook(int width,int height,ArrayList<byte[]> pages,int index) throws IOException {
         this(width,height,pages,index,null);
@@ -24,7 +30,7 @@ final class DrawingBook {
     DrawingBook(int width,int height,ArrayList<byte[]> pages,int index,ToneDocument decoded) throws IOException {
         ToneDocument.validateSize(width,height);this.width=width;this.height=height;
         if(pages.isEmpty()||pages.size()>MAX_PAGES||index<0||index>=pages.size())throw new IOException("Invalid page list");
-        this.pages.addAll(pages);this.index=index;cache.put(index,decoded==null?decode(pages.get(index)):decoded);
+        this.pages.addAll(pages); for(int i=0;i<pages.size();i++)canvasChoices.add(0); this.index=index;cache.put(index,decoded==null?decode(pages.get(index)):decoded);
         packedRevisions.put(index,current().revision());
     }
     int count(){return pages.size();}
@@ -42,7 +48,7 @@ final class DrawingBook {
         if(count()>=MAX_PAGES)throw new IOException("This drawing has 100 pages. Start a new drawing for more pages.");
         retainCurrent();
         ToneDocument next=new ToneDocument(width,height);
-        index=pages.size();pages.add(null);cache.put(index,next);evict();
+        index=pages.size();pages.add(null);canvasChoices.add(0);cache.put(index,next);evict();
     }
     private void retainCurrent() throws IOException {
         // Browsing does not change a page. Keep its already-compressed bytes,
@@ -67,7 +73,6 @@ final class DrawingBook {
     }
     private ToneDocument decode(byte[] packed) throws IOException {
         ToneDocument document=DocumentCodec.read(new ByteArrayInputStream(packed));
-        if(document.width!=width||document.height!=height)throw new IOException("Page size does not match drawing");
         return document;
     }
     static byte[] encode(ToneDocument document) throws IOException {
@@ -77,14 +82,20 @@ final class DrawingBook {
     static byte[] encode(int width,int height,byte[] tones) throws IOException {
         ByteArrayOutputStream out=new ByteArrayOutputStream();DocumentCodec.write(out,width,height,tones);return out.toByteArray();
     }
+    void restoreCanvasChoices(int[] choices) {
+        if(choices.length!=count())throw new IllegalArgumentException("Invalid canvas choices");
+        for(int i=0;i<choices.length;i++)canvasChoices.set(i,choices[i]);
+    }
     Snapshot snapshot(){return new Snapshot(this);}
     static final class Snapshot {
         final int width,height,index;
         final ToneDocument.Snapshot activePage;
         final byte[] packedActivePage;
         final ArrayList<byte[]> pages;
+        final ArrayList<Integer> canvasChoices;
         Snapshot(DrawingBook book){
             width=book.width;height=book.height;index=book.index;pages=new ArrayList<>(book.pages);
+            canvasChoices=new ArrayList<>(book.canvasChoices);
             activePage=book.current().layerSnapshot();
             packedActivePage=book.currentPacked();
         }

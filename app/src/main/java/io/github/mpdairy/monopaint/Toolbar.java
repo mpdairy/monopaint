@@ -145,6 +145,7 @@ final class Toolbar {
     }
     private void addZoom() {
         zoomButton = railButton("Zoom", R.drawable.ic_zoom, app::toggleNavigationLock);
+        zoomButton.setOnTouchListener(new ZoomButtonTouch(app,zoomButton));
         zoomButton.iconHalf = 16;
         zoomButton.overlay = (canvas, button) -> drawLock(canvas, button, app.navigationLocked);
         markActive(zoomButton, false); refreshZoom();
@@ -240,7 +241,8 @@ final class Toolbar {
     void describeNavigation() {
         if (zoomButton == null) return;
         zoomButton.setContentDescription("Zoom " + zoomButton.caption + ". Zoom and pan "
-                + (app.navigationLocked ? "locked. Tap to unlock." : "unlocked. Tap to lock."));
+                + (app.navigationLocked ? "locked. Tap to unlock." : "unlocked. Tap to lock.")
+                + " Double-tap for 100 percent.");
     }
     /** The padlock in the Zoom button's corner; open when pinch and pan are allowed. */
     private static void drawLock(Canvas canvas, ToolButton button, boolean locked) {

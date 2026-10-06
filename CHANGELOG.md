@@ -4,25 +4,39 @@ User-facing changes since the last release. Add an entry under **Unreleased**
 with each change; when cutting a release, turn that section into
 `dist/RELEASE_NOTES.md` and retitle it with the new version.
 
-## Unreleased (since 0.91)
+## Unreleased (since 0.95)
+
+## 0.95
 
 - MonoPaint now supports drawing on the Supernote Nomad, with a compact Pages
   menu that leaves more room for the color bar.
-- Flat and other tilt-sensitive brushes now follow the pen's tilt correctly
-  on Nomad.
-- On Nomad, the color bar's selection markers now follow the pen smoothly
-  without leaving a solid trail behind them.
-- Nomad's wetness slider, swatches, and black-and-white button feedback now
-  use the same faster refresh. Button icons and labels use black-and-white
-  dots for softer edges, and the extra delay between control updates is gone.
-- Nomad's page-menu arrows and Add page button now use the same fast pressed
-  feedback as the sidebar tools. The Pages, menu, and rotation buttons do too.
-- Page-navigation button boxes now clear before the page changes, avoiding
-  repeated flashes while the page counter and disabled arrows update.
-
+- Hide the bars for more drawing room. Swipe one finger from the canvas off a
+  bar's edge of the screen to hide or show just that bar, starting from any
+  layout. The artwork stays in place. Swipes that stop inside the canvas do
+  nothing, and Supernote's own gestures still work. On the Manta, upward swipes
+  now work reliably even though its touch screen loses the finger just before
+  the top edge.
+- A two-finger double tap hides both bars when both are showing, or brings both
+  back when neither is showing. With one bar showing, it undoes the last bar
+  change. The three-finger gesture is gone, and Fullscreen in the menu offers
+  all four bar layouts.
+- The first time you hide the bars on a page, illustrated buttons let you keep
+  the canvas size or expand it with blank margins that fill the screen, without
+  stretching the artwork. Each page has its own choice; revisit it in Canvas
+  size. Expansion can be undone, and showing the bars again never crops a page.
+  Existing drawings still open normally.
+- Quickly double-tap the Zoom tool to return to 100%, with the artwork back
+  where the page began; an expanded page reaches under the bars. A single tap
+  still locks or unlocks zoom and pan, and a double tap keeps your lock setting.
 - Export PNG has a **Change folder…** button. It opens at Supernote's EXPORT
   folder, which the tablet's file manager shows (Pictures/MonoPaint doesn't).
   The app remembers the folder you choose for later exports.
+- Nomad fixes: tilt-sensitive brushes like Flat follow the pen's tilt; color
+  bar markers follow the pen smoothly without leaving a trail and stay on the
+  chosen shade after a screen refresh; the wetness slider, swatches, buttons
+  and page controls use fast pressed feedback with softer-edged icons.
+- Page-navigation buttons clear before the page changes, avoiding repeated
+  flashes while the page counter and arrows update.
 
 ## 0.91
 
