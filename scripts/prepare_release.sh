@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Keep machine-local signing settings out of Git and independent of the checkout path.
+if [[ -f .env.release ]]; then
+  source .env.release
+fi
 : "${ANDROID_HOME:?Set ANDROID_HOME}"
 : "${MONOPAINT_KEYSTORE:?Set the private signing keystore path}"
 : "${MONOPAINT_KEY_ALIAS:?Set the signing key alias}"

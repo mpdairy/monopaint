@@ -90,8 +90,7 @@ The first time a swipe or double tap hides controls on **each page**, large
 illustrated buttons offer **Keep canvas size** or **Expand canvas**. Expansion adds blank margins, keeps the
 artwork at the same size, and can be undone. Each page remembers its own choice;
 other pages are unaffected. Showing the bars again never crops an expanded page.
-Use **Menu → Canvas size** to revisit the choice. Existing saved drawings also
-support these options.
+Existing saved drawings also support these options.
 
 ## Settings
 
@@ -102,6 +101,11 @@ and which tools appear on the toolbar.
 
 ## Saving
 
-Drawings save inside the app, with every page in one file, and your work is
-recovered after a restart. To convert a drawing to PNG on a computer, see
-[BUILDING.md](BUILDING.md#png-conversion).
+Each painting saves as one `.mpaint` file holding every page, and your work is
+recovered after a restart. Once MonoPaint has file access, which it asks for at
+every launch until allowed, paintings live in `Document/MonoPaint` on a Supernote
+(where Files shows them) or `Documents/MonoPaint` on other tablets, and survive
+uninstalling the app. **New painting** and **Open painting** offer to save
+unsaved changes first. **Export PNG** saves to `EXPORT/MonoPaint` on a Supernote
+with file access, otherwise `Pictures/MonoPaint`. To convert a painting to PNG
+on a computer, see [BUILDING.md](BUILDING.md#png-conversion).

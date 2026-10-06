@@ -28,27 +28,35 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Exports the current page, or every page as numbered files, to calibrated PNGs in Pictures/MonoPaint or a chosen folder. */
+/**
+ * Exports the current page, or every page as numbered files, to calibrated PNGs in a chosen
+ * folder, or by default EXPORT/MonoPaint on a Supernote with file access (the folder its
+ * Files app shows) and Pictures/MonoPaint otherwise.
+ */
 final class PngExport {
-    static final String FOLDER = Environment.DIRECTORY_PICTURES + "/MonoPaint";
+    static final String FOLDER = Environment.DIRECTORY_PICTURES + "/MonoPaint", SUPERNOTE_FOLDER = "EXPORT/MonoPaint";
     // One queue so overlapping exports never interleave writes to the same names.
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private final PaintActivity app;
     private final DrawingBook.Snapshot book;
     private final int rotation;
-    /** The chosen folder, or null for {@link #FOLDER}; {@link #folder} is its name for messages. */
+    /**
+     * The chosen folder, else a folder written as plain files ({@link #SUPERNOTE_FOLDER}), else
+     * null for {@link #FOLDER} through MediaStore; {@link #folder} is its name for messages.
+     */
     private Uri tree;
-    private String folder = FOLDER;
+    private File directory;
+    private String folder;
 
     private PngExport(PaintActivity app, DrawingBook.Snapshot book, int rotation) {
         this.app = app; this.book = book; this.rotation = rotation;
         String saved = app.prefs.exportFolder();
-        if (!saved.isEmpty()) useFolder(Uri.parse(saved));
+        useFolder(saved.isEmpty() ? null : Uri.parse(saved));
     }
 
     /** Asks which pages and what name, then exports the book as it is now. */
     static void show(PaintActivity app, DrawingBook.Snapshot book, String drawingName) {
-        new PngExport(app, book, app.appRotation).ask(drawingName.isEmpty() ? "drawing" : DrawingFiles.name(drawingName));
+        new PngExport(app, book, app.appRotation).ask(drawingName.isEmpty() ? "painting" : DrawingFiles.name(drawingName));
     }
 
     private void ask(String defaultName) {
@@ -148,8 +156,8 @@ final class PngExport {
         if (upright != image) image.recycle();
         try {
             if (tree != null) writeTree(upright, file);
-            else if (Build.VERSION.SDK_INT < 29) {
-                try (OutputStream output = new FileOutputStream(legacyFile(file))) { encode(upright, output, file); }
+            else if (directory != null || Build.VERSION.SDK_INT < 29) {
+                try (OutputStream output = new FileOutputStream(plainFile(file))) { encode(upright, output, file); }
             } else writeShared(upright, file);
         } finally { upright.recycle(); }
     }
@@ -164,30 +172,35 @@ final class PngExport {
         }
     }
 
-    // Storage: a chosen folder, shared Pictures through MediaStore, or this app's pictures folder before Android 10.
+    // Storage: a chosen folder, Supernote's EXPORT folder as plain files, shared Pictures through
+    // MediaStore, or this app's pictures folder before Android 10.
 
-    /** Uses a chosen folder while the app still has access to it; otherwise Pictures/MonoPaint. */
+    /** Uses a chosen folder while the app still has access to it; otherwise the default folder. */
     private void useFolder(Uri chosen) {
-        tree = null; folder = FOLDER;
+        tree = null;
+        boolean supernote = Device.supernote() && DrawingStorage.sharedAllowed(app);
+        directory = supernote ? new File(Environment.getExternalStorageDirectory(), SUPERNOTE_FOLDER) : null;
+        folder = supernote ? SUPERNOTE_FOLDER : FOLDER;
+        if (chosen == null) return;
         for (UriPermission permission : app.getContentResolver().getPersistedUriPermissions()) {
             if (!permission.getUri().equals(chosen) || !permission.isWritePermission()) continue;
             Uri root = DocumentsContract.buildDocumentUriUsingTree(chosen, DocumentsContract.getTreeDocumentId(chosen));
             try (Cursor cursor = app.getContentResolver().query(root,
                     new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
                 if (cursor == null || !cursor.moveToFirst()) return;
-                tree = chosen; folder = cursor.getString(0);
+                tree = chosen; directory = null; folder = cursor.getString(0);
             } catch (RuntimeException missing) { return; }
         }
     }
 
-    private File legacyFile(String file) throws IOException {
-        File folder = new File(app.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "MonoPaint");
+    private File plainFile(String file) throws IOException {
+        File folder = directory != null ? directory : new File(app.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "MonoPaint");
         if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Cannot create export folder");
         return new File(folder, file);
     }
     private boolean exists(String file) throws IOException {
         if (tree != null) return treeFile(file) != null;
-        return Build.VERSION.SDK_INT < 29 ? legacyFile(file).exists() : shared(file) != null;
+        return directory != null || Build.VERSION.SDK_INT < 29 ? plainFile(file).exists() : shared(file) != null;
     }
     /** This app's earlier export with that name; other apps' images are not visible without a read permission. */
     private Uri shared(String file) {

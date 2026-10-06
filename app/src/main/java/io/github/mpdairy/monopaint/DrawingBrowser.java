@@ -69,16 +69,13 @@ final class DrawingBrowser {
             else if (saving) { name.setText(entry.name); name.setSelection(name.length()); }
             else choose(DrawingFiles.child(folder, entry.name), false);
         });
+        // Unsaved changes are settled before the Open browser appears.
         if (saving) {
-            name = new EditText(activity); name.setSingleLine(true); name.setHint("Drawing name");
-            name.setContentDescription("Drawing name"); name.setText(currentName); content.addView(name);
-        } else {
-            TextView hint = new TextView(activity);
-            hint.setText("Opening a drawing replaces the current canvas. Save first to keep your changes.");
-            content.addView(hint);
+            name = new EditText(activity); name.setSingleLine(true); name.setHint("Painting name");
+            name.setContentDescription("Painting name"); name.setText(currentName); content.addView(name);
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-                .setTitle(saving ? "Save drawing as…" : "Open drawing").setView(content)
+                .setTitle(saving ? "Save painting as…" : "Open painting").setView(content)
                 .setNegativeButton("Cancel", null);
         if (saving) builder.setPositiveButton("Save", null);
         dialog = builder.create();
@@ -104,7 +101,7 @@ final class DrawingBrowser {
                 status.setText("Could not open folder: " + error.getMessage()); setWorking(false); return;
             }
             folder = destination; entries = found;
-            location.setText(folder.isEmpty() ? "Drawings" : "Drawings / " + folder.replace("/", " / "));
+            location.setText(folder.isEmpty() ? "Paintings" : "Paintings / " + folder.replace("/", " / "));
             String[] labels = new String[found.length];
             for (int i = 0; i < found.length; i++) labels[i] = found[i].name;
             list.setAdapter(new ArrayAdapter<String>(activity, android.R.layout.simple_list_item_1, labels) {
@@ -126,7 +123,7 @@ final class DrawingBrowser {
                         }
                         row.setCompoundDrawablesRelative(null, icon, null, null);
                     }
-                    row.setContentDescription((entries[position].folder ? "Folder " : "Drawing ") + labels[position]);
+                    row.setContentDescription((entries[position].folder ? "Folder " : "Painting ") + labels[position]);
                     return row;
                 }
             });
@@ -174,7 +171,7 @@ final class DrawingBrowser {
             if (error != null) { status.setText(error.getMessage()); setWorking(false); return; }
             if (!exists) { choose(path, false); return; }
             AlertDialog confirmation = new AlertDialog.Builder(activity).setTitle("Replace “" + value + "”?")
-                    .setMessage("A drawing with this name already exists in this folder.")
+                    .setMessage("A painting with this name already exists in this folder.")
                     .setPositiveButton("Replace", (d, w) -> { if (alive()) choose(path, true); })
                     .setNegativeButton("Cancel", null).create();
             confirmation.setOnDismissListener(d -> { if (alive()) setWorking(false); }); confirmation.show(); orient(confirmation);

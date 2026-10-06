@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -21,12 +22,47 @@ final class ShadePicker extends View {
     private int endpointWidth;
     private final Paint marker = new Paint();
     private int activePointer = -1;
+    private boolean deferMarkerCommit;
+    private final Runnable cleanMarker = this::cleanMarker;
 
     ShadePicker(PaintActivity app) {
         super(app); this.app = app; setFocusable(true); setClickable(true);
         setContentDescription("Gray gradient. Tap or drag from black on the left to white on the right.");
     }
     private int dp(float value) { return app.dp(value); }
+
+    private void cleanMarker() {
+        if (activePointer != -1) return;
+        deferMarkerCommit = false;
+        finishUpdate();
+        app.selectionFeedback.clean(this, markerArea());
+    }
+    /** Save settings immediately, but don't queue an Android marker frame for every tap. */
+    void finishUpdate() {
+        if (!deferMarkerCommit) app.selectionFeedback.finishUpdate(this);
+    }
+    private void beginMarkerGesture() {
+        removeCallbacks(cleanMarker);
+        deferMarkerCommit = DirectEink.fastBinaryControls();
+    }
+    private void scheduleCleanup() {
+        removeCallbacks(cleanMarker);
+        if (DirectEink.fastBinaryControls()) postDelayed(cleanMarker, 250);
+    }
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(cleanMarker);
+        deferMarkerCommit = false;
+        finishUpdate();
+        super.onDetachedFromWindow();
+    }
+    @Override public void onWindowFocusChanged(boolean focused) {
+        if (!focused) {
+            removeCallbacks(cleanMarker);
+            deferMarkerCommit = false;
+            finishUpdate();
+        }
+        super.onWindowFocusChanged(focused);
+    }
 
     @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
         if (strip != null) strip.recycle();
@@ -60,10 +96,13 @@ final class ShadePicker extends View {
                 : endpointWidth + DotPattern.pickerPosition(gray) * (width - 2 * endpointWidth - 1) / 255f);
         marker.setStyle(Paint.Style.FILL);
         canvas.drawRect(x - dp(3), getHeight() - dp(7), x + dp(3), getHeight() - dp(1), marker);
-        marker.setColor(Color.WHITE); marker.setStrokeWidth(dp(3));
-        canvas.drawLine(x, inset, x, inset + dp(7), marker);
-        marker.setColor(Color.BLACK); marker.setStrokeWidth(1);
-        canvas.drawLine(x, inset, x, inset + dp(7), marker);
+    }
+    /** Keep moving ink off the dotted ramp and capture only its small white gutter. */
+    Rect markerArea() {
+        int height = Math.min(getHeight(), dp(8));
+        return app.landscape && !app.toolboxRight
+                ? new Rect(0, 0, getWidth(), height)
+                : new Rect(0, getHeight() - height, getWidth(), getHeight());
     }
     private void selectX(float x) {
         if (strip == null || !Float.isFinite(x)) return;
@@ -76,6 +115,7 @@ final class ShadePicker extends View {
     }
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (app.busy()) return true;
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) beginMarkerGesture();
         app.paintRub.track(event);
         int action = event.getActionMasked();
         boolean up = (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP)
@@ -92,6 +132,7 @@ final class ShadePicker extends View {
         if (up || action == MotionEvent.ACTION_CANCEL) {
             app.endShadeGesture(up);
             activePointer = -1; app.saveToolState(); getParent().requestDisallowInterceptTouchEvent(false);
+            scheduleCleanup();
             if (up) performClick();
         }
         return true;
@@ -99,6 +140,7 @@ final class ShadePicker extends View {
     @Override public boolean performClick() { super.performClick(); return true; }
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            beginMarkerGesture();
             int direction = keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
             app.selectShade(DotPattern.pickerTone(DotPattern.pickerPosition(app.paint.gray) + direction * 4));
             app.saveToolState(); return true;
@@ -107,7 +149,7 @@ final class ShadePicker extends View {
     }
     @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            app.endShadeGesture(true); return true;
+            app.endShadeGesture(true); scheduleCleanup(); return true;
         }
         return super.onKeyUp(keyCode, event);
     }

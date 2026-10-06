@@ -57,8 +57,77 @@ public final class DrawingFilesChecks {
             check(recovered.path.isEmpty() && recovered.book.current().tone(4, 5) == 72, "Legacy single-page recovery opens unnamed");
             bytes.reset(); RecoveryCodec.write(bytes, book.snapshot(), "");
             check(RecoveryCodec.read(new ByteArrayInputStream(bytes.toByteArray())).path.isEmpty(), "New drawing clears previous destination");
-            System.out.println("PASS: nested drawing folders, ordering, reserved names, unchanged named files, atomic recovery identity and legacy recovery");
+            check(files.unusedName("Sketches/Animals", "Cat").equals("Sketches/Animals/Cat 2")
+                    && files.unusedName("", "Fresh").equals("Fresh"), "Unused names number clashes");
+            check(files.drawingCount() == 3, "Count drawings in every folder, not the recovery file");
+            check(new DrawingFiles(new File(scratch, "missing")).drawingCount() == 0, "A library that was never created is empty");
+            unsavedChanges();
+            legacyNames(new File(scratch, "legacy"));
+            System.out.println("PASS: nested drawing folders, ordering, reserved names, unchanged named files, atomic recovery identity, legacy recovery and unsaved changes");
         } finally { remove(scratch); }
+    }
+    /** Drawings saved before 0.96 as .tsm are renamed to .mpaint in place, never lost. */
+    private static void legacyNames(File scratch) throws IOException {
+        DrawingFiles files = new DrawingFiles(scratch);
+        files.createFolder("", "Sketches");
+        DrawingBook book = new DrawingBook(new ToneDocument(13, 9));
+        paint(book, 10); write(new File(scratch, "Old.tsm"), book);
+        paint(book, 20); write(new File(scratch, "Sketches/Cat.tsm.bak"), book);
+        paint(book, 30); write(new File(scratch, "Taken.tsm"), book);
+        paint(book, 40); write(files.drawing("Taken"), book);
+        write(new File(scratch, "_recovery.tsm"), book);
+        files.upgradeLegacyNames();
+        check(tone(files.drawing("Old")) == 10, "Legacy drawing renamed");
+        check(tone(new File(files.drawing("Sketches/Cat").getPath() + ".bak")) == 20, "Interrupted save's backup keeps its role");
+        check(tone(files.drawing("Taken")) == 40 && tone(files.drawing("Taken 2")) == 30, "Clashing legacy name keeps both drawings");
+        check(files.recovery().exists() && !new File(scratch, "_recovery.tsm").exists(), "Legacy recovery renamed");
+        // Sketches/Cat has only its backup, which the browser does not list.
+        check(!new File(scratch, "Old.tsm").exists() && files.drawingCount() == 3, "Drawings listed under the new extension");
+        files.upgradeLegacyNames();
+        check(files.drawingCount() == 3, "Renaming again changes nothing");
+    }
+    private static int tone(File file) throws IOException {
+        if (!file.exists()) throw new AssertionError("Missing " + file);
+        try (InputStream input = new FileInputStream(file)) { return BookCodec.read(input).current().tone(2, 3); }
+    }
+    /** New and Open ask to save only when the book really has changes since its last save or load. */
+    private static void unsavedChanges() throws IOException {
+        DrawingBook book = new DrawingBook(new ToneDocument(13, 9));
+        check(!book.unsaved(), "A blank new drawing has nothing to save");
+        paint(book, 30);
+        check(book.unsaved(), "Painting is an unsaved change");
+        DrawingBook.Snapshot saved = book.snapshot();
+        paint(book, 60);
+        book.markSaved(saved);
+        check(book.unsaved(), "Painting after the save began stays unsaved");
+        book.markSaved(book.snapshot());
+        check(!book.unsaved(), "Saving clears unsaved changes");
+        book.addPage(); book.addPage();
+        book.markSaved(book.snapshot());
+        book.select(0); paint(book, 90); book.select(1); book.select(2);
+        check(book.unsaved(), "An edited page stays unsaved after it leaves memory");
+        book.markSaved(book.snapshot());
+        book.select(0); book.select(2);
+        check(!book.unsaved(), "Browsing pages is not a change");
+        book.setCanvasChoice(1);
+        check(book.unsaved(), "Choosing a canvas size is a change");
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        BookCodec.write(bytes, book.snapshot());
+        check(!BookCodec.read(new ByteArrayInputStream(bytes.toByteArray())).unsaved(), "An opened drawing starts saved");
+        for (boolean unsaved : new boolean[]{true, false}) {
+            if (unsaved) paint(book, 120); else book.markSaved(book.snapshot());
+            bytes.reset(); RecoveryCodec.write(bytes, book.snapshot(), "Cat");
+            check(RecoveryCodec.read(new ByteArrayInputStream(bytes.toByteArray())).book.unsaved() == unsaved,
+                    "Recovery keeps whether the drawing had unsaved changes");
+        }
+        bytes.reset(); new DataOutputStream(bytes).writeInt(0x54535231); new DataOutputStream(bytes).writeUTF("Cat");
+        BookCodec.write(bytes, book.snapshot());
+        RecoveryCodec.Recovered legacy = RecoveryCodec.read(new ByteArrayInputStream(bytes.toByteArray()));
+        check(legacy.path.equals("Cat") && legacy.book.unsaved(), "Older recoveries count as unsaved");
+    }
+    private static void paint(DrawingBook book, int tone) {
+        ToneDocument page = book.current(); page.begin(); page.setTone(2, 3, tone); page.finish();
     }
     private static void write(File file, DrawingBook book) throws IOException {
         try (OutputStream out = new FileOutputStream(file)) { BookCodec.write(out, book.snapshot()); }

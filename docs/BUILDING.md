@@ -15,8 +15,9 @@ Some old identifiers deliberately remain stable:
   it would create a separate app with a separate private drawing library.
 - `dev.tilesmile.supernote.PaintActivity` remains a launcher alias so existing
   shortcuts and launch commands continue to work.
-- `.tsm` drawings, archive entry names, and format signatures remain unchanged,
-  keeping existing drawings and recovery data readable.
+- Drawings are `.mpaint` files. Before 0.96 they were `.tsm`; the app renames
+  those in place on launch. Archive entry names and format signatures remain
+  unchanged, keeping existing drawings and recovery data readable.
 - Historical research notes and old release artifacts retain their original names.
 
 The checked-in `dist/monopaint.apk`, checksum, version, and release notes describe
@@ -236,6 +237,14 @@ Set `MONOPAINT_KEYSTORE`, `MONOPAINT_KEY_ALIAS`, `MONOPAINT_STORE_PASSWORD`, and
 bash scripts/prepare_release.sh
 ```
 
+For repeat builds, put those settings and `export ANDROID_HOME=...` in
+`.env.release` at the repository root. The script loads this optional shell file
+automatically, even when invoked from another directory. It is ignored by Git;
+keep it private (`chmod 600 .env.release`) and keep the keystore outside the
+checkout. Use a home-relative keystore path so moving the checkout does not
+break signing. Moving or cloning the repository alone does not supply signing
+settings to a new shell.
+
 The script builds, aligns, signs, and verifies `dist/monopaint.apk`, and updates
 its checksum and version. Update `dist/RELEASE_NOTES.md` from the Unreleased
 section of `CHANGELOG.md` (then retitle that section with the version), test the signed APK on
@@ -256,10 +265,10 @@ up securely: future Android updates need the same identity.
 
 ## PNG conversion
 
-For a `.tsm` book already available on your computer:
+For a `.mpaint` book already available on your computer:
 
 ```sh
-bash scripts/export_png.sh drawing.tsm 2 output.png
+bash scripts/export_png.sh drawing.mpaint 2 output.png
 ```
 
 This exports page two. Add `raw` or `dots` to choose logical tones or the tablet's

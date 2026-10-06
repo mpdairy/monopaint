@@ -53,8 +53,8 @@ final class DocumentCodec {
                 } else consume(data,width*height*2);
             }
             long checksum=crc.getValue();
-            if(new DataInputStream(compressed).readLong()!=checksum) throw new IOException("Drawing checksum mismatch");
-            if(compressed.read()!=-1) throw new IOException("Extra drawing data");
+            if(new DataInputStream(compressed).readLong()!=checksum) throw new IOException("Painting checksum mismatch");
+            if(compressed.read()!=-1) throw new IOException("Extra painting data");
             return retain?new ToneDocument(width,height,layers,active):null;
         } finally { inflater.end(); }
     }
@@ -79,10 +79,10 @@ final class DocumentCodec {
     private static ToneDocument read(InputStream stream,boolean retain,int expectedWidth,int expectedHeight) throws IOException {
         DataInputStream header = new DataInputStream(stream);
         int magic=header.readInt();
-        if (magic != MAGIC && magic != LAYER_MAGIC && magic != OPACITY_MAGIC) throw new IOException("Unknown drawing format");
+        if (magic != MAGIC && magic != LAYER_MAGIC && magic != OPACITY_MAGIC) throw new IOException("Unknown painting format");
         int width = header.readInt(), height = header.readInt();
         try { ToneDocument.validateSize(width, height); }
-        catch (IllegalArgumentException invalid) { throw new IOException("Invalid drawing dimensions", invalid); }
+        catch (IllegalArgumentException invalid) { throw new IOException("Invalid painting dimensions", invalid); }
         if(expectedWidth!=0&&(width!=expectedWidth||height!=expectedHeight)) throw new IOException("Page size mismatch");
         if(magic==LAYER_MAGIC || magic==OPACITY_MAGIC) return readLayers(stream,width,height,retain,magic==OPACITY_MAGIC);
         long checksum=header.readLong();
@@ -92,9 +92,9 @@ final class DocumentCodec {
         try {
             DataInputStream compressed = new DataInputStream(new java.util.zip.CheckedInputStream(new InflaterInputStream(stream,inflater),crc));
             if(retain) compressed.readFully(tones); else consume(compressed,width*height);
-            if (compressed.read() != -1) throw new IOException("Extra drawing data");
+            if (compressed.read() != -1) throw new IOException("Extra painting data");
         } finally {inflater.end();}
-        if (crc.getValue() != checksum) throw new IOException("Drawing checksum mismatch");
+        if (crc.getValue() != checksum) throw new IOException("Painting checksum mismatch");
         if(!retain) return null;
         byte[] alpha=new byte[width*height]; java.util.Arrays.fill(alpha,(byte)255);
         java.util.ArrayList<ToneDocument.Layer> layers=new java.util.ArrayList<>();

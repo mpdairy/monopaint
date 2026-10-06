@@ -42,13 +42,16 @@ pencil, dotted grayscale shading, and a blending stump for sketching on e-ink.
 For updates, repeat `adb install -r` with the new APK. The app ID remains
 `dev.tilesmile.supernote.paint`, so releases signed with the existing key also
 update the earlier TileSmile and Mattelier apps.
-Do not uninstall first: uninstalling deletes the app's private drawings.
+Do not uninstall first: uninstalling deletes paintings still kept in the app's private storage.
 
 ## Saving
 
-**Menu → Save drawing** asks for a name and folder the first time, and later
-saves update that same drawing. Drawings are kept in the app's private storage,
-so **uninstalling deletes them**. See the [guide](docs/TOOLS.md#saving) for
+**Menu → Save painting** asks for a name and folder the first time, and later
+saves update that same painting. Once you allow file access, which MonoPaint asks
+for at launch, paintings are `.mpaint` files in `Document/MonoPaint` on a
+Supernote (`Documents/MonoPaint` on other tablets), where they survive
+uninstalling the app. Until then they stay in the app's private storage, and
+**uninstalling deletes them**. See the [guide](docs/TOOLS.md#saving) for
 details and PNG conversion.
 
 ## Current limits

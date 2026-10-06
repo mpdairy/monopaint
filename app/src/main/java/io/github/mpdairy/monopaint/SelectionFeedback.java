@@ -41,6 +41,26 @@ final class SelectionFeedback {
         Rect area = pending.remove(owner);
         if (area != null) owner.invalidate(area);
     }
+    /** One settled gray-mode pass clears fast-ink residue without slowing live movement. */
+    void clean(View owner, Rect area) {
+        if (!enabled || area.isEmpty() || !owner.hasWindowFocus() || !owner.isShown()
+                || owner.getDisplay() == null || !PanelCoordinates.fullyVisible(owner, area)) return;
+        Bitmap pixels = capture(owner, area);
+        DirectEink display = null;
+        try {
+            android.graphics.Matrix bitmapToView = new android.graphics.Matrix();
+            bitmapToView.setTranslate(area.left, area.top);
+            display = DirectEink.forView(owner, pixels, bitmapToView, 0, 7);
+            // Android's unchanged white pixels cannot describe residual physical ink.
+            if (display.refresh(pixels, new Rect(0, 0, pixels.getWidth(), pixels.getHeight())) < 0)
+                owner.invalidate(area);
+        } catch (RuntimeException error) {
+            owner.invalidate(area);
+        } finally {
+            if (display != null) display.close();
+            pixels.recycle();
+        }
+    }
     void close() {
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(syncBeforeDraw);
         observer = null; pending.clear();

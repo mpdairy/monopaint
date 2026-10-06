@@ -206,7 +206,7 @@ final class PaintChecks {
             // Recreated stores must share the old Activity's writer queue.
             CountDownLatch nextRead = new CountDownLatch(1);
             store.recoverLater(new DocumentStore.Snapshot(doc), (value, failure) -> error[0] = failure);
-            new DocumentStore(current.getFilesDir()).open("_recovery", (value, failure) -> {
+            new DocumentStore(DrawingStorage.library(current)).open("_recovery", (value, failure) -> {
                 restored[0] = value; error[0] = failure; nextRead.countDown();
             });
             check(nextRead.await(10,TimeUnit.SECONDS) && error[0] == null
@@ -912,7 +912,7 @@ final class PaintChecks {
         store.openBook(name,(value,failure)->{loaded[0]=value;error[0]=failure;opened.countDown();});
         check(opened.await(10,TimeUnit.SECONDS)&&error[0]==null&&loaded[0].count()==2&&loaded[0].index()==1,"Named save/open preserves pages and position");
         check(Arrays.equals(second,loaded[0].current().snapshot()),"Saved active page is exact");loaded[0].select(0);check(Arrays.equals(first,loaded[0].current().snapshot()),"Saved earlier page is exact");
-        new java.io.File(activity.getFilesDir(),"drawings/"+name+".tsm").delete();
+        new java.io.File(DrawingStorage.library(activity),name+DrawingFiles.EXTENSION).delete();
         CountDownLatch barrier=new CountDownLatch(1);store.openBook("_recovery",(value,failure)->{error[0]=failure;barrier.countDown();});
         check(barrier.await(10,TimeUnit.SECONDS)&&error[0]==null,"Whole-book recovery finishes");
         report.append("Blank-page creation, navigation, recent-page undo, whole-book save/open and both toolbox sides pass.\n");
@@ -1310,8 +1310,8 @@ final class PaintChecks {
         store.save("Test drawing",new DocumentStore.Snapshot(doc),(value,failure) -> error[0]=failure);
         store.open("Test drawing",(value,failure) -> { restored[0]=value; if(failure!=null) error[0]=failure; done.countDown(); });
         check(done.await(10,TimeUnit.SECONDS) && error[0]==null && Arrays.equals(doc.snapshot(),restored[0].snapshot()), "Named save/open exact tones");
-        new java.io.File(scratch,"drawings/Test drawing.tsm").delete();
-        new java.io.File(scratch,"drawings").delete(); scratch.delete();
+        new java.io.File(scratch,"Test drawing"+DrawingFiles.EXTENSION).delete();
+        scratch.delete();
     }
     private static void awaitReady(Instrumentation test, PaintActivity activity) throws Exception {
         long end = SystemClock.uptimeMillis() + 10000;

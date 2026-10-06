@@ -13,6 +13,7 @@ final class DirtyRegions {
     int[] first() { return regions.get(0); }
     void removeFirst() { regions.remove(0); }
     List<int[]> drain() { ArrayList<int[]> result=new ArrayList<>(regions);clear();return result; }
+    void add(android.graphics.Rect r) { add(r.left,r.top,r.right,r.bottom); }
     void add(int left,int top,int right,int bottom) {
         if(left>=right || top>=bottom) return;
         long addedArea=(long)(right-left)*(bottom-top);

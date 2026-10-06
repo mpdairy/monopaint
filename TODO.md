@@ -196,6 +196,22 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   pen use. Fixed size, pressure-controlled strength, increased flow, and immediate
   sampling are accepted. The user also verified the faster Flat brush strokes.
 
+- [x] **Offer to save before New drawing — implemented; hands-on acceptance pending.**
+  New and Open ask Save / Don't save / Cancel when the drawing has changes
+  since its last save or load, including a never-saved drawing restored after
+  a restart; Save runs the normal save (or Save As) first. Unchanged drawings
+  are replaced without asking.
+
+- [x] **Keep drawings outside the app — implemented; hands-on acceptance pending.**
+  Every launch asks for file access until allowed, so drawings survive
+  uninstalling or a signing-key change. Once allowed, the library (folders,
+  drawings and the working drawing's autosave) moves to `Document/MonoPaint`
+  before the drawing loads; clashing names keep both copies, and each copy is
+  read back and compared before the private original is deleted. The prompt
+  counts drawings still at risk inside the app. Other tablets use the standard
+  `Documents/MonoPaint`. Drawings are `.mpaint`; older `.tsm` files are renamed
+  in place, never copied or deleted.
+
 ## Design opinions to revisit
 
 - Eraser as a paint mode would let the same brush vocabulary work for adding

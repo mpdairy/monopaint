@@ -13,16 +13,21 @@ final class DrawingBook {
     private final ArrayList<byte[]> pages=new ArrayList<>();
     private final LinkedHashMap<Integer,ToneDocument> cache=new LinkedHashMap<>(4,.75f,true);
     private final java.util.HashMap<Integer,Long> packedRevisions=new java.util.HashMap<>();
+    // Unsaved changes: book-level edits (pages, canvas choices, edited pages leaving the cache)
+    // plus each decoded page's revision as of the last save or load.
+    private long edits,savedEdits;
+    private final java.util.HashMap<Integer,Long> savedRevisions=new java.util.HashMap<>();
     private int index;
     private final ArrayList<Integer> canvasChoices=new ArrayList<>();
     int canvasChoice() { return canvasChoices.get(index); }
     void setCanvasChoice(int choice) {
         if(choice<0 || choice>2)throw new IllegalArgumentException("Invalid canvas choice");
-        canvasChoices.set(index,choice);
+        if(canvasChoices.set(index,choice)!=choice)edits++;
     }
 
     DrawingBook(ToneDocument first) {
         width=first.width;height=first.height;pages.add(null);canvasChoices.add(0);cache.put(0,first);
+        savedRevisions.put(0,first.revision());
     }
     DrawingBook(int width,int height,ArrayList<byte[]> pages,int index) throws IOException {
         this(width,height,pages,index,null);
@@ -31,7 +36,7 @@ final class DrawingBook {
         ToneDocument.validateSize(width,height);this.width=width;this.height=height;
         if(pages.isEmpty()||pages.size()>MAX_PAGES||index<0||index>=pages.size())throw new IOException("Invalid page list");
         this.pages.addAll(pages); for(int i=0;i<pages.size();i++)canvasChoices.add(0); this.index=index;cache.put(index,decoded==null?decode(pages.get(index)):decoded);
-        packedRevisions.put(index,current().revision());
+        packedRevisions.put(index,current().revision());savedRevisions.put(index,current().revision());
     }
     int count(){return pages.size();}
     int index(){return index;}
@@ -41,14 +46,14 @@ final class DrawingBook {
         if(target==index)return;
         retainCurrent();
         ToneDocument next=cache.get(target);
-        if(next==null) {next=decode(pages.get(target));packedRevisions.put(target,next.revision());}
+        if(next==null) {next=decode(pages.get(target));packedRevisions.put(target,next.revision());savedRevisions.put(target,next.revision());}
         index=target;cache.put(index,next);evict();
     }
     void addPage() throws IOException {
-        if(count()>=MAX_PAGES)throw new IOException("This drawing has 100 pages. Start a new drawing for more pages.");
+        if(count()>=MAX_PAGES)throw new IOException("This painting has 100 pages. Start a new painting for more pages.");
         retainCurrent();
         ToneDocument next=new ToneDocument(width,height);
-        index=pages.size();pages.add(null);canvasChoices.add(0);cache.put(index,next);evict();
+        index=pages.size();pages.add(null);canvasChoices.add(0);cache.put(index,next);edits++;evict();
     }
     private void retainCurrent() throws IOException {
         // Browsing does not change a page. Keep its already-compressed bytes,
@@ -56,7 +61,7 @@ final class DrawingBook {
         if(currentPacked()!=null)return;
         byte[] packed=encode(current());long size=packed.length;
         for(int i=0;i<pages.size();i++)if(i!=index&&pages.get(i)!=null)size+=pages.get(i).length;
-        if(size>MAX_PACKED_BYTES)throw new IOException("This drawing is full. Save it and start a new drawing.");
+        if(size>MAX_PACKED_BYTES)throw new IOException("This painting is full. Save it and start a new painting.");
         pages.set(index,packed);packedRevisions.put(index,current().revision());current().trimHistory(8*1024*1024);
     }
     private byte[] currentPacked() {
@@ -68,6 +73,7 @@ final class DrawingBook {
         while(cache.size()>1&&(cache.size()>2||pixels>32*1024*1024)) {
             int removedIndex=cache.keySet().iterator().next();
             ToneDocument removed=cache.remove(removedIndex);packedRevisions.remove(removedIndex);
+            if(!Long.valueOf(removed.revision()).equals(savedRevisions.remove(removedIndex)))edits++;
             pixels-=(long)removed.width*removed.height*removed.layerCount()*2;
         }
     }
@@ -86,6 +92,19 @@ final class DrawingBook {
         if(choices.length!=count())throw new IllegalArgumentException("Invalid canvas choices");
         for(int i=0;i<choices.length;i++)canvasChoices.set(i,choices[i]);
     }
+    /** Whether anything changed since this book was loaded, created blank, or last {@link #markSaved saved}. */
+    boolean unsaved() {
+        if(edits!=savedEdits)return true;
+        for(java.util.Map.Entry<Integer,ToneDocument> page:cache.entrySet())
+            if(!Long.valueOf(page.getValue().revision()).equals(savedRevisions.get(page.getKey())))return true;
+        return false;
+    }
+    /** Records that {@code saved}, taken from this book, reached its file; later edits stay unsaved. */
+    void markSaved(Snapshot saved) {
+        savedEdits=saved.edits; savedRevisions.clear(); savedRevisions.putAll(saved.revisions);
+    }
+    /** For a recovered book whose changes were never saved. */
+    void markUnsaved() { edits++; }
     Snapshot snapshot(){return new Snapshot(this);}
     static final class Snapshot {
         final int width,height,index;
@@ -93,7 +112,12 @@ final class DrawingBook {
         final byte[] packedActivePage;
         final ArrayList<byte[]> pages;
         final ArrayList<Integer> canvasChoices;
+        final boolean unsaved;
+        private final long edits;
+        private final java.util.HashMap<Integer,Long> revisions=new java.util.HashMap<>();
         Snapshot(DrawingBook book){
+            unsaved=book.unsaved(); edits=book.edits;
+            for(java.util.Map.Entry<Integer,ToneDocument> page:book.cache.entrySet())revisions.put(page.getKey(),page.getValue().revision());
             width=book.width;height=book.height;index=book.index;pages=new ArrayList<>(book.pages);
             canvasChoices=new ArrayList<>(book.canvasChoices);
             activePage=book.current().layerSnapshot();

@@ -46,5 +46,10 @@ them itself.
 ## Documents
 
 `ToneDocument` holds one page's layers and undo history. `DrawingBook` holds the
-pages, and `DocumentStore` saves books and the autosave/recovery file in the
-background (`BookCodec`, `DocumentCodec`, `RecoveryCodec`).
+pages and tracks whether it has unsaved changes, and `DocumentStore` saves books
+and the autosave/recovery file in the background (`BookCodec`, `DocumentCodec`,
+`RecoveryCodec`). `DrawingStorage` chooses the library folder: shared
+`Document/MonoPaint` on a Supernote (the folder its Files app shows) or
+`Documents/MonoPaint` elsewhere, once the app has file access, so drawings outlive the app,
+otherwise its private files. At launch `DocumentStore.relocate` moves anything
+left in private storage into the shared library before the drawing loads.

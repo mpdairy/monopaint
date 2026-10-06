@@ -125,7 +125,7 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
 
 JNIEXPORT jint JNICALL
 Java_io_github_mpdairy_monopaint_DirectEink_nativePresent(JNIEnv *env, jclass clazz,
-        jlong handle,jobject bitmap,jint left,jint top,jint right,jint bottom,jint ox,jint oy) {
+        jlong handle,jobject bitmap,jint left,jint top,jint right,jint bottom,jint ox,jint oy,jboolean force) {
     (void)clazz;
     Display *d=(Display *)(intptr_t)handle;
     AndroidBitmapInfo info;
@@ -159,7 +159,7 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativePresent(JNIEnv *env, jclass cl
             }
         }
     }
-    int changed=0;
+    int changed=force==JNI_TRUE;
     for (int y=top;y<bottom && !changed;y++) {
         const uint8_t *src=(const uint8_t *)source+(size_t)y*info.stride+(size_t)left*4;
         const uint8_t *old=d->previous+(size_t)y*d->canvas_width+left;

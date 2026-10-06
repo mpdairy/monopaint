@@ -124,7 +124,8 @@ public final class PaintActivity extends Activity implements ControlHost {
         library = prefs.toolLibrary(() -> message("Could not load presets. A recovery copy has been kept."));
         if (library.activeId().isEmpty() && library.current().isBrush()) library.edit(library.current().asBrush());
         paint.eraseMode &= library.current().supportsEraseMode();
-        store = new DocumentStore(getFilesDir());
+        // Start in private storage; loadDrawing() moves the library to shared storage when allowed.
+        store = new DocumentStore(DrawingStorage.appPrivate(this));
 
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE);
@@ -154,14 +155,25 @@ public final class PaintActivity extends Activity implements ControlHost {
         pad.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (l != ol || t != ot || r != or || b != ob) { pad.disconnectDisplay(); pad.post(pad::connectDisplay); }
         });
+        if (DrawingStorage.sharedAllowed(this)) loadDrawing();
+        else root.post(this::askForSharedStorage);
+    }
+
+    /** Moves the library to shared storage when allowed, then restores the working drawing. */
+    private void loadDrawing() {
+        if (destroyed) return;
+        if (DrawingStorage.sharedAllowed(this)) store.relocate(DrawingStorage.shared(), (unused, error) -> {
+            if (error != null) runOnUiThread(() -> message("Could not move paintings to "
+                    + DrawingStorage.SHARED_NAME + ": " + error.getMessage()));
+        });
         store.recover((recovered, error) -> runOnUiThread(() -> {
             if (destroyed) return;
             loading = false;
             if (error != null) {
                 // Keep the failed recovery on disk until the user explicitly chooses a new drawing.
                 loading = true;
-                showDialog(new AlertDialog.Builder(this).setTitle("Could not recover drawing")
-                        .setMessage(error.getMessage() + "\nYou can open a saved drawing or start a new one.")
+                showDialog(new AlertDialog.Builder(this).setTitle("Could not recover painting")
+                        .setMessage(error.getMessage() + "\nYou can open a saved painting or start a new one.")
                         .setPositiveButton("Open", (d, w) -> openDrawing())
                         .setNegativeButton("New", (d, w) -> startNewDrawing())
                         .setCancelable(false));
@@ -492,7 +504,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         // The Manta also reports "Supernote Nomad" as its model. Use the physical panel,
         // independent of app rotation, window size, density, or the simulation itself.
         android.view.Display.Mode mode = getWindowManager().getDefaultDisplay().getMode();
-        return "Supernote".equalsIgnoreCase(android.os.Build.MANUFACTURER)
+        return Device.supernote()
                 && Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == width
                 && Math.max(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == height;
     }
@@ -579,9 +591,10 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     private void fileMenu(View anchor) {
         closePagePanel();
-        String[] names = {"New drawing", "Open drawing", "Save drawing", "Save drawing as…", "Export PNG…", "Fullscreen…", "Canvas size…", "Settings"};
-        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_export, R.drawable.ic_zoom, R.drawable.ic_new, R.drawable.ic_settings};
-        Runnable[] actions = {this::newDrawing, this::openDrawing, this::saveDrawing, this::saveDrawingAs, this::exportPng, () -> fullscreen.showModes(), () -> fullscreen.showCanvasChoice(), this::appSettings};
+        String[] names = {"New painting", "Open painting", "Save painting", "Save painting as…", "Export PNG…", "Fullscreen…", "Settings"};
+        int[] icons = {R.drawable.ic_new, R.drawable.ic_open, R.drawable.ic_save, R.drawable.ic_save, R.drawable.ic_export, R.drawable.ic_zoom, R.drawable.ic_settings};
+        Runnable[] actions = {() -> settleChanges("starting a new painting", this::startNewDrawing),
+                () -> settleChanges("opening another painting", this::openDrawing), this::saveDrawing, this::saveDrawingAs, this::exportPng, () -> fullscreen.showModes(), this::appSettings};
         dismiss(filePopup); dismiss(layersPopup);
         LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this); scroll.addView(rows);
@@ -650,7 +663,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     // Color and paint modes
 
     /** Changes the color bar's state through the fast display path. */
-    void updateColorBar(Runnable change) { selectionFeedback.update(shadePicker, change); }
+    void updateColorBar(Runnable change) { selectionFeedback.update(shadePicker, shadePicker.markerArea(), change); }
     boolean shadeMarkerVisible() { return !((paint.eraseMode && !pickingShade) || (pickingShade && !pickedShade)); }
 
     void selectShade(int value) {
@@ -737,8 +750,8 @@ public final class PaintActivity extends Activity implements ControlHost {
     /** Saves the current color, modes and tools. */
     void saveToolState() {
         // The Nomad's side refresh can reuse Android's last surface without an
-        // app redraw. Commit the final marker now; live drags still use fast ink.
-        selectionFeedback.finishUpdate(shadePicker);
+        // app redraw. Commit the final marker once rapid color taps have settled.
+        shadePicker.finishUpdate();
         try { prefs.savePaint(paint, library); }
         catch (java.io.IOException error) { message("Could not save tool settings: " + error.getMessage()); }
     }
@@ -813,34 +826,69 @@ public final class PaintActivity extends Activity implements ControlHost {
     private void showSaveError() {
         if (saveError != null) { message("Autosave failed: " + saveError); saveError = null; }
     }
+    private static final int SHARED_STORAGE = 2;
+    /** Asked on every launch until allowed, before the working drawing loads. */
+    private void askForSharedStorage() {
+        store.drawingCount((count, error) -> runOnUiThread(() -> askForSharedStorage(count == null ? 0 : count)));
+    }
+    private void askForSharedStorage(int drawings) {
+        if (destroyed) return;
+        String risk = drawings == 0 ? "Right now MonoPaint keeps paintings inside the app, where uninstalling or reinstalling it erases them."
+                : (drawings == 1 ? "1 saved painting is" : drawings + " saved paintings are")
+                        + " stored inside MonoPaint, where uninstalling or reinstalling it erases them.";
+        String move = drawings == 0 ? "so paintings are kept in " + DrawingStorage.SHARED_NAME + " instead, where Files shows them. "
+                        + "Paintings from an earlier install there will open again."
+                : "to move them, and the painting you're working on, to " + DrawingStorage.SHARED_NAME + ", where they're safe and Files shows them.";
+        showDialog(new AlertDialog.Builder(this).setTitle("Keep your paintings safe")
+                .setMessage(risk + " Allow access to all files " + move)
+                .setPositiveButton("Allow", (d, w) -> {
+                    if (!DrawingStorage.request(this, SHARED_STORAGE)) { message("This tablet cannot grant file access"); loadDrawing(); }
+                })
+                .setNegativeButton("Not now", (d, w) -> loadDrawing())
+                .setCancelable(false));
+    }
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        if (request == SHARED_STORAGE) loadDrawing();
+    }
     private void startNewDrawing() { loading = false; pad.replace(null); drawingName = ""; recovery(); }
-    private void newDrawing() {
-        showDialog(new AlertDialog.Builder(this).setTitle("New drawing?")
-                .setMessage("Start a new drawing with one blank page. Save first to keep all pages of this drawing.")
-                .setPositiveButton("New", (d, w) -> { pad.replace(null); drawingName = ""; recovery(); })
+    /** Runs {@code then}, which replaces the open drawing, once its unsaved changes are saved or knowingly dropped. */
+    private void settleChanges(String replacing, Runnable then) {
+        if (loading || book == null || !book.unsaved()) { then.run(); return; }
+        String drawing = drawingName.isEmpty() ? "This painting has never been saved"
+                : "\"" + DrawingFiles.name(drawingName) + "\" has unsaved changes";
+        showDialog(new AlertDialog.Builder(this).setTitle("Save changes?")
+                .setMessage(drawing + ". Save it before " + replacing + "?")
+                .setPositiveButton("Save", (d, w) -> saveDrawing(then))
+                .setNeutralButton("Don't save", (d, w) -> then.run())
                 .setNegativeButton("Cancel", null));
     }
-    private void saveDrawing() {
+    private void saveDrawing() { saveDrawing(() -> { }); }
+    /** Saves to the open drawing's file, or asks for one; {@code saved} runs once that save succeeds. */
+    private void saveDrawing(Runnable saved) {
         showSaveError();
-        if (drawingName.isEmpty()) saveDrawingAs();
-        else saveDrawingTo(drawingName, true);
+        if (drawingName.isEmpty()) saveDrawingAs(saved);
+        else saveDrawingTo(drawingName, true, saved);
     }
-    private void saveDrawingAs() {
+    private void saveDrawingAs() { saveDrawingAs(() -> { }); }
+    private void saveDrawingAs(Runnable saved) {
         showSaveError();
-        new DrawingBrowser(this, store, true, drawingName, this::saveDrawingTo, () -> { });
+        new DrawingBrowser(this, store, true, drawingName, (path, replace) -> saveDrawingTo(path, replace, saved), () -> { });
     }
-    private void saveDrawingTo(String path, boolean replace) {
+    private void saveDrawingTo(String path, boolean replace, Runnable saved) {
         if (busy()) return;
         pad.finishStroke(); pad.dryWet();
         DrawingBook savedBook = book;
         saving = true;
-        store.save(path, new DocumentStore.Snapshot(book), replace, (unused, error) -> runOnUiThread(() -> {
+        DocumentStore.Snapshot snapshot = new DocumentStore.Snapshot(book);
+        store.save(path, snapshot, replace, (unused, error) -> runOnUiThread(() -> {
             saving = false;
             if (destroyed) return;
             if (error != null) { message("Save failed: " + error.getMessage()); return; }
             // A failed save must never change the destination of subsequent saves.
-            if (book == savedBook) { drawingName = path; recovery(); }
+            if (book == savedBook) { savedBook.markSaved(snapshot.book); drawingName = path; recovery(); }
             message("Saved " + path);
+            if (book == savedBook) saved.run();
         }));
     }
     private static final int PICK_FOLDER = 1;
@@ -858,6 +906,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == SHARED_STORAGE) { loadDrawing(); return; }
         if (request != PICK_FOLDER) return;
         Consumer<Uri> picked = folderPicked; folderPicked = null;
         if (picked == null || result != RESULT_OK || data == null || data.getData() == null) return;
@@ -889,7 +938,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         }, () -> { if (!destroyed && loading) openRecoveryChoice(); });
     }
     private void openRecoveryChoice() {
-        showDialog(new AlertDialog.Builder(this).setTitle("Start a new drawing?")
+        showDialog(new AlertDialog.Builder(this).setTitle("Start a new painting?")
                 .setMessage("The previous recovery file could not be read.")
                 .setPositiveButton("New", (d, w) -> startNewDrawing())
                 .setNegativeButton("Open", (d, w) -> openDrawing()).setCancelable(false));

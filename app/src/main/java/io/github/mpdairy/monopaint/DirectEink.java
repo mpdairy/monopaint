@@ -14,7 +14,7 @@ final class DirectEink {
     private static native int nativeLayout();
     private static native long nativeOpen(Bitmap background, int x, int y, int requestFlags, int displayMode);
     private static native int nativePresent(long handle, Bitmap bitmap, int left, int top,
-                                            int right, int bottom, int x, int y);
+                                            int right, int bottom, int x, int y, boolean force);
     private static native void nativeClose(long handle);
     private static native int nativeReadGray(long handle, int x, int y);
     private static native void nativeRotate(Bitmap source,Bitmap target,int quarter,int left,int top,int right,int bottom);
@@ -79,6 +79,13 @@ final class DirectEink {
         return result;
     }
     synchronized int present(Bitmap bitmap, Rect dirty) {
+        return present(bitmap, dirty, false);
+    }
+    /** Refresh even unchanged software pixels: the physical panel may retain fast-ink ghosts. */
+    synchronized int refresh(Bitmap bitmap, Rect dirty) {
+        return present(bitmap, dirty, true);
+    }
+    private int present(Bitmap bitmap, Rect dirty, boolean force) {
         if (handle==0) return -1;
         if (buffer != null) {
             if (bitmap.getWidth()!=sourceWidth || bitmap.getHeight()!=sourceHeight)
@@ -86,9 +93,9 @@ final class DirectEink {
             mapped.set(dirty); sourceToBuffer.mapRect(mapped); mapped.roundOut(bufferDirty);
             if (!bufferDirty.intersect(0,0,buffer.getWidth(),buffer.getHeight())) return 0;
             copyToBuffer(bitmap,bufferDirty);
-            return nativePresent(handle,buffer,bufferDirty.left,bufferDirty.top,bufferDirty.right,bufferDirty.bottom,x,y);
+            return nativePresent(handle,buffer,bufferDirty.left,bufferDirty.top,bufferDirty.right,bufferDirty.bottom,x,y,force);
         }
-        return nativePresent(handle,bitmap,dirty.left,dirty.top,dirty.right,dirty.bottom,x,y);
+        return nativePresent(handle,bitmap,dirty.left,dirty.top,dirty.right,dirty.bottom,x,y,force);
     }
     private void copyToBuffer(Bitmap source,Rect dirty) {
         // Control captures can have transparent corners; retain Canvas's blending

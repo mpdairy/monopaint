@@ -3,6 +3,26 @@
 The current dot brush uses the measured coverage calibration documented in
 [GRAY_DENSITY.md](GRAY_DENSITY.md). Its display requests are unchanged.
 
+## Nomad canvas previews (2026-10-06)
+
+Shape previews and the gradient guide moved through mode 7 on the Nomad, which
+queues frames: the preview trailed the pen, showed several copies at once and
+caught up after the pen stopped. The canvas raster is binary dots in both the
+page and zoomed paths, so DrawingPad opens a second, mode 9/flags 1 session for
+the duration of these gestures (Nomad layout only) and presents preview frames
+through it. The gradient guide is now drawn without antialiasing into the
+presented raster instead of in `onDraw`, as short segments whose pixels are
+saved and restored, so a long diagonal guide damages only a band along the line.
+Pending canvas damage is a `DirtyRegions` set, presented patch by patch, rather
+than one bounding rectangle. Preview frames, for shapes and the guide alike, are
+coalesced to one per display frame. Re-rendering the whole bounding box per pen
+event made the first version fall further behind the longer the pen was held
+(45 ms per frame for an 836 × 1193 box; now about 16 ms). Mode 9 pixels do not survive a panel
+refresh, so when the gesture ends the union of everything it showed is presented
+again through the mode 7 session. A rejected or failing mode 9 present falls
+back to mode 7 for the rest of the gesture. Manta presentation is unchanged
+apart from the guide reaching the panel through the canvas session.
+
 ## Nomad control feedback (2026-10-05)
 
 The Nomad color bar now uses the firmware pen request: mode 9, flags 1,

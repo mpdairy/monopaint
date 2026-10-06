@@ -94,7 +94,7 @@ final class ShapeUiChecks {
                 pen(test,pad,MotionEvent.ACTION_DOWN,down,80,80);
                 pen(test,pad,MotionEvent.ACTION_MOVE,down,380,430);
                 main(test,() -> {
-                    call(pad,"drawShapeFrame");
+                    call(pad,"drawPreviewFrame");
                     check(doc.opacity(300,300)==0&&!doc.canUndo(),"Held preview leaves document and undo unchanged");
                     Bitmap display=(Bitmap)get(pad,"display");
                     int expected=get(pad,"viewportBitmap")==null?DotPattern.pixel(70,300,300):android.graphics.Color.rgb(70,70,70);
@@ -102,7 +102,7 @@ final class ShapeUiChecks {
                 });
                 pen(test,pad,MotionEvent.ACTION_MOVE,down,200,220);
                 main(test,() -> {
-                    call(pad,"drawShapeFrame");
+                    call(pad,"drawPreviewFrame");
                     check(((Bitmap)get(pad,"display")).getPixel(300,300)==android.graphics.Color.WHITE,"Shrinking removes old preview pixels");
                 });
                 pen(test,pad,MotionEvent.ACTION_UP,down,260,280);
@@ -197,7 +197,7 @@ final class ShapeUiChecks {
                 call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
-            try(java.io.FileInputStream input=new java.io.FileInputStream(new java.io.File(activity.getFilesDir(),"drawings/_recovery.tsm"))) {
+            try(java.io.FileInputStream input=new java.io.FileInputStream(new java.io.File(DrawingStorage.library(activity),"_recovery"+DrawingFiles.EXTENSION))) {
                 RecoveryCodec.Recovered recovered=RecoveryCodec.read(input);
                 check(recovered.path.equals(name),"Original drawing destination restored");
                 check(recovered.book.index()==originalPages.index&&recovered.book.count()==originalPages.pages.size(),"Original page restored");
@@ -246,12 +246,12 @@ final class ShapeUiChecks {
         check(get(pad,"direct")!=null,"Benchmark uses connected direct display");
         long down=SystemClock.uptimeMillis();
         event(pad,MotionEvent.ACTION_DOWN,down,100,100);
-        event(pad,MotionEvent.ACTION_MOVE,down,1300,1600);call(pad,"drawShapeFrame");
+        event(pad,MotionEvent.ACTION_MOVE,down,1300,1600);call(pad,"drawPreviewFrame");
         long[] times=new long[16];
         for(int i=0;i<times.length;i++) {
             long start=System.nanoTime();
             event(pad,MotionEvent.ACTION_MOVE,down,1300+i*6,1600+i*5);
-            call(pad,"drawShapeFrame");call(pad,"present"); // Include complete preview and submission work.
+            call(pad,"drawPreviewFrame");call(pad,"present"); // Include complete preview and submission work.
             times[i]=System.nanoTime()-start;
         }
         java.util.Arrays.sort(times);
@@ -266,7 +266,7 @@ final class ShapeUiChecks {
         main(test,() -> {
             ToolLibrary tools=(ToolLibrary)get(activity,"library");tools.edit(tools.current().shape(ToolSettings.Shape.CIRCLE).filled(false));
             transform.set((Matrix)get(pad,"pageToView"));transform.postConcat(PanelCoordinates.fromView((View)pad));
-            first[0]=(Integer)get(pad,"shapeFrameCount");
+            first[0]=(Integer)get(pad,"previewFrameCount");
         });
         long down=SystemClock.uptimeMillis(),up=down;
         for(int i=0;i<=121;i++) {
@@ -281,10 +281,10 @@ final class ShapeUiChecks {
         }
         test.waitForIdleSync();long tail=SystemClock.uptimeMillis()-up;
         main(test,() -> {
-            check(get(pad,"shapeStroke")==null&&!(Boolean)get(pad,"shapeFrameScheduled"),"Continuous pen-up fully completes");
+            check(get(pad,"shapeStroke")==null&&!(Boolean)get(pad,"previewFrameScheduled"),"Continuous pen-up fully completes");
             ToneDocument doc=(ToneDocument)get(pad,"document");assertRendered(pad,doc);
             check(doc.opacity(100,100)==0&&doc.opacity(1118,1338)>0,"Continuous circle retains its center and final radius");
-            int frames=(Integer)get(pad,"shapeFrameCount")-first[0];
+            int frames=(Integer)get(pad,"previewFrameCount")-first[0];
             report.append("Continuous 125 Hz circle input: ").append(frames).append(" preview frames for 120 moves; pen-up-to-idle ").append(tail).append(" ms.\n");
             check(doc.undo(),"Continuous gesture commits once");call(pad,"renderAll");
         });
@@ -292,19 +292,19 @@ final class ShapeUiChecks {
     private static void queuedMotion(PaintActivity activity,Object pad,StringBuilder report)throws Exception {
         ToolLibrary tools=(ToolLibrary)get(activity,"library");tools.edit(tools.current().shape(ToolSettings.Shape.CIRCLE).filled(false));
         long down=SystemClock.uptimeMillis();event(pad,MotionEvent.ACTION_DOWN,down,100,100);
-        int first=(Integer)get(pad,"shapeFrameCount");long begin=System.nanoTime();
+        int first=(Integer)get(pad,"previewFrameCount");long begin=System.nanoTime();
         for(int i=0;i<120;i++)event(pad,MotionEvent.ACTION_MOVE,down,400+i*6,500+i*7);
         double millis=(System.nanoTime()-begin)/1000000.0;
-        check((Integer)get(pad,"shapeFrameCount")==first,"Queued motion does not render stale intermediate positions");
-        call(pad,"drawShapeFrame");check((Integer)get(pad,"shapeFrameCount")==first+1,"Burst renders a single latest frame");
+        check((Integer)get(pad,"previewFrameCount")==first,"Queued motion does not render stale intermediate positions");
+        call(pad,"drawPreviewFrame");check((Integer)get(pad,"previewFrameCount")==first+1,"Burst renders a single latest frame");
         event(pad,MotionEvent.ACTION_UP,down,1200,1400);
         ToneDocument doc=(ToneDocument)get(pad,"document");assertRendered(pad,doc);
-        check(!(Boolean)get(pad,"shapeFrameScheduled"),"Pen-up removes pending preview callbacks");
+        check(!(Boolean)get(pad,"previewFrameScheduled"),"Pen-up removes pending preview callbacks");
         check(doc.undo(),"Burst final shape is one undo");call(pad,"renderAll");
         report.append("PASS: 120 queued circle moves handled in ").append(millis).append(" ms; one latest preview, final pen-up exact.\n");
         down=SystemClock.uptimeMillis();event(pad,MotionEvent.ACTION_DOWN,down,100,100);
         event(pad,MotionEvent.ACTION_MOVE,down,1000,1300);event(pad,MotionEvent.ACTION_CANCEL,down,1000,1300);
-        check(!(Boolean)get(pad,"shapeFrameScheduled")&&get(pad,"shapeStroke")==null,"Cancel removes queued preview");
+        check(!(Boolean)get(pad,"previewFrameScheduled")&&get(pad,"shapeStroke")==null,"Cancel removes queued preview");
         assertRendered(pad,doc);
     }
     private static void event(Object pad,int action,long down,float x,float y)throws Exception {

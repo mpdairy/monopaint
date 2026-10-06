@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 if (( $# < 3 || $# > 4 )); then
-  echo 'Usage: bash scripts/export_png.sh drawing.tsm page-number output.png [calibrated|raw|dots]' >&2
+  echo 'Usage: bash scripts/export_png.sh drawing.mpaint page-number output.png [calibrated|raw|dots]' >&2
   exit 2
 fi
 export_repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

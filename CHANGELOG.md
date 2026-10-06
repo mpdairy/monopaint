@@ -6,6 +6,33 @@ with each change; when cutting a release, turn that section into
 
 ## Unreleased (since 0.95)
 
+- The color selector is faster on the Nomad: only the small marker below the
+  shade strip moves, leaving the strip's dots untouched.
+- Rapid color taps leave fewer stray marker copies on the Nomad. The marker
+  follows each tap immediately, with a cleanup a quarter-second after you pause
+  instead of extra refreshes after every tap.
+- Paintings are now kept in `Document/MonoPaint`, where the Files app shows them
+  and they survive uninstalling or reinstalling MonoPaint. Each launch asks for
+  file access until you allow it, saying how many paintings are still stored
+  inside the app; then they and the painting you're working on move there
+  automatically. After a reinstall, paintings already in that folder open again.
+  On tablets other than Supernotes, paintings go to the standard
+  `Documents/MonoPaint` instead.
+- Export PNG now saves to `EXPORT/MonoPaint` on a Supernote, where the Files
+  app shows it, once MonoPaint has file access. Other tablets still use
+  `Pictures/MonoPaint`, and a folder chosen with Change folder… still wins.
+- The menu no longer has a Canvas size item. Each page still offers Keep
+  canvas size or Expand canvas the first time its bars are hidden.
+- Paintings are now `.mpaint` files. Existing `.tsm` paintings are renamed
+  automatically the first time this version starts.
+- New painting and Open painting now ask whether to save unsaved changes first:
+  Save, Don't save, or Cancel. If nothing changed since your last save, they go
+  straight ahead.
+- On the Nomad, shape previews and the gradient direction line now follow the
+  pen without leaving a trail of copies or catching up after you stop.
+- The app now calls your artwork paintings: New painting, Open painting, Save
+  painting as…, and so on.
+
 ## 0.95
 
 - MonoPaint now supports drawing on the Supernote Nomad, with a compact Pages

@@ -45,9 +45,14 @@ final class DrawingPad extends View {
     private boolean unscaledPage = true;
     private int pageRotation = Surface.ROTATION_0;
     private int[] renderPixels = new int[0];
-    /** Changed view pixels awaiting presentation. */
-    private final Rect pending = new Rect();
+    /** Changed presented pixels awaiting presentation, as separate patches. */
+    private final DirtyRegions pending = new DirtyRegions(32);
+    private final Rect presenting = new Rect();
     private DirectEink direct;
+    /** Nomad's fast black/white session for moving previews; see {@link #beginFastPreview}. */
+    private DirectEink previewDirect;
+    /** Pixels {@link #previewDirect} showed, re-presented through {@link #direct} when the preview ends. */
+    private final Rect previewArea = new Rect();
     private final NativePen input;
     private int pointer = -1, retries;
     private long lastPresent;
@@ -72,10 +77,12 @@ final class DrawingPad extends View {
     // Shapes
     private ShapePreview shapeStroke;
     private float shapeX, shapeY;
-    private boolean shapeFrameScheduled;
-    private long lastShapeFrame;
-    private int shapeFrameCount;
-    private final Runnable shapeFrame = this::drawShapeFrame;
+
+    // Moving previews: a shape or the gradient guide, drawn once per display frame
+    private boolean previewFrameScheduled;
+    private long lastPreviewFrame;
+    private int previewFrameCount;
+    private final Runnable previewFrame = this::drawPreviewFrame;
 
     // Fills, gradients and the eyedropper
     FloodFill fill;
@@ -89,6 +96,10 @@ final class DrawingPad extends View {
     private int fillShade, fillOriginalGray, fillTolerance;
     private ToolSettings.Gradient fillGradient = ToolSettings.Gradient.LINEAR;
     private final Paint gradientGuide = new Paint();
+    /** Presented pixels the gradient guide is drawn over; empty when it is not shown. */
+    private final java.util.ArrayList<Rect> guideTiles = new java.util.ArrayList<>();
+    /** The presented pixels under {@link #guideTiles}, in order, restored to erase the guide. */
+    private int[] guideBackground = new int[0];
     private final Runnable gradientStep = this::advanceGradient;
     private final Runnable fillStep = this::advanceFill;
 
@@ -105,7 +116,7 @@ final class DrawingPad extends View {
 
     DrawingPad(PaintActivity app) {
         super(app); this.app = app; landscapeTilt = app.nomadPanel();
-        setContentDescription("Drawing canvas; use the pen to paint. Unlock Zoom to pinch and pan with two fingers.");
+        setContentDescription("Painting canvas; use the pen to paint. Unlock Zoom to pinch and pan with two fingers.");
         input = new NativePen(this, (bitmap, region) -> bitmap.recycle());
     }
     private int dp(float value) { return app.dp(value); }
@@ -160,8 +171,8 @@ final class DrawingPad extends View {
                 || viewportBitmap.bitmap.getHeight() != getHeight())) { viewportBitmap.close(); viewportBitmap = null; }
         if (scaled && viewportBitmap == null) viewportBitmap = new ViewportBitmap(getWidth(), getHeight());
         if (wasScaled != scaled) renderAll();
-        else if (viewportBitmap != null) viewportBitmap.update(display, pageToView, null);
-        pending.setEmpty(); app.toolbar.refreshZoom();
+        else if (viewportBitmap != null) { viewportBitmap.update(display, pageToView, null); redrawGradientGuide(); }
+        pending.clear(); app.toolbar.refreshZoom();
     }
     private void place(Matrix transform, float scale, float x, float y) {
         int width = display.getWidth(), height = display.getHeight();
@@ -236,8 +247,9 @@ final class DrawingPad extends View {
             ViewportBitmap.compose(document, display, viewportBitmap == null);
             document.clearDirty();
         }
-        pending.setEmpty();
+        pending.clear();
         if (viewportBitmap != null) viewportBitmap.update(display, pageToView, null);
+        redrawGradientGuide();
     }
     /** Rebuild size-dependent display resources after canvas expansion or its undo. */
     void canvasResized() {
@@ -252,6 +264,9 @@ final class DrawingPad extends View {
         if (document == null || display == null) return;
         int[] bounds = document.dirty();
         if (bounds == null) return;
+        // The guide's saved background must not cover the newly rendered artwork.
+        boolean guide = !guideTiles.isEmpty();
+        eraseGradientGuide();
         Rect dirty = new Rect(Math.max(0, bounds[0] - 2), Math.max(0, bounds[1] - 2),
                 Math.min(document.width, bounds[2] + 2), Math.min(document.height, bounds[3] + 2));
         if (dirty.intersect(0, 0, display.getWidth(), display.getHeight())) {
@@ -259,10 +274,11 @@ final class DrawingPad extends View {
             queue(dirty);
         }
         document.clearDirty();
+        if (guide) drawGradientGuide();
     }
     /** Queues page pixels that are already up to date in {@link #display}. */
     private void queue(Rect pageArea) {
-        pending.union(viewportBitmap == null ? pageArea : viewportBitmap.update(display, pageToView, pageArea));
+        pending.add(viewportBitmap == null ? pageArea : viewportBitmap.update(display, pageToView, pageArea));
     }
     private void render(Rect dirty) {
         int count = dirty.width() * dirty.height();
@@ -278,10 +294,42 @@ final class DrawingPad extends View {
         canvas.drawColor(Color.WHITE);
         if (viewportBitmap != null) canvas.drawBitmap(viewportBitmap.bitmap, 0, 0, null);
         else if (display != null) canvas.drawBitmap(display, pageToView, null);
-        if ((fillGesture && fillGradient != ToolSettings.Gradient.FLAT) || gradientWaiting) drawGradientGuide(canvas);
     }
-    private void drawGradientGuide(Canvas canvas) {
-        float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY}; pageToView.mapPoints(axis);
+    private boolean showsGradientGuide() { return (fillGesture && fillGradient != ToolSettings.Gradient.FLAT) || gradientWaiting; }
+    /**
+     * Draws the gradient guide into the presented raster, replacing the previous one, so it
+     * reaches the panel like any canvas change. Without antialiasing its pixels stay
+     * black/white for {@link #beginFastPreview}.
+     */
+    private void drawGradientGuide() {
+        eraseGradientGuide();
+        Bitmap target = presented();
+        if (target == null) return;
+        float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY};
+        // The unzoomed page raster is only rotated (never scaled) relative to the view.
+        if (viewportBitmap != null) pageToView.mapPoints(axis);
+        // Short segments keep a long diagonal guide's damage to a band along the line.
+        int segments = Math.max(1, (int)Math.ceil(Math.hypot(axis[2]-axis[0], axis[3]-axis[1]) / dp(48)));
+        int saved = 0;
+        RectF bounds = new RectF();
+        for (int i = 0; i < segments; i++) {
+            float a = (float)i / segments, b = (float)(i+1) / segments;
+            float x0 = axis[0]+(axis[2]-axis[0])*a, y0 = axis[1]+(axis[3]-axis[1])*a;
+            float x1 = axis[0]+(axis[2]-axis[0])*b, y1 = axis[1]+(axis[3]-axis[1])*b;
+            bounds.set(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1));
+            bounds.inset(-dp(6), -dp(6));
+            Rect tile = new Rect(); bounds.roundOut(tile);
+            if (!tile.intersect(0, 0, target.getWidth(), target.getHeight())) continue;
+            guideTiles.add(tile); saved += tile.width() * tile.height();
+        }
+        if (guideBackground.length < saved) guideBackground = new int[saved];
+        // Save every tile before drawing; overlapping tiles are restored in reverse.
+        int offset = 0;
+        for (Rect tile : guideTiles) {
+            target.getPixels(guideBackground, offset, tile.width(), tile.left, tile.top, tile.width(), tile.height());
+            offset += tile.width() * tile.height();
+        }
+        Canvas canvas = new Canvas(target);
         gradientGuide.setStyle(Paint.Style.STROKE);
         gradientGuide.setColor(Color.WHITE); gradientGuide.setStrokeWidth(dp(5));
         canvas.drawLine(axis[0], axis[1], axis[2], axis[3], gradientGuide);
@@ -290,19 +338,29 @@ final class DrawingPad extends View {
         gradientGuide.setStyle(Paint.Style.FILL);
         canvas.drawCircle(axis[0], axis[1], dp(4), gradientGuide);
         canvas.drawCircle(axis[2], axis[3], dp(4), gradientGuide);
+        for (Rect tile : guideTiles) pending.add(tile);
     }
-    /** Removes the gradient guide, repainting its page area on the direct e-ink path too. */
-    private void clearGradientGuide() {
-        invalidate();
-        if (display == null) return;
-        float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY}; pageToView.mapPoints(axis);
-        RectF area = new RectF(Math.min(axis[0], axis[2]), Math.min(axis[1], axis[3]),
-                Math.max(axis[0], axis[2]), Math.max(axis[1], axis[3]));
-        area.inset(-dp(6), -dp(6)); viewToPage.mapRect(area);
-        Rect page = new Rect(); area.roundOut(page);
-        if (!page.intersect(0, 0, display.getWidth(), display.getHeight())) return;
-        queue(page); flush(true);
+    /** Restores the pixels under the gradient guide and queues them. */
+    private void eraseGradientGuide() {
+        if (guideTiles.isEmpty()) return;
+        Bitmap target = presented();
+        int offset = 0;
+        for (Rect tile : guideTiles) offset += tile.width() * tile.height();
+        for (int i = guideTiles.size()-1; i >= 0; i--) {
+            Rect tile = guideTiles.get(i);
+            offset -= tile.width() * tile.height();
+            target.setPixels(guideBackground, offset, tile.width(), tile.left, tile.top, tile.width(), tile.height());
+            pending.add(tile);
+        }
+        guideTiles.clear();
     }
+    /** Draws the guide again after a re-render replaced the raster under it. */
+    private void redrawGradientGuide() {
+        guideTiles.clear();
+        if (showsGradientGuide()) drawGradientGuide();
+    }
+    /** Removes the gradient guide from the screen. */
+    private void clearGradientGuide() { eraseGradientGuide(); flush(true); }
 
     // Direct e-ink presentation
 
@@ -324,10 +382,33 @@ final class DrawingPad extends View {
     void disconnectDisplay() {
         cancelWetCallback();
         removeCallbacks(retry);
+        if (previewDirect != null) { previewDirect.close(); previewDirect = null; previewArea.setEmpty(); }
         if (direct != null) { direct.close(); direct = null; }
         input.disable();
     }
     void present() { flush(true); }
+    /**
+     * Presents a moving preview (a shape or the gradient guide) through the Nomad's fast
+     * black/white pen path, like the color bar. Gray-mode frames queue on the Nomad, so a
+     * preview there trails the pen and leaves copies behind. The canvas raster is binary
+     * dots throughout. Fast pixels do not survive a panel refresh, so
+     * {@link #endFastPreview} presents the final pixels through {@link #direct}.
+     */
+    private void beginFastPreview() {
+        if (direct == null || previewDirect != null || !DirectEink.fastBinaryControls()) return;
+        flush(true);
+        try { previewDirect = DirectEink.forView(this, presented(), viewportBitmap == null ? pageToView : new Matrix(), 1, 9); }
+        catch (RuntimeException | LinkageError error) { Log.w(ProbeActivity.TAG, "Previews use gray display", error); }
+    }
+    private void endFastPreview() {
+        if (previewDirect == null) return;
+        flush(true); closeFastPreview(); flush(true);
+    }
+    /** Returns to the gray session, queueing everything the fast one showed. */
+    private void closeFastPreview() {
+        previewDirect.close(); previewDirect = null;
+        pending.add(previewArea); previewArea.setEmpty();
+    }
     /** Finishes the gesture, sets wet paint and releases the panel, e.g. before a panel covers the canvas. */
     void suspend() { finishStroke(); dryWet(); disconnectDisplay(); }
     private void flush(boolean force) {
@@ -341,17 +422,30 @@ final class DrawingPad extends View {
             return;
         }
         removeCallbacks(retry);
-        if (direct == null) { invalidate(); pending.setEmpty(); return; }
+        if (direct == null) { invalidate(); pending.clear(); return; }
+        DirectEink target = previewDirect != null ? previewDirect : direct;
         try {
-            int result = direct.present(presented(), pending);
-            lastPresent = SystemClock.uptimeMillis();
-            if (result >= 0) { pending.setEmpty(); retries = 0; }
-            else if (++retries < 120) postDelayed(retry, 8);
-            else throw new IllegalStateException("Display remained busy");
+            while (!pending.isEmpty()) {
+                int[] patch = pending.first();
+                presenting.set(patch[0], patch[1], patch[2], patch[3]);
+                int result = target.present(presented(), presenting);
+                lastPresent = SystemClock.uptimeMillis();
+                if (result < 0) {
+                    if (++retries < 120) { postDelayed(retry, 8); return; }
+                    throw new IllegalStateException("Display remained busy");
+                }
+                if (target == previewDirect) previewArea.union(presenting);
+                pending.removeFirst(); retries = 0;
+            }
         } catch (RuntimeException error) {
+            if (target == previewDirect) {
+                // Keep the canvas on the gray session; only the preview loses its speed.
+                Log.w(ProbeActivity.TAG, "Fast preview failed", error);
+                closeFastPreview(); retries = 0; flush(true); return;
+            }
             Log.e(ProbeActivity.TAG, "Direct display failed", error);
-            disconnectDisplay(); invalidate(); pending.setEmpty();
-            app.saveError = "Fast display stopped; drawing is retained. Reopen the app to retry.";
+            disconnectDisplay(); invalidate(); pending.clear();
+            app.saveError = "Fast display stopped; painting is kept. Reopen the app to retry.";
         }
     }
 
@@ -464,9 +558,9 @@ final class DrawingPad extends View {
         if (navigating) touchBlocked = true;
         endNavigation();
         if (shapeStroke != null) {
-            removeCallbacks(shapeFrame); shapeFrameScheduled = false;
+            removeCallbacks(previewFrame); previewFrameScheduled = false;
             renderShape(shapeStroke.cancel(display, viewportBitmap != null)); shapeStroke = null; pointer = -1;
-            flush(true); getParent().requestDisallowInterceptTouchEvent(false);
+            endFastPreview(); getParent().requestDisallowInterceptTouchEvent(false);
         }
         if (pickPointer != -1) {
             pickPointer = -1; getParent().requestDisallowInterceptTouchEvent(false);
@@ -482,7 +576,8 @@ final class DrawingPad extends View {
             renderDirty(); flush(true); gradientReady = true; applyGradient();
         }
         if (fillGesture) {
-            fillGesture = false; pointer = -1; clearGradientGuide();
+            removeCallbacks(previewFrame); previewFrameScheduled = false;
+            fillGesture = false; pointer = -1; clearGradientGuide(); endFastPreview();
             getParent().requestDisallowInterceptTouchEvent(false);
         }
         cancelGradient();
@@ -505,7 +600,7 @@ final class DrawingPad extends View {
         renderDirty();
         shapeX = samplePoint[0]; shapeY = samplePoint[1];
         shapeStroke = new ShapePreview(document, settings, shade, shapeX, shapeY);
-        drawShapeFrame();
+        beginFastPreview(); drawPreviewFrame();
     }
     private void continueShape(MotionEvent event) {
         int action = event.getActionMasked(), index = event.findPointerIndex(pointer);
@@ -514,27 +609,30 @@ final class DrawingPad extends View {
         if (action == MotionEvent.ACTION_MOVE || up) {
             pagePoint(event.getX(index), event.getY(index));
             shapeX = samplePoint[0]; shapeY = samplePoint[1];
-            // Coalesce queued moves into one preview frame per display frame.
-            if (!up && !shapeFrameScheduled) {
-                shapeFrameScheduled = true;
-                postDelayed(shapeFrame, Math.max(0, 16-(SystemClock.uptimeMillis()-lastShapeFrame)));
-            }
+            if (!up) schedulePreviewFrame();
         }
         if (!up) return;
-        drawShapeFrame();
+        drawPreviewFrame(); endFastPreview();
         boolean changed = shapeStroke.finish(); shapeStroke = null; pointer = -1;
         // The committed geometry matches the preview exactly; keep its native raster.
         document.clearDirty();
         getParent().requestDisallowInterceptTouchEvent(false);
         if (changed) app.recovery();
     }
-    private void drawShapeFrame() {
-        removeCallbacks(shapeFrame); shapeFrameScheduled = false;
-        if (shapeStroke == null) return;
+    /** Coalesces queued moves into one preview frame per display frame. */
+    private void schedulePreviewFrame() {
+        if (previewFrameScheduled) return;
+        previewFrameScheduled = true;
+        postDelayed(previewFrame, Math.max(0, 16-(SystemClock.uptimeMillis()-lastPreviewFrame)));
+    }
+    private void drawPreviewFrame() {
+        removeCallbacks(previewFrame); previewFrameScheduled = false;
         // Budget from frame start; rendering time must not add another full-frame delay.
-        lastShapeFrame = SystemClock.uptimeMillis();
-        renderShape(shapeStroke.preview(shapeX, shapeY, display, viewportBitmap != null));
-        flush(true); shapeFrameCount++;
+        lastPreviewFrame = SystemClock.uptimeMillis();
+        if (shapeStroke != null) renderShape(shapeStroke.preview(shapeX, shapeY, display, viewportBitmap != null));
+        else if (showsGradientGuide()) drawGradientGuide();
+        else return;
+        flush(true); previewFrameCount++;
     }
     private void renderShape(Rect dirty) {
         if (dirty.isEmpty()) return;
@@ -551,7 +649,8 @@ final class DrawingPad extends View {
         fillStartX = fillEndX = samplePoint[0]; fillStartY = fillEndY = samplePoint[1];
         fillOriginalGray = app.paint.gray; fillShade = shade; fillGradient = settings.gradient;
         fillTolerance = settings.gradient == ToolSettings.Gradient.FLAT ? 0 : settings.tolerance;
-        invalidate();
+        if (!showsGradientGuide()) return;
+        beginFastPreview(); drawPreviewFrame();
     }
     private void continueFillGesture(MotionEvent event) {
         int action = event.getActionMasked(), p = event.findPointerIndex(pointer);
@@ -560,8 +659,9 @@ final class DrawingPad extends View {
         boolean up = pointerUp(event, pointer);
         if (action != MotionEvent.ACTION_MOVE && !up) return;
         pagePoint(event.getX(p), event.getY(p));
-        fillEndX = samplePoint[0]; fillEndY = samplePoint[1]; invalidate();
-        if (!up) return;
+        fillEndX = samplePoint[0]; fillEndY = samplePoint[1];
+        if (!up) { schedulePreviewFrame(); return; }
+        drawPreviewFrame();
         fillGesture = false; pointer = -1; getParent().requestDisallowInterceptTouchEvent(false);
         float[] axis = {fillStartX, fillStartY, fillEndX, fillEndY}; pageToView.mapPoints(axis);
         if (fillGradient == ToolSettings.Gradient.FLAT || Math.hypot(axis[2]-axis[0], axis[3]-axis[1]) < dp(8)) {
@@ -573,6 +673,8 @@ final class DrawingPad extends View {
             gradientWaiting = true; gradientReady = false; gradientCommit = false;
             app.scheduleGradientHint();
         }
+        // A waiting guide must outlast a panel refresh; a cleared one is already gone.
+        endFastPreview();
     }
     private void advanceFill() {
         if (fill == null) return;
@@ -739,7 +841,7 @@ final class DrawingPad extends View {
         long began = System.nanoTime();
         updateViewport();
         long rendered = System.nanoTime();
-        pending.set(0, 0, getWidth(), getHeight()); flush(true);
+        pending.clear(); pending.add(0, 0, getWidth(), getHeight()); flush(true);
         // Keep Android's retained drawing commands current without requesting a
         // compositor frame for every finger movement on the direct display path.
         if (direct != null) app.selectionFeedback.retainForNextDraw(this, new Rect(0, 0, getWidth(), getHeight()));

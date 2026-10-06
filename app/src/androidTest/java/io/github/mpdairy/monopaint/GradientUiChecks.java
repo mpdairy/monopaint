@@ -273,7 +273,7 @@ final class GradientUiChecks {
             view.draw(new android.graphics.Canvas(bitmap));
             float[] point={150,150};((Matrix)get(pad,"pageToView")).mapPoints(point);
             check(bitmap.getPixel(Math.round(point[0]),Math.round(point[1]))==android.graphics.Color.BLACK,"Direction guide is visible over original white artwork");
-            check(((Bitmap)get(pad,"display")).getPixel(150,150)==android.graphics.Color.WHITE,"Guide is excluded from the document display bitmap");
+            check(((ToneDocument)get(pad,"document")).compositeTone(150,150)==255,"Guide stays out of the document");
             if(get(pad,"fillGradient")==ToolSettings.Gradient.CIRCULAR) {
                 float[] edge={60,60+(float)Math.hypot(180,180)};((Matrix)get(pad,"pageToView")).mapPoints(edge);
                 check(bitmap.getPixel(Math.round(edge[0]),Math.round(edge[1]))==android.graphics.Color.WHITE,"Circular guide leaves the radius outline undrawn");

@@ -16,7 +16,7 @@ final class BookCodec {
             pages.set(snapshot.index,active.toByteArray());
         }
         long size=0;for(byte[] page:pages)size+=page.length;
-        if(size>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Drawing exceeds the page storage limit");
+        if(size>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Painting exceeds the page storage limit");
         try(ZipOutputStream zip=new ZipOutputStream(new FilterOutputStream(output) {
             @Override public void write(byte[] bytes,int offset,int length) throws IOException {out.write(bytes,offset,length);}
             @Override public void close() throws IOException {flush();}
@@ -41,14 +41,14 @@ final class BookCodec {
         // Require the complete central-directory footer, including when local entries are intact.
         int end=archive.length-22;
         if(end<0||archive[end]!=0x50||archive[end+1]!=0x4b||archive[end+2]!=5||archive[end+3]!=6
-                ||archive[end+20]!=0||archive[end+21]!=0)throw new IOException("Incomplete drawing archive");
+                ||archive[end+20]!=0||archive[end+21]!=0)throw new IOException("Incomplete painting archive");
         try(ZipInputStream zip=new ZipInputStream(new ByteArrayInputStream(archive))) {
             ZipEntry entry=zip.getNextEntry();
             if(entry==null||!entry.getName().equals("manifest"))throw new IOException("Missing page manifest");
             byte[] header=bounded(zip,20+DrawingBook.MAX_PAGES);if(header.length<20)throw new IOException("Invalid page manifest");
             DataInputStream info=new DataInputStream(new ByteArrayInputStream(header));
             int magic=info.readInt();
-            if(magic!=MAGIC && magic!=PAGE_SIZES_MAGIC)throw new IOException("Unknown drawing format");
+            if(magic!=MAGIC && magic!=PAGE_SIZES_MAGIC)throw new IOException("Unknown painting format");
             int width=info.readInt(),height=info.readInt(),count=info.readInt(),active=info.readInt();
             try{ToneDocument.validateSize(width,height);}catch(IllegalArgumentException e){throw new IOException("Invalid page dimensions",e);}
             if(count<1||count>DrawingBook.MAX_PAGES||active<0||active>=count)throw new IOException("Invalid page count");
@@ -65,7 +65,7 @@ final class BookCodec {
                 entry=zip.getNextEntry();
                 if(entry==null||!entry.getName().equals("pages/"+(i+1)+".tsm"))throw new IOException("Missing or unordered page");
                 byte[] bytes=bounded(zip,MAX_PAGE_BYTES);total+=bytes.length;
-                if(total>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Drawing is too large");
+                if(total>DrawingBook.MAX_PACKED_BYTES)throw new IOException("Painting is too large");
                 if(i==active) {
                     selected=DocumentCodec.read(new ByteArrayInputStream(bytes));
                     if(magic==MAGIC && (selected.width!=width||selected.height!=height))throw new IOException("Page size mismatch");
@@ -94,7 +94,7 @@ final class BookCodec {
     private static byte[] bounded(InputStream input,int limit) throws IOException {
         ByteArrayOutputStream output=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int read;
         while((read=input.read(buffer))!=-1) {
-            if(output.size()+read>limit)throw new IOException("Drawing data exceeds size limit");output.write(buffer,0,read);
+            if(output.size()+read>limit)throw new IOException("Painting data exceeds size limit");output.write(buffer,0,read);
         }
         return output.toByteArray();
     }
