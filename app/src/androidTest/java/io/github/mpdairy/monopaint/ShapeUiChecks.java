@@ -185,7 +185,7 @@ final class ShapeUiChecks {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();
                 android.app.AlertDialog overview=(android.app.AlertDialog)get(activity,"pageOverview");if(overview!=null)overview.dismiss();
-                call(activity,"closePagePanel");call(activity,"setNomadMode",new Class<?>[]{boolean.class},nomad);
+                call(activity,"closePagePanel");call(activity,"setSimulating",new Class<?>[]{boolean.class},nomad);
                 android.widget.PopupWindow picker=(android.widget.PopupWindow)get(activity,"toolPicker");if(picker!=null)picker.dismiss();
                 call(pad,"finishStroke");call(pad,"dryWet");
                 set(activity,"drawingName",name);set(activity,"library",library);

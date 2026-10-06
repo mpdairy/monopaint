@@ -61,7 +61,7 @@ final class ToolbarChecks {
             test.waitForIdleSync();
             main(test,() -> {
                 View settings=dialog[0].getWindow().getDecorView();
-                check((Boolean)call(activity,"supportsNomadSimulation") && findCheck(settings,"Nomad Simulation Mode")!=null,
+                check((Boolean)call(activity,"canSimulate") && findCheck(settings,"Nomad Simulation Mode")!=null,
                         "Connected Manta exposes simulation despite its misleading Nomad model name");
                 check(findCheck(settings,"Instant selection dots (experimental)")==null,"No optional instant selection setting");
                 check(findCheck(settings,"Blending stump")!=null && findCheck(settings,"Soften")==null,"Blending stump has its proper name");

@@ -38,7 +38,7 @@ import java.util.function.Consumer;
  * The painting screen. It owns the document and current selection, builds the layout,
  * turns it for app-only rotation, and coordinates the panels.
  *
- * <p>Layout, from the outside in: {@link NomadPreviewLayout} (optional smaller-panel
+ * <p>Layout, from the outside in: {@link PanelPreviewLayout} (optional smaller-panel
  * simulation) → {@link QuarterTurnLayout} turning the whole UI → {@link #root}, holding
  * the header/color bar ({@link #palette}) and the {@link #body} with the {@link Toolbar}
  * and the {@link DrawingPad} canvas. Android itself always stays in portrait.
@@ -55,6 +55,8 @@ public final class PaintActivity extends Activity implements ControlHost {
     // Settings and the current selection
     SharedPreferences preferences;
     PaintPreferences prefs;
+    /** The tablet itself; {@link #layoutDevice} is the one the controls are laid out for. */
+    Device device;
     ToolLibrary library;
     final PaintState paint = new PaintState();
     boolean navigationLocked = true;
@@ -74,7 +76,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     // Layout
     LinearLayout root, body, palette, headerControls, leftHeader, rightHeader, menuControls;
     QuarterTurnLayout paletteFrame, orientationFrame;
-    NomadPreviewLayout previewFrame;
+    PanelPreviewLayout previewFrame;
     DrawingPad pad;
     FullscreenController fullscreen;
     EdgeBars edgeBars;
@@ -116,6 +118,7 @@ public final class PaintActivity extends Activity implements ControlHost {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        device = Device.current(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         preferences = getSharedPreferences(PaintPreferences.FILE, MODE_PRIVATE);
         prefs = new PaintPreferences(preferences);
@@ -143,11 +146,11 @@ public final class PaintActivity extends Activity implements ControlHost {
         orientationFrame = new QuarterTurnLayout(this);
         orientationFrame.addView(root);
         orientationFrame.afterLayout = () -> { pad.disconnectDisplay(); pad.updateViewport(); pad.post(pad::connectDisplay); };
-        previewFrame = new NomadPreviewLayout(this);
+        previewFrame = new PanelPreviewLayout(this);
         previewFrame.addView(orientationFrame);
         previewFrame.setRotationHint(rotateButton, menuButton, dp(48), dp(8));
         previewFrame.afterLayout = () -> pad.post(pad::connectDisplay);
-        previewFrame.setEnabledPreview(nomadMode());
+        previewFrame.setSimulated(simulating() ? device.simulates : null);
         setContentView(previewFrame);
         applyToolboxSide(); updatePages();
         rotationPrompt = new RotationPrompt(this, rotateButton);
@@ -476,7 +479,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         LinearLayout menuSide = menuAtEnd ? rightHeader : leftHeader;
         LinearLayout pageSide = menuAtEnd ? leftHeader : rightHeader;
         menuSide.addView(menuControls, new LinearLayout.LayoutParams(-2, dp(48)));
-        // Nomad's narrower header replaces the page row with a Pages button.
+        // A narrower header replaces the page row with a Pages button.
         if (compactLayout()) pageSide.addView(pagesButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
         else pageSide.addView(headerControls);
     }
@@ -497,27 +500,22 @@ public final class PaintActivity extends Activity implements ControlHost {
         dismiss(toolPicker);
         applyToolboxSide();
     }
-    boolean supportsNomadSimulation() { return supernotePanel(1920, 2560); }
-    /** A real Nomad, rather than the simulated Nomad area on a Manta. */
-    boolean nomadPanel() { return supernotePanel(1404, 1872); }
-    private boolean supernotePanel(int width, int height) {
-        // The Manta also reports "Supernote Nomad" as its model. Use the physical panel,
-        // independent of app rotation, window size, density, or the simulation itself.
-        android.view.Display.Mode mode = getWindowManager().getDefaultDisplay().getMode();
-        return Device.supernote()
-                && Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == width
-                && Math.max(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == height;
-    }
-    boolean nomadMode() { return supportsNomadSimulation() && prefs.nomadMode(); }
-    /** Nomad-width controls, on a real Nomad or in the Manta's simulation. */
-    boolean compactLayout() { return nomadPanel() || nomadMode(); }
-    void setNomadMode(boolean enabled) {
+    boolean canSimulate() { return device.simulates != null; }
+    /** Previewing a smaller tablet's panel and controls (Settings' simulation mode). */
+    boolean simulating() { return canSimulate() && prefs.simulateSmallerPanel(); }
+    /**
+     * The tablet the controls are laid out for: the simulated one while simulating. Input
+     * and display quirks always come from {@link #device}, the hardware actually in use.
+     */
+    Device layoutDevice() { return simulating() ? device.simulates : device; }
+    boolean compactLayout() { return layoutDevice().compactControls; }
+    void setSimulating(boolean enabled) {
         if (busy()) return;
-        enabled = enabled && supportsNomadSimulation();
+        enabled = enabled && canSimulate();
         dismissPanels(); hideGradientHint();
         pad.suspend(); pad.viewport.reset();
-        prefs.setNomadMode(enabled);
-        previewFrame.setEnabledPreview(enabled);
+        prefs.setSimulateSmallerPanel(enabled);
+        previewFrame.setSimulated(enabled ? device.simulates : null);
         applyToolboxSide();
         saveToolState(); recovery();
     }
@@ -799,13 +797,13 @@ public final class PaintActivity extends Activity implements ControlHost {
         android.view.Window window = dialog.getWindow();
         if (window == null) return;
         int width = Math.min(dp(desiredWidth), root.getWidth()-dp(32));
-        boolean nomad = compactLayout();
-        if (appRotation == Surface.ROTATION_0 && !nomad) { window.setLayout(width, -2); return; }
+        boolean compact = compactLayout();
+        if (appRotation == Surface.ROTATION_0 && !compact) { window.setLayout(width, -2); return; }
         ViewGroup content = window.findViewById(android.R.id.content);
         if (content == null || content.getChildCount() != 1 || content.getChildAt(0) instanceof QuarterTurnLayout) return;
         View panel = content.getChildAt(0); content.removeView(panel);
         QuarterTurnLayout frame = new QuarterTurnLayout(this); frame.setTurn(appTurn()); frame.addView(panel);
-        if (nomad) frame.setMaximumSize(Math.max(1, orientationFrame.getWidth()-dp(32)), Math.max(1, orientationFrame.getHeight()-dp(32)));
+        if (compact) frame.setMaximumSize(Math.max(1, orientationFrame.getWidth()-dp(32)), Math.max(1, orientationFrame.getHeight()-dp(32)));
         content.addView(frame, new FrameLayout.LayoutParams(-1, -1));
         window.setLayout(landscape ? -2 : width, landscape ? width : -2);
     }

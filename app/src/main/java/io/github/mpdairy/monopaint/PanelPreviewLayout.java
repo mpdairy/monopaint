@@ -9,9 +9,10 @@ import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewGroup;
 
-/** A physical-pixel viewport, never a scaled copy of the Manta UI. */
-final class NomadPreviewLayout extends ViewGroup {
-    static final int WIDTH = 1404, HEIGHT = 1872;
+/** Previews a smaller tablet's panel at physical pixels, never a scaled copy of this tablet's UI. */
+final class PanelPreviewLayout extends ViewGroup {
+    /** The simulated tablet, or null for this tablet's whole screen. */
+    private Device simulated;
     private boolean enabled;
     private final Paint edge = new Paint();
     private View panel;
@@ -51,7 +52,7 @@ final class NomadPreviewLayout extends ViewGroup {
                 MeasureSpec.makeMeasureSpec(panelBounds.height(),MeasureSpec.EXACTLY));
     }
 
-    NomadPreviewLayout(Context context) {
+    PanelPreviewLayout(Context context) {
         super(context);
         setBackgroundColor(Color.WHITE);
         setClickable(true); // Blank margins must not deliver pen gestures to the canvas.
@@ -60,8 +61,8 @@ final class NomadPreviewLayout extends ViewGroup {
         edge.setStrokeWidth(1);
     }
 
-    void setEnabledPreview(boolean value) {
-        enabled = value;
+    void setSimulated(Device device) {
+        simulated = device; enabled = device != null;
         setBackgroundColor(enabled ? Color.BLACK : Color.WHITE);
         requestLayout();
         invalidate();
@@ -70,8 +71,8 @@ final class NomadPreviewLayout extends ViewGroup {
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
         setMeasuredDimension(width, height);
-        getChildAt(0).measure(MeasureSpec.makeMeasureSpec(enabled ? Math.min(WIDTH,width) : width, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(enabled ? Math.min(HEIGHT,height) : height, MeasureSpec.EXACTLY));
+        getChildAt(0).measure(MeasureSpec.makeMeasureSpec(enabled ? Math.min(simulated.panelWidth,width) : width, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(enabled ? Math.min(simulated.panelHeight,height) : height, MeasureSpec.EXACTLY));
         measurePanel();
         if(rotationHint!=null)rotationHint.measure(MeasureSpec.makeMeasureSpec(hintSize,MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(hintSize,MeasureSpec.EXACTLY));

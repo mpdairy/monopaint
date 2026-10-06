@@ -22,6 +22,14 @@ app's upright coordinates and mapped back to the portrait window (`Popups`).
 | `PaintState` | Current color, erase mode and wet/transparent paint |
 | `PaintPreferences` | Typed access to saved settings |
 
+## Tablets
+
+`Device` is the only class that identifies hardware. Code asks it about a named
+fact, such as `landscapeTilt` or `compactControls`, and asks `DirectEink` about
+the e-ink driver's buffer. It never checks for a model. `PanelPreviewLayout`
+previews a smaller tablet's panel (the Manta's Nomad simulation). See
+[DEVICES.md](DEVICES.md) for the profiles and how to add a tablet.
+
 ## Tools
 
 Tool settings are immutable `ToolSettings` objects. `ToolLibrary` remembers the

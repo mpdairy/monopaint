@@ -105,7 +105,7 @@ final class ColorBarChecks {
             main(test,() -> {
                 app.closePagePanel();
                 if(pagesOnly) {
-                    app.setNomadMode(nomad);
+                    app.setSimulating(nomad);
                     if(!hadNomad)prefs.edit().remove("nomad_mode").apply();
                 }
                 if(hadHand)prefs.edit().putBoolean("toolbox_right",hand).apply();else prefs.edit().remove("toolbox_right").apply();

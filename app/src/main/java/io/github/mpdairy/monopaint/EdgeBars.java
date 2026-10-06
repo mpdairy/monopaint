@@ -31,7 +31,7 @@ final class EdgeBars {
             if(!Popups.bounds(app.root,app.pad).contains(p[0],p[1]))return false;
             tracking=true;
             for(int bar=0;bar<2;bar++)swipes[bar].start(edge(bar),app.root.getWidth(),app.root.getHeight(),
-                    p[0],p[1],e.getEventTime(),app.dp(app.nomadPanel()?6:24),app.dp(32),app.dp(EdgeSwipe.EXIT_BAND_DP));
+                    p[0],p[1],e.getEventTime(),app.dp(app.device.edgeSwipeSlopDp),app.dp(32),app.dp(EdgeSwipe.EXIT_BAND_DP));
         }
         if(!tracking)return false;
         // A real fingertip has width; injected test pointers often have none.

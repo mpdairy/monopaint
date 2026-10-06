@@ -22,14 +22,14 @@ final class PageNavigationChecks {
         if(!feedbackOnly) {verifyRaster(report);benchmark(test,app,report);}
         SharedPreferences prefs=(SharedPreferences)get(app,"preferences");
         SelectionFeedback feedback=(SelectionFeedback)get(app,"selectionFeedback");
-        for(boolean nomad:app.nomadPanel()?new boolean[]{true}:new boolean[]{false,true})for(int turn=0;turn<4;turn++)for(boolean right:new boolean[]{false,true}) {
+        for(boolean nomad:app.device.compactControls?new boolean[]{true}:new boolean[]{false,true})for(int turn=0;turn<4;turn++)for(boolean right:new boolean[]{false,true}) {
             final int quarter=turn;
             DrawingBook book=new DrawingBook(new ToneDocument(640,720));
             book.current().begin();for(int y=80;y<260;y++)book.current().paintSpan(70,250,y,40);book.current().finish();
             book.addPage();book.current().begin();for(int y=100;y<380;y++)book.current().paintSpan(90,400,y,160);book.current().finish();
             main(test,() -> {
                 call(app,"closePagePanel");call(app,"replaceBook",new Class<?>[]{DrawingBook.class},book);
-                call(app,"setNomadMode",new Class<?>[]{boolean.class},nomad);
+                call(app,"setSimulating",new Class<?>[]{boolean.class},nomad);
                 prefs.edit().putBoolean("toolbox_right",right).apply();
                 call(app,"requestQuarter",new Class<?>[]{int.class},quarter);call(app,"applyToolboxSide");
             });idle(test);

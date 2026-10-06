@@ -11,7 +11,7 @@ import android.view.View;
 final class DirectEink {
     static { System.loadLibrary("monopaint_display"); }
     static native String probe();
-    private static native int nativeLayout();
+    private static native int[] nativeLayout();
     private static native long nativeOpen(Bitmap background, int x, int y, int requestFlags, int displayMode);
     private static native int nativePresent(long handle, Bitmap bitmap, int left, int top,
                                             int right, int bottom, int x, int y, boolean force);
@@ -41,8 +41,8 @@ final class DirectEink {
         RectF bounds = new RectF(0,0,background.getWidth(),background.getHeight());
         toPanel.mapRect(bounds);
         Rect pixels = new Rect(); bounds.roundOut(pixels);
-        int layout=layout();
-        if (pixels.isEmpty() || pixels.width()>(layout&0xffff) || pixels.height()>(layout>>>16))
+        int[] layout=layout();
+        if (pixels.isEmpty() || pixels.width()>layout[0] || pixels.height()>layout[1])
             throw new IllegalStateException("Panel patch outside supported display");
         x=pixels.left; y=pixels.top;
         sourceWidth=background.getWidth(); sourceHeight=background.getHeight();
@@ -61,10 +61,12 @@ final class DirectEink {
         try { handle=nativeOpen(buffer,x,y,requestFlags,displayMode); }
         catch (RuntimeException | LinkageError error) { buffer.recycle(); throw error; }
     }
-    static boolean fastBinaryControls() { return layout()==(1872 | 1404<<16); }
-    private static int layout=-1;
-    private static synchronized int layout() {
-        if (layout==-1) layout=nativeLayout();
+    /** The panel offers the binary pen path (mode 9) for exact black/white controls. */
+    static boolean fastBinaryControls() { return layout()[2]!=0; }
+    private static int[] layout;
+    /** The driver buffer as {width, height, fast binary}; zeros when unsupported. Known buffers are listed in direct_eink.c. */
+    static synchronized int[] layout() {
+        if (layout==null) { layout=nativeLayout(); if (layout==null) layout=new int[3]; }
         return layout;
     }
     /**
@@ -73,7 +75,7 @@ final class DirectEink {
      * in the shared plane and matching the firmware's hwrota=270.
      */
     private static Matrix driverFromPanel() {
-        int layout=layout(), width=layout&0xffff, height=layout>>>16;
+        int width=layout()[0], height=layout()[1];
         Matrix result=new Matrix();
         if (width>height) { result.setRotate(-90); result.postTranslate(0,height); }
         return result;

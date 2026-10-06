@@ -27,7 +27,7 @@ final class SettingsUiChecks {
                 final int turn=quarter;
                 main(test,() -> {
                     prefs.edit().putBoolean("large_settings_text",big).putBoolean("toolbox_right",turn%2!=0).apply();
-                    call(app,"setNomadMode",new Class<?>[]{boolean.class},preview);
+                    call(app,"setSimulating",new Class<?>[]{boolean.class},preview);
                     call(app,"requestQuarter",new Class<?>[]{int.class},turn);
                     ToolLibrary tools=(ToolLibrary)get(app,"library");tools.select(ToolSettings.Tool.SHAPES);tools.edit(tools.current().shape(ToolSettings.Shape.CIRCLE));
                 });idle(test);
@@ -78,7 +78,7 @@ final class SettingsUiChecks {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();
                 if(hadLarge)prefs.edit().putBoolean("large_settings_text",large).apply();else prefs.edit().remove("large_settings_text").apply();
-                call(app,"setNomadMode",new Class<?>[]{boolean.class},nomad);
+                call(app,"setSimulating",new Class<?>[]{boolean.class},nomad);
             });
         }
     }

@@ -22,8 +22,9 @@ final class PaintPreferences {
     void setToolboxRight(boolean value) { setFlag("toolbox_right", value); }
     boolean largeSettingsText() { return flag("large_settings_text", false); }
     void setLargeSettingsText(boolean value) { setFlag("large_settings_text", value); }
-    boolean nomadMode() { return flag("nomad_mode", false); }
-    void setNomadMode(boolean value) { setFlag("nomad_mode", value); }
+    /** Preview a smaller tablet's layout (on a Manta, the Nomad's). The key predates other tablets. */
+    boolean simulateSmallerPanel() { return flag("nomad_mode", false); }
+    void setSimulateSmallerPanel(boolean value) { setFlag("nomad_mode", value); }
     /** Wet paint runs toward whichever page edge the tablet tilts down. */
     boolean wetGravity() { return flag("wet_gravity", false); }
     void setWetGravity(boolean value) { setFlag("wet_gravity", value); }

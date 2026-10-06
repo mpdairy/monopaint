@@ -28,7 +28,7 @@ final class NomadUiChecks {
         ToneDocument doc=(ToneDocument)get(pad,"document");byte[] before=doc.snapshot();
         AlertDialog[] dialog={null};
         try {
-            main(test,() -> call(app,"setNomadMode",new Class<?>[]{boolean.class},false));idle(test);
+            main(test,() -> call(app,"setSimulating",new Class<?>[]{boolean.class},false));idle(test);
             main(test,() -> dialog[0]=(AlertDialog)call(app,"appSettings"));idle(test);
             tap(test,find(dialog[0].getWindow().getDecorView(),"Nomad Simulation Mode"));idle(test);
             check(prefs.getBoolean("nomad_mode",false)&&!dialog[0].isShowing(),"Settings toggle persists and dismisses");
@@ -86,7 +86,7 @@ final class NomadUiChecks {
                 if(dialog[0]!=null)dialog[0].dismiss();
                 PopupWindow tool=(PopupWindow)get(app,"toolPicker");if(tool!=null)tool.dismiss();
                 PopupWindow file=(PopupWindow)get(app,"filePopup");if(file!=null)file.dismiss();
-                call(app,"setNomadMode",new Class<?>[]{boolean.class},original);
+                call(app,"setSimulating",new Class<?>[]{boolean.class},original);
             });idle(test);
         }
     }

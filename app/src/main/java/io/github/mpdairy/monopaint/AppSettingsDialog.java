@@ -13,7 +13,7 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.util.ArrayList;
 
-/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, smooth edges, Nomad simulation and toolbar contents. */
+/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, smooth edges, tablet simulation and toolbar contents. */
 final class AppSettingsDialog {
     private final PaintActivity app;
     private final PaintPreferences prefs;
@@ -48,10 +48,13 @@ final class AppSettingsDialog {
         smooth.setChecked(prefs.smoothEdges());
         smooth.setOnCheckedChangeListener((button, checked) -> prefs.setSmoothEdges(checked));
         content.addView(smooth);
-        CheckBox nomad = new CheckBox(app);
-        nomad.setText("Nomad Simulation Mode"); nomad.setContentDescription("Nomad Simulation Mode");
-        nomad.setChecked(app.nomadMode());
-        if (app.supportsNomadSimulation()) content.addView(nomad);
+        CheckBox simulate = new CheckBox(app);
+        if (app.canSimulate()) {
+            String label = app.device.simulates.name + " Simulation Mode";
+            simulate.setText(label); simulate.setContentDescription(label);
+            simulate.setChecked(app.simulating());
+            content.addView(simulate);
+        }
         label("Toolbar");
         LinearLayout toolsList = new LinearLayout(app); toolsList.setOrientation(LinearLayout.VERTICAL);
         content.addView(toolsList); renderToolbarSettings(toolsList);
@@ -59,7 +62,7 @@ final class AppSettingsDialog {
         SettingsScroller scroll = new SettingsScroller(app, content);
         dialog = new AlertDialog.Builder(app).setTitle("Settings").setView(scroll).setPositiveButton("Done", null).create();
         dialog.show(); app.compactDialog(dialog);
-        nomad.setOnCheckedChangeListener((button, checked) -> { dialog.dismiss(); app.setNomadMode(checked); });
+        simulate.setOnCheckedChangeListener((button, checked) -> { dialog.dismiss(); app.setSimulating(checked); });
         manualRotation.setOnClickListener(v -> { dialog.dismiss(); app.requestQuarter(app.landscape ? 0 : 3); });
     }
     private int dp(float value) { return app.dp(value); }

@@ -37,3 +37,6 @@ java -cp "$test_classes" io.github.mpdairy.monopaint.MultiFingerTapChecks
 
 javac -d "$test_classes" app/src/main/java/io/github/mpdairy/monopaint/EdgeSwipe.java app/src/test/java/io/github/mpdairy/monopaint/EdgeSwipeChecks.java
 java -cp "$test_classes" io.github.mpdairy.monopaint.EdgeSwipeChecks
+
+javac -d "$test_classes" app/src/test/java/io/github/mpdairy/monopaint/DeviceChecks.java
+java -cp "$test_classes" io.github.mpdairy.monopaint.DeviceChecks

@@ -32,8 +32,7 @@ import android.view.View;
 @SuppressLint("ViewConstructor")
 final class DrawingPad extends View {
     private final PaintActivity app;
-    // Nomad's digitizer reports tilt in the panel's landscape frame (see
-    // DirectEink's mount); positions arrive already turned to portrait.
+    /** See {@link Device#landscapeTilt}. */
     private final boolean landscapeTilt;
     ToneDocument document;
     private Bitmap display;
@@ -115,7 +114,7 @@ final class DrawingPad extends View {
     private long penGuardUntil;
 
     DrawingPad(PaintActivity app) {
-        super(app); this.app = app; landscapeTilt = app.nomadPanel();
+        super(app); this.app = app; landscapeTilt = app.device.landscapeTilt;
         setContentDescription("Painting canvas; use the pen to paint. Unlock Zoom to pinch and pan with two fingers.");
         input = new NativePen(this, (bitmap, region) -> bitmap.recycle());
     }
@@ -278,7 +277,7 @@ final class DrawingPad extends View {
     }
     /** Queues page pixels that are already up to date in {@link #display}. */
     private void queue(Rect pageArea) {
-        pending.add(viewportBitmap == null ? pageArea : viewportBitmap.update(display, pageToView, pageArea));
+        queueView(viewportBitmap == null ? pageArea : viewportBitmap.update(display, pageToView, pageArea));
     }
     private void render(Rect dirty) {
         int count = dirty.width() * dirty.height();
@@ -338,7 +337,7 @@ final class DrawingPad extends View {
         gradientGuide.setStyle(Paint.Style.FILL);
         canvas.drawCircle(axis[0], axis[1], dp(4), gradientGuide);
         canvas.drawCircle(axis[2], axis[3], dp(4), gradientGuide);
-        for (Rect tile : guideTiles) pending.add(tile);
+        for (Rect tile : guideTiles) queueView(tile);
     }
     /** Restores the pixels under the gradient guide and queues them. */
     private void eraseGradientGuide() {
@@ -350,7 +349,7 @@ final class DrawingPad extends View {
             Rect tile = guideTiles.get(i);
             offset -= tile.width() * tile.height();
             target.setPixels(guideBackground, offset, tile.width(), tile.left, tile.top, tile.width(), tile.height());
-            pending.add(tile);
+            queueView(tile);
         }
         guideTiles.clear();
     }
@@ -404,10 +403,11 @@ final class DrawingPad extends View {
         if (previewDirect == null) return;
         flush(true); closeFastPreview(); flush(true);
     }
+    private void queueView(Rect r) { pending.add(r.left, r.top, r.right, r.bottom); }
     /** Returns to the gray session, queueing everything the fast one showed. */
     private void closeFastPreview() {
         previewDirect.close(); previewDirect = null;
-        pending.add(previewArea); previewArea.setEmpty();
+        queueView(previewArea); previewArea.setEmpty();
     }
     /** Finishes the gesture, sets wet paint and releases the panel, e.g. before a panel covers the canvas. */
     void suspend() { finishStroke(); dryWet(); disconnectDisplay(); }

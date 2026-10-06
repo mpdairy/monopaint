@@ -36,26 +36,43 @@ static void fail(JNIEnv *env, const char *message) {
 }
 
 // Restrict the experiment to queried layouts, never guess an ABI from Android's
-// model property (the Manta incorrectly says Nomad). Manta's 1920x2560 buffer
-// matches the screen; Nomad's 1872x1404 buffer is the panel's landscape scan
-// order (firmware hwrota=270), observed from the shared plane on 2026-10-05.
-static int supported_layout(const int32_t *info,int *width,int *height) {
-    *width=(uint32_t)info[1]&0xffff; *height=(uint32_t)info[1]>>16;
-    if (*width==1920 && *height==2560) return info[2]==1920 && info[3]==4915200;
-    if (*width==1872 && *height==1404) return info[2]==1872 && info[3]==2628288;
-    return 0;
+// model property (the Manta incorrectly says Nomad). Supporting another panel
+// means adding a row here, observed on the device itself.
+typedef struct {
+    int width, height, stride, size;
+    int fast_binary; // plane 1, mode 9/flags 1 binary pen path for controls
+} Layout;
+static const Layout LAYOUTS[]={
+    // Manta: the buffer matches the portrait screen.
+    {1920,2560,1920,4915200,0},
+    // Nomad: the panel's landscape scan order (firmware hwrota=270), observed
+    // from the shared plane on 2026-10-05.
+    {1872,1404,1872,2628288,1},
+};
+
+static const Layout *supported_layout(const int32_t *info) {
+    int width=(uint32_t)info[1]&0xffff, height=(uint32_t)info[1]>>16;
+    for (size_t i=0;i<sizeof(LAYOUTS)/sizeof(*LAYOUTS);i++) {
+        const Layout *l=&LAYOUTS[i];
+        if (l->width==width && l->height==height && l->stride==info[2] && l->size==info[3]) return l;
+    }
+    return NULL;
 }
 
-// Packs the supported buffer size as width | height<<16, or 0 when unsupported.
-JNIEXPORT jint JNICALL
+// The supported driver buffer as {width, height, fast binary}, or null when unsupported.
+JNIEXPORT jintArray JNICALL
 Java_io_github_mpdairy_monopaint_DirectEink_nativeLayout(JNIEnv *env, jclass clazz) {
-    (void)env; (void)clazz;
+    (void)clazz;
     int fd=open("/dev/ebc",O_RDWR|O_CLOEXEC);
-    if (fd<0) return 0;
+    if (fd<0) return NULL;
     int32_t info[32]={0};
-    int width=0,height=0,ok=ioctl(fd,0x48545201UL,info)==0 && supported_layout(info,&width,&height);
+    const Layout *l=ioctl(fd,0x48545201UL,info)==0 ? supported_layout(info) : NULL;
     close(fd);
-    return ok ? width|height<<16 : 0;
+    if (!l) return NULL;
+    jint values[3]={l->width,l->height,l->fast_binary};
+    jintArray result=(*env)->NewIntArray(env,3);
+    if (result) (*env)->SetIntArrayRegion(env,result,0,3,values);
+    return result;
 }
 
 JNIEXPORT jlong JNICALL
@@ -77,13 +94,14 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
     if (ioctl(fd,0x48545201UL,info)!=0) {
         int error=errno; close(fd); fail(env,strerror(error)); return 0;
     }
-    int width,height;
-    if (!supported_layout(info,&width,&height)) {
+    const Layout *layout=supported_layout(info);
+    if (!layout) {
         close(fd); fail(env,"Unsupported display buffer layout"); return 0;
     }
-    if (display_mode==9 && width!=1872) {
-        close(fd); fail(env,"Fast binary controls require the Nomad panel"); return 0;
+    if (display_mode==9 && !layout->fast_binary) {
+        close(fd); fail(env,"Fast binary controls are not supported on this panel"); return 0;
     }
+    int width=layout->width,height=layout->height;
     AndroidBitmapInfo bitmap_info;
     if (AndroidBitmap_getInfo(env,background,&bitmap_info)!=ANDROID_BITMAP_RESULT_SUCCESS
             || bitmap_info.format!=ANDROID_BITMAP_FORMAT_RGBA_8888

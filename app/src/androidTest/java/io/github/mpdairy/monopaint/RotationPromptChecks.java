@@ -22,7 +22,7 @@ final class RotationPromptChecks {
         for(boolean nomad:new boolean[]{false,true})for(int target=0;target<4;target++)for(boolean right:new boolean[]{false,true}) {
             final int quarter=target,current=(target+3)%4;
             main(test,() -> {
-                call(app,"setNomadMode",new Class<?>[]{boolean.class},nomad);
+                call(app,"setSimulating",new Class<?>[]{boolean.class},nomad);
                 prefs.edit().putBoolean("toolbox_right",right).apply();
                 call(app,"requestQuarter",new Class<?>[]{int.class},current);
                 call(get(app,"rotationPrompt"),"hide");
