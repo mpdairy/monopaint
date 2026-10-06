@@ -32,6 +32,9 @@ import android.view.View;
 @SuppressLint("ViewConstructor")
 final class DrawingPad extends View {
     private final PaintActivity app;
+    // Nomad's digitizer reports tilt in the panel's landscape frame (see
+    // DirectEink's mount); positions arrive already turned to portrait.
+    private final boolean landscapeTilt;
     ToneDocument document;
     private Bitmap display;
     private ViewportBitmap viewportBitmap;
@@ -100,7 +103,7 @@ final class DrawingPad extends View {
     private long penGuardUntil;
 
     DrawingPad(PaintActivity app) {
-        super(app); this.app = app;
+        super(app); this.app = app; landscapeTilt = app.nomadPanel();
         setContentDescription("Drawing canvas; use the pen to paint. Unlock Zoom to pinch and pan with two fingers.");
         input = new NativePen(this, (bitmap, region) -> bitmap.recycle());
     }
@@ -430,6 +433,7 @@ final class DrawingPad extends View {
         pagePoint(x, y);
         // The page stays device-relative, as do Supernote's signed tilt-degree axes.
         // Transform positions only; treating ORIENTATION as Android azimuth corrupts tilt.
+        if (landscapeTilt) { float panelX = tiltX; tiltX = -tiltY; tiltY = panelX; }
         stroke.sample(samplePoint[0], samplePoint[1], pressure, tiltX, tiltY);
     }
 

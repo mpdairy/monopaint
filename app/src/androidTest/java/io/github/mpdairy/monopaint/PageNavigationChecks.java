@@ -13,11 +13,16 @@ import java.lang.reflect.Method;
 /** Uses NomadUiChecks' disposable book and the outer suite's session restoration. */
 final class PageNavigationChecks {
     static void run(Instrumentation test,PaintActivity app,StringBuilder report)throws Exception {
-        verifyRaster(report);
-        benchmark(test,app,report);
+        run(test,app,report,false);
+    }
+    static void runFeedback(Instrumentation test,PaintActivity app,StringBuilder report)throws Exception {
+        run(test,app,report,true);
+    }
+    private static void run(Instrumentation test,PaintActivity app,StringBuilder report,boolean feedbackOnly)throws Exception {
+        if(!feedbackOnly) {verifyRaster(report);benchmark(test,app,report);}
         SharedPreferences prefs=(SharedPreferences)get(app,"preferences");
         SelectionFeedback feedback=(SelectionFeedback)get(app,"selectionFeedback");
-        for(boolean nomad:new boolean[]{false,true})for(int turn=0;turn<4;turn++)for(boolean right:new boolean[]{false,true}) {
+        for(boolean nomad:app.nomadPanel()?new boolean[]{true}:new boolean[]{false,true})for(int turn=0;turn<4;turn++)for(boolean right:new boolean[]{false,true}) {
             final int quarter=turn;
             DrawingBook book=new DrawingBook(new ToneDocument(640,720));
             book.current().begin();for(int y=80;y<260;y++)book.current().paintSpan(70,250,y,40);book.current().finish();
@@ -74,10 +79,17 @@ final class PageNavigationChecks {
             if(nomad) {
                 check(get(app,"pagePanel")!=null,"Page panel stays available after navigation");
                 if(turn==0&&!right)screenshot(test,app,"nomad-pages.png");
+                RectF paper=bounds((View)get(app,"pad"));
+                float outsideX=paper.centerX(),outsideY=paper.centerY();
+                check(!bounds((View)get(app,"pagePanel")).contains(outsideX,outsideY),"Dismissal tap is outside the page popup");
                 long down=SystemClock.uptimeMillis();
-                event(test,MotionEvent.ACTION_DOWN,down,120,120);event(test,MotionEvent.ACTION_UP,down,120,120);idle(test);
+                event(test,MotionEvent.ACTION_DOWN,down,outsideX,outsideY);event(test,MotionEvent.ACTION_UP,down,outsideX,outsideY);idle(test);
                 check(get(app,"pagePanel")==null&&!book.current().canUndo(),"Outside gesture dismisses without painting");
-                check(get(get(app,"pad"),"direct")!=null,"Canvas fast path resumes after popup closes");
+                // Closing the embedded panel requests layout; reconnect runs
+                // after that frame, which may outlast the input-idle wait.
+                for(int i=0;i<40&&get(get(app,"pad"),"direct")==null;i++) {SystemClock.sleep(50);test.waitForIdleSync();}
+                check(get(get(app,"pad"),"direct")!=null,"Canvas fast path resumes after popup closes: focus="+app.hasWindowFocus()
+                        +" covered="+app.canvasCovered()+" layout="+app.previewFrame.isLayoutRequested());
                 // The real compact-button touch target also opens the retained popup.
                 RectF button=bounds(compact);down=SystemClock.uptimeMillis();
                 event(test,MotionEvent.ACTION_DOWN,down,button.centerX(),button.centerY());
@@ -85,12 +97,15 @@ final class PageNavigationChecks {
                 check(get(app,"pagePanel")!=null,"Compact button opens page options by touch");
                 main(test,app::onBackPressed);idle(test);check(get(app,"pagePanel")==null,"Back closes page popup");
             }
-            overview(test,app,book,nomad,turn==0&&!right);
+            if(!feedbackOnly)overview(test,app,book,nomad,turn==0&&!right);
             report.append("PASS: ").append(nomad?"Nomad compact popup":"Manta expanded pages")
-                    .append(", previous/next/add, thumbnail artwork/highlight/jump/Back, turn=").append(turn).append(" right=").append(right).append(".\n");
+                    .append(", previous/next/add, press/release mode=").append(DirectEink.fastBinaryControls()?9:7)
+                    .append(", turn=").append(turn).append(" right=").append(right).append(".\n");
         }
-        overviewScroll(test,app);
-        report.append("PASS: 100-page thumbnail grid scrolls to the current page and jumps across the book.\n");
+        if(!feedbackOnly) {
+            overviewScroll(test,app);
+            report.append("PASS: 100-page thumbnail grid scrolls to the current page and jumps across the book.\n");
+        }
     }
     private static void overview(Instrumentation test,PaintActivity app,DrawingBook book,boolean nomad,boolean capture)throws Exception {
         if(nomad){main(test,() -> call(app,"showPagePanel"));idle(test);}
@@ -177,19 +192,35 @@ final class PageNavigationChecks {
     private static void press(Instrumentation test,PaintActivity app,View button,DrawingBook book,int expected,SelectionFeedback feedback)throws Exception {
         RectF bounds=bounds(button);long down=SystemClock.uptimeMillis();int before=book.index(),submitted=feedback.submitted;
         int pageSubmissions=(Integer)get(get(app,"pad"),"pagePresentCount");
-        check(PanelCoordinates.fullyVisible(button,new android.graphics.Rect(0,0,button.getWidth(),button.getHeight())),
-                "Page buttons must not be clipped, including density rounding");
-        event(test,MotionEvent.ACTION_DOWN,down,bounds.centerX(),bounds.centerY());
-        main(test,() -> {
-            check((Boolean)get(get(button,"press"),"pressed"),"Press is visibly retained on pen-down");
-            check(feedback.submitted>submitted,"Press uses fast display before loading");
-            check(book.index()==before,"Page work waits until click");
-        });
-        event(test,MotionEvent.ACTION_UP,down,bounds.centerX(),bounds.centerY());idle(test);
-        check(book.index()==expected,"Correct page after action");
-        check((Integer)get(get(app,"pad"),"pagePresentCount")>pageSubmissions,"Page artwork submitted through fast display");
-        SystemClock.sleep(250);test.waitForIdleSync();
-        check(!(Boolean)get(get(button,"press"),"pressed"),"Press clears after completion");
+        android.widget.TextView counter=(android.widget.TextView)get(app,get(app,"pagePanel")!=null?"popupPageNumber":"pageNumber");
+        boolean[] releasedBeforeCounter={false};
+        android.text.TextWatcher watcher=new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s,int start,int count,int after) {}
+            public void onTextChanged(CharSequence s,int start,int before,int count) {
+                releasedBeforeCounter[0]=!((PageActionButton)button).press.pressed;
+            }
+            public void afterTextChanged(android.text.Editable text) {}
+        };
+        main(test,() -> counter.addTextChangedListener(watcher));
+        try {
+            check(PanelCoordinates.fullyVisible(button,new android.graphics.Rect(0,0,button.getWidth(),button.getHeight())),
+                    "Page buttons must not be clipped, including density rounding");
+            event(test,MotionEvent.ACTION_DOWN,down,bounds.centerX(),bounds.centerY());
+            main(test,() -> {
+                check((Boolean)get(get(button,"press"),"pressed"),"Press is visibly retained on pen-down");
+                check(feedback.submitted>submitted,"Press uses fast display before loading");
+                check(feedback.lastDisplayMode==(DirectEink.fastBinaryControls()?9:7),"Page arrow press uses device-specific fast mode");
+                check(book.index()==before,"Page work waits until click");
+            });
+            event(test,MotionEvent.ACTION_UP,down,bounds.centerX(),bounds.centerY());idle(test);
+            check(book.index()==expected,"Correct page after action");
+            check(releasedBeforeCounter[0],"Press clears before page-counter redraw and disabled-arrow dimming");
+            check((Integer)get(get(app,"pad"),"pagePresentCount")>pageSubmissions,"Page artwork submitted through fast display");
+            SystemClock.sleep(250);test.waitForIdleSync();
+            check(!(Boolean)get(get(button,"press"),"pressed"),"Press clears after completion");
+            check(feedback.submitted==submitted+2,"Exactly one press and one release, with no delayed repeat");
+            check(feedback.lastDisplayMode==(DirectEink.fastBinaryControls()?9:7),"Page arrow release uses device-specific fast mode");
+        } finally {main(test,() -> counter.removeTextChangedListener(watcher));}
     }
     private static void verifyRaster(StringBuilder report) {
         int width=257,height=193;

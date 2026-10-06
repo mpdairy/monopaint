@@ -145,6 +145,20 @@ Use `-e palettePerfOnly true` for a focused color-handler timing comparison,
 including main-window layout counts and retention of existing toolbar views.
 It restores the original session. These measurements do not establish physical
 panel latency.
+Use `-e colorBarOnly true` for focused Nomad/Manta color-bar checks: pen and
+finger drags with reversals in all rotations and both hands, immediate final
+position, requests bounded to the old and new marker positions, no-op
+suppression, and rejection of nonbinary pixels on the Nomad fast path.
+It also checks wetness drags and wet/dry toggles in every rotation/hand,
+button outlines, layer-eye icons, zoom labels, nonfocusable popup swatches,
+and automatic mode-7 fallback for control patches with genuine gray.
+The suite restores the original drawing, page, and settings. These assertions
+verify software behavior; physical trailing still needs visual confirmation.
+Use `-e pageFeedbackOnly true` for actual pen presses on Previous/Next/Add,
+checking fast press and release requests, page boundaries, unchanged artwork,
+compact-panel dismissal and canvas reconnection in all rotations and both
+hands. Runs on actual Nomad and Manta (including its compact simulation),
+with the original drawing, active page and settings restored afterward.
 Use `-e toolbarOnly true` for icon rows, layer visibility, saved toolbar ordering,
 rotated move-up/down touch targets, always-on instant selection, retained hidden-tool
 settings and favorites, and eyedropper sampling through actual pen input in all

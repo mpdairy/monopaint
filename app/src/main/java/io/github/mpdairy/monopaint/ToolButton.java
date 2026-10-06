@@ -40,6 +40,7 @@ final class ToolButton extends Button {
     private Drawable centerIcon;
     private int iconResource;
     private final Paint markerPaint = new Paint();
+    private final ControlRaster controlRaster = new ControlRaster();
 
     ToolButton(android.content.Context context, ControlHost host) {
         super(context);
@@ -48,6 +49,10 @@ final class ToolButton extends Button {
         setStateListAnimator(null); setElevation(0);
     }
     private int dp(float value) { return Ui.dp(getContext(), value); }
+
+    @Override public void draw(Canvas canvas) {
+        controlRaster.draw(canvas,getWidth(),getHeight(),super::draw);
+    }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
         press.onTouch(event, isEnabled() && !host.busy());
@@ -62,7 +67,7 @@ final class ToolButton extends Button {
         press.releaseLater();
         return handled;
     }
-    @Override protected void onDetachedFromWindow() { press.detached(); super.onDetachedFromWindow(); }
+    @Override protected void onDetachedFromWindow() { press.detached(); controlRaster.close(); super.onDetachedFromWindow(); }
     @Override public boolean isSelected() {
         return selectionOutline || settingsArrow != null || alwaysDot ? marked : super.isSelected();
     }

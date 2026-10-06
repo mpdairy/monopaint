@@ -106,5 +106,5 @@ Run `bash scripts/export_png.sh drawing.tsm 2 output.png` to export page two.
 The optional final argument is `calibrated` (default), `raw` (logical tones) or
 `dots` (the exact tablet pixel pattern). The exporter checks decoded PNG pixels
 against its output buffer. The in-app **Export PNG…** menu action writes the same `calibrated` pixels
-to `Pictures/MonoPaint`, turned to the current app orientation: one page as
+to `Pictures/MonoPaint` (or a folder chosen with **Change folder…**), turned to the current app orientation: one page as
 `name.png`, or every page as `name001.png`, `name002.png`, …

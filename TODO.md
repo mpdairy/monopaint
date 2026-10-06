@@ -61,12 +61,26 @@ the backlog. Tentative ideas and suggestions below still need a design decision.
   Works inside either full-screen Manta or the centered Nomad preview.
   Pressing the prompt gives immediate fast-path feedback before the app turns.
 
-- [ ] **Actual Nomad display support.** The native fast display guard currently
-  requires the Manta's 1920 × 2560 buffer, stride 1920 and buffer size 4915200.
-  Preview mode retains that verified Manta path. Supporting a real Nomad needs
-  its driver buffer/stride/ABI checked, plus physical pen latency and refresh
-  tests; changing the Android model-name check would not establish support
-  (the connected Manta itself reports “Supernote Nomad”). Separate future work.
+- [x] **Actual Nomad display support — implemented; physical pen acceptance pending.**
+  Nomad's driver buffer is 1872 × 1404, stride 1872, size 2628288: the panel's
+  landscape scan order (firmware `hwrota=270`). A read-only dump of the shared
+  plane shows panel (x,y) stored at (y, 1404−x); `libeinkutils` rotates its
+  rectangles before the same region ioctl. `DirectEink` composes that fixed
+  mount onto its panel transform; the native guard accepts only the two
+  queried layouts. A real Nomad also uses the compact header (Pages button).
+  Tool-selection feedback was verified in the dumped plane. User confirms
+  smooth painting (2026-10-05). Pen tilt arrived 90° off (thin Flat on the
+  broad side): DrawingPad turns Nomad tilt from the landscape frame using the
+  display mount's direction. User confirms the fixed tilt works (2026-10-05).
+  After the firmware update (now Chauvet.E103.2606141001.2389, as on Manta)
+  layout and tilt are unchanged. Color-bar dragging initially left a solid
+  trail with mode 7; pacing could not remove it without choppiness. The binary
+  color bar now uses the firmware pen plane and mode 9/flags 1 without pacing.
+  User confirms the dots follow perfectly (2026-10-05). See DIRECT_GRAY.md
+  for the verified pixel format. All binary control patches now use that path,
+  including wetness and swatches; button edges use consistent dot rendering.
+  The 60 ms workaround is removed. Gray patches, Manta feedback and canvas
+  drawing retain mode 7.
 
 - [x] **Clear button dropdown — implemented; hands-on acceptance pending.**
   Clear offers Clear current layer and Clear all layers. Both are one undoable

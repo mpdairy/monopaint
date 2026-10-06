@@ -21,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 /** Controlled app-local stylus replay. Measures firmware bitmap widths, never physical latency. */
 public final class WidthInstrumentation extends Instrumentation {
     private boolean displayProbeOnly, paletteOnly, palettePerfOnly;
+    private boolean colorBarOnly;
+    private boolean pageFeedbackOnly;
     private boolean paintOnly, shapesOnly, shapesPerfOnly;
     private boolean settingsOnly, brushOnly, pickerOnly, nomadOnly, pagesOnly;
     boolean rotationPromptOnly;
@@ -47,6 +49,9 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onCreate(Bundle args) {
         super.onCreate(args);
         displayProbeOnly = args != null && "true".equals(args.getString("displayProbeOnly"));
+        colorBarOnly = args != null && "true".equals(args.getString("colorBarOnly"));
+        pageFeedbackOnly = args != null && "true".equals(args.getString("pageFeedbackOnly"));
+        colorBarOnly |= pageFeedbackOnly;
         settingsOnly = args != null && "true".equals(args.getString("settingsOnly"));
         pickerOnly = args != null && "true".equals(args.getString("pickerOnly"));
         nomadOnly = args != null && "true".equals(args.getString("nomadOnly"));
@@ -73,9 +78,10 @@ public final class WidthInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
-        if (settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
+        if (colorBarOnly || settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
-                if (settingsOnly) ShapeUiChecks.run(this,report,false,false,false,false,true);
+                if (colorBarOnly) ColorBarChecks.run(this,report,pageFeedbackOnly);
+                else if (settingsOnly) ShapeUiChecks.run(this,report,false,false,false,false,true);
                 else if (pagesOnly) ShapeUiChecks.run(this,report,false,false,false,true);
                 else if (nomadOnly) ShapeUiChecks.run(this,report,false,false,true);
                 else if (pickerOnly) ShapeUiChecks.run(this,report,false,true);

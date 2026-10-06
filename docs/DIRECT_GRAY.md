@@ -3,6 +3,81 @@
 The current dot brush uses the measured coverage calibration documented in
 [GRAY_DENSITY.md](GRAY_DENSITY.md). Its display requests are unchanged.
 
+## Nomad control feedback (2026-10-05)
+
+The Nomad color bar now uses the firmware pen request: mode 9, flags 1,
+with offset equal to the queried plane size (`info[3]`, 2628288 bytes).
+This is restricted to the exact 1872 × 1404 driver layout and opaque binary
+control patches. SelectionFeedback examines the actual dirty rectangle,
+including its border: black/white patches use mode 9; patches containing gray
+or transparent pixels keep mode 7. Manta controls and all canvas drawing keep
+mode 7. The previous 60 ms control delay and its temporary tuning knob are
+removed; updates are synchronous without delayed callbacks.
+
+The wetness slider and palette swatches already draw binary pixels. Nomad
+ToolButtons render their icons, labels, borders and press outlines into a
+small reusable bitmap and convert gray edges to the existing black/white dot
+pattern. This raster is used in normal Android redraws as well as direct
+captures, so the appearance is consistent. Canvas draw filters alone were
+insufficient because VectorDrawable caches antialiased pixels internally.
+The scratch bitmap is recycled on resize/detachment. Manta button rendering
+is unchanged.
+
+The installed Nomad `libeinkutils.so` matches the reference SHA-256 below.
+`initEbc` at 0x6180–0x61a0 puts the pen plane one plane-size after the base;
+`postEinkPWRectFast` at 0x6d1c–0x6d54 submits that offset with mode 9/flags 1.
+The `rgba888_to_gray8b16_HL_rotation` converter compares exact RGBA values,
+writes the matching color's low nibble, and leaves other pixels untouched.
+Calling the actual installed converter on private test memory confirmed that
+black writes 0x00 and white writes 0x0f, with gray, transparent and border
+pixels untouched. Our opaque binary patch supplies both colors, including
+white pixels that remove the old marker. JNI rejects nonbinary pixels before
+any shared-memory write; selection feedback then falls back to Android.
+
+The user confirmed that the markers follow the pen perfectly on the physical
+Nomad with this path. Buffer assertions alone cannot establish that result.
+This does not establish fast arbitrary-gray painting or require global pen
+writing state, firmware-library loading, or a new waveform on Manta.
+Focused device checks passed on both tablets for pen/finger drags, reversals,
+all four rotations and both hands, bounded requests, immediate updates,
+no-op suppression, and binary-format rejection. Expanded checks also passed
+for wetness pen/finger drags in all rotations/hands, wet/dry toggles, button
+dots and rounded press outlines, layer-eye icons, zoom text, nonfocusable
+popup swatches, and genuine-gray fallback. A normal Nomad screenshot confirmed
+that button rendering uses only black/white, matching direct captures.
+Physical acceptance of the expanded controls is separate from the earlier
+user-confirmed color-bar result.
+
+The user subsequently confirmed smoother controls and no sidebar flashing.
+PageActionButton (page arrows/Add, Pages, file menu and rotation prompt) had
+remained outside the binary renderer. It now shares ControlRaster with
+ToolButton, so its press/release patches can use mode 9 too. Page artwork,
+counter updates and disabled-button dimming retain their existing behavior.
+On-device page-feedback checks passed in all four rotations and both toolbar
+positions: mode 9 on Nomad, mode 7 on Manta (expanded and compact layouts).
+They cover Previous/Next/Add press and release, page boundaries, preserved
+artwork, popup dismissal and canvas reconnection. The original drawings,
+active pages, settings and reopened screenshots matched after testing.
+The user then reported occasional repeated flashes of the page-button box.
+Page actions had retained that box for 200 ms after navigation, across Android
+counter redraws and whole-button alpha dimming at the first/last page; direct
+captures omit that parent-applied alpha. Actions now clear the fast outline
+before changing the page or opening a panel. The checks require exactly one
+press/release pair and verify that the box is already clear when the counter
+changes. These checks passed on both tablets in every rotation/toolbar position;
+saved pages, settings and reopened canvases matched the pre-update backups.
+Physical acceptance of this follow-up remains to be confirmed.
+
+A preliminary test tried
+reading the shared display planes after submission and saw mismatches on
+both tablets; those shared scratch planes are not a stable record of the
+submitted pixels. The final checks do not equate them with physical output.
+Build and lint completed (zero lint errors). After testing, all saved pages,
+the active page, drawing path and settings matched the pre-test backups;
+both regular apps were reopened and their canvases checked.
+
+## Earlier experiments
+
 Current comparison: [PIXEL_BLOCK.md](PIXEL_BLOCK.md) records the binary-dot
 evidence from Atelier and the new **Shade: dots** option. Driver mode 7 /
 flags 0 remains the baseline; 0.11 removes the failed GL/mode-4 experiment.
@@ -50,8 +125,9 @@ opaque bitmap branch, and **flags byte 0**. The latter's request setup is at
 0x6854–0x687c. In contrast, Atelier's presenter sets the low three flag bits
 to 1, preserving the other bits. Our previous adapter supplied flags byte 1.
 The system's `postEinkPWRectFast` uses mode 9 and flags 1/5, but also a
-different pixel conversion. We do not assume mode 9 supports our opaque
-16-level canvas, and do not use it.
+different pixel conversion. At this stage mode 9 was not used; support for an
+opaque 16-level canvas was not established. The later binary-control work
+above is narrower.
 
 0.9 exposes `Update: bitmap` (flags 0, default) and `Update: previous` (flags 1,
 the 0.8 request). This changes only the flags byte of direct gray/white

@@ -3,15 +3,18 @@ package io.github.mpdairy.monopaint;
 import android.app.AlertDialog;
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.UriPermission;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -25,7 +28,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Exports the current page, or every page as numbered files, to calibrated PNGs in Pictures/MonoPaint. */
+/** Exports the current page, or every page as numbered files, to calibrated PNGs in Pictures/MonoPaint or a chosen folder. */
 final class PngExport {
     static final String FOLDER = Environment.DIRECTORY_PICTURES + "/MonoPaint";
     // One queue so overlapping exports never interleave writes to the same names.
@@ -33,9 +36,14 @@ final class PngExport {
     private final PaintActivity app;
     private final DrawingBook.Snapshot book;
     private final int rotation;
+    /** The chosen folder, or null for {@link #FOLDER}; {@link #folder} is its name for messages. */
+    private Uri tree;
+    private String folder = FOLDER;
 
     private PngExport(PaintActivity app, DrawingBook.Snapshot book, int rotation) {
         this.app = app; this.book = book; this.rotation = rotation;
+        String saved = app.prefs.exportFolder();
+        if (!saved.isEmpty()) useFolder(Uri.parse(saved));
     }
 
     /** Asks which pages and what name, then exports the book as it is now. */
@@ -57,9 +65,10 @@ final class PngExport {
         name.setHint("File name"); name.setContentDescription("File name"); name.setSelection(name.length());
         content.addView(name);
         TextView where = new TextView(app); content.addView(where);
+        Button change = new Button(app); change.setText("Change folder…"); content.addView(change);
         Runnable describe = () -> {
             String base = base(name.getText().toString());
-            where.setText("Saves to " + FOLDER + "/" + (all.isChecked()
+            where.setText("Saves to " + folder + "/" + (all.isChecked()
                     ? numbered(base, 0) + " … " + numbered(base, book.count() - 1) : base + ".png"));
         };
         scope.setOnCheckedChangeListener((group, id) -> describe.run());
@@ -69,6 +78,9 @@ final class PngExport {
             @Override public void afterTextChanged(Editable s) { describe.run(); }
         });
         describe.run();
+        change.setOnClickListener(v -> app.pickFolder(picked -> {
+            app.prefs.setExportFolder(picked.toString()); useFolder(picked); describe.run();
+        }));
         AlertDialog dialog = app.showDialog(new AlertDialog.Builder(app).setTitle("Export PNG").setView(content)
                 .setPositiveButton("Export", null).setNegativeButton("Cancel", null));
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
@@ -107,7 +119,7 @@ final class PngExport {
                 app.showDialog(new AlertDialog.Builder(app)
                         .setTitle(count == 1 && files.length == 1 ? "Replace “" + files[0] + "”?" : "Replace " + count + " files?")
                         .setMessage((count == 1 ? "A file" : "Files") + " with " + (count == 1 ? "this name" : "these names")
-                                + " already exist" + (count == 1 ? "s" : "") + " in " + FOLDER + ".")
+                                + " already exist" + (count == 1 ? "s" : "") + " in " + folder + ".")
                         .setPositiveButton("Replace", (d, w) -> export(files, first)).setNegativeButton("Cancel", null));
             });
         });
@@ -118,8 +130,8 @@ final class PngExport {
         WORKER.execute(() -> {
             try {
                 for (int i = 0; i < files.length; i++) write(files[i], first + i);
-                finish(files.length == 1 ? "Exported " + FOLDER + "/" + files[0]
-                        : "Exported " + files.length + " pages to " + FOLDER);
+                finish(files.length == 1 ? "Exported " + folder + "/" + files[0]
+                        : "Exported " + files.length + " pages to " + folder);
             } catch (RuntimeException | IOException error) {
                 android.util.Log.e(ProbeActivity.TAG, "PNG export failed", error);
                 finish("Export failed: " + error.getMessage());
@@ -135,7 +147,8 @@ final class PngExport {
         Bitmap upright = PageOverview.turned(image, rotation);
         if (upright != image) image.recycle();
         try {
-            if (Build.VERSION.SDK_INT < 29) {
+            if (tree != null) writeTree(upright, file);
+            else if (Build.VERSION.SDK_INT < 29) {
                 try (OutputStream output = new FileOutputStream(legacyFile(file))) { encode(upright, output, file); }
             } else writeShared(upright, file);
         } finally { upright.recycle(); }
@@ -143,8 +156,29 @@ final class PngExport {
     private static void encode(Bitmap image, OutputStream output, String file) throws IOException {
         if (!image.compress(Bitmap.CompressFormat.PNG, 100, output)) throw new IOException("Could not encode " + file);
     }
+    /** Replaces the content at {@code uri}. */
+    private static void encode(Bitmap image, ContentResolver resolver, Uri uri, String file) throws IOException {
+        try (OutputStream output = resolver.openOutputStream(uri, "wt")) {
+            if (output == null) throw new IOException("Cannot write " + file);
+            encode(image, output, file);
+        }
+    }
 
-    // Storage: shared Pictures through MediaStore, or this app's pictures folder before Android 10.
+    // Storage: a chosen folder, shared Pictures through MediaStore, or this app's pictures folder before Android 10.
+
+    /** Uses a chosen folder while the app still has access to it; otherwise Pictures/MonoPaint. */
+    private void useFolder(Uri chosen) {
+        tree = null; folder = FOLDER;
+        for (UriPermission permission : app.getContentResolver().getPersistedUriPermissions()) {
+            if (!permission.getUri().equals(chosen) || !permission.isWritePermission()) continue;
+            Uri root = DocumentsContract.buildDocumentUriUsingTree(chosen, DocumentsContract.getTreeDocumentId(chosen));
+            try (Cursor cursor = app.getContentResolver().query(root,
+                    new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+                if (cursor == null || !cursor.moveToFirst()) return;
+                tree = chosen; folder = cursor.getString(0);
+            } catch (RuntimeException missing) { return; }
+        }
+    }
 
     private File legacyFile(String file) throws IOException {
         File folder = new File(app.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "MonoPaint");
@@ -152,6 +186,7 @@ final class PngExport {
         return new File(folder, file);
     }
     private boolean exists(String file) throws IOException {
+        if (tree != null) return treeFile(file) != null;
         return Build.VERSION.SDK_INT < 29 ? legacyFile(file).exists() : shared(file) != null;
     }
     /** This app's earlier export with that name; other apps' images are not visible without a read permission. */
@@ -177,10 +212,8 @@ final class PngExport {
             uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
             if (uri == null) throw new IOException("Cannot create " + file);
         }
-        try (OutputStream output = resolver.openOutputStream(uri, "wt")) {
-            if (output == null) throw new IOException("Cannot write " + file);
-            encode(image, output, file);
-        } catch (IOException | RuntimeException error) {
+        try { encode(image, resolver, uri, file); }
+        catch (IOException | RuntimeException error) {
             if (created) resolver.delete(uri, null, null);
             throw error;
         }
@@ -188,6 +221,33 @@ final class PngExport {
             // Hidden from other apps until complete.
             ContentValues values = new ContentValues(); values.put(MediaStore.Images.Media.IS_PENDING, 0);
             resolver.update(uri, values, null, null);
+        }
+    }
+
+    /** The chosen folder's file with that name, if any. */
+    private Uri treeFile(String file) {
+        String parent = DocumentsContract.getTreeDocumentId(tree);
+        try (Cursor cursor = app.getContentResolver().query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent),
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME},
+                null, null, null)) {
+            while (cursor != null && cursor.moveToNext())
+                if (file.equals(cursor.getString(1))) return DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0));
+        }
+        return null;
+    }
+    private void writeTree(Bitmap image, String file) throws IOException {
+        ContentResolver resolver = app.getContentResolver();
+        Uri uri = treeFile(file);
+        boolean created = uri == null;
+        if (created) {
+            Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
+            uri = DocumentsContract.createDocument(resolver, parent, "image/png", file);
+            if (uri == null) throw new IOException("Cannot create " + file);
+        }
+        try { encode(image, resolver, uri, file); }
+        catch (IOException | RuntimeException error) {
+            if (created) try { DocumentsContract.deleteDocument(resolver, uri); } catch (IOException | RuntimeException ignored) { }
+            throw error;
         }
     }
 }

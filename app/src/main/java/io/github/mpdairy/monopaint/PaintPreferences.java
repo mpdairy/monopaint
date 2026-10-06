@@ -30,6 +30,9 @@ final class PaintPreferences {
     /** Dry brush strokes anti-alias their edges, for cleaner exports. */
     boolean smoothEdges() { return flag("smooth_edges", false); }
     void setSmoothEdges(boolean value) { setFlag("smooth_edges", value); }
+    /** Folder chosen for PNG exports, as a document-tree URI; empty means Pictures/MonoPaint. */
+    String exportFolder() { return store.getString("export_folder", ""); }
+    void setExportFolder(String uri) { store.edit().putString("export_folder", uri).apply(); }
     boolean navigationLocked() { return flag("navigation_locked", true); }
     void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
     /** Whether the user has picked a shape, so Shapes shows that shape's icon. */

@@ -3,6 +3,7 @@ package io.github.mpdairy.monopaint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
@@ -11,7 +12,9 @@ import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.DocumentsContract;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -29,6 +32,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * The painting screen. It owns the document and current selection, builds the layout,
@@ -278,8 +282,13 @@ public final class PaintActivity extends Activity implements ControlHost {
             button.press.set(true); pageActionPending = true;
             // Submit the press before page work or the full orientation change.
             button.post(() -> {
-                try { if (resumed && !destroyed && button.isAttachedToWindow()) { setPickingShade(false); action.run(); } }
-                finally { pageActionPending = false; button.press.releaseLater(); }
+                try {
+                    // End the press before page counters, disabled arrows or a
+                    // new panel request an Android frame. Retaining the box for
+                    // 200 ms lets those redraws replay (and dim) its fast pixels.
+                    button.press.set(false);
+                    if (resumed && !destroyed && button.isAttachedToWindow()) { setPickingShade(false); action.run(); }
+                } finally { pageActionPending = false; }
             });
         });
         return button;
@@ -450,7 +459,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         LinearLayout pageSide = menuAtEnd ? leftHeader : rightHeader;
         menuSide.addView(menuControls, new LinearLayout.LayoutParams(-2, dp(48)));
         // Nomad's narrower header replaces the page row with a Pages button.
-        if (nomadMode()) pageSide.addView(pagesButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        if (compactLayout()) pageSide.addView(pagesButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
         else pageSide.addView(headerControls);
     }
     /** Turns the app to a quarter turn from the tablet's natural portrait. */
@@ -470,15 +479,20 @@ public final class PaintActivity extends Activity implements ControlHost {
         dismiss(toolPicker);
         applyToolboxSide();
     }
-    boolean supportsNomadSimulation() {
+    boolean supportsNomadSimulation() { return supernotePanel(1920, 2560); }
+    /** A real Nomad, rather than the simulated Nomad area on a Manta. */
+    boolean nomadPanel() { return supernotePanel(1404, 1872); }
+    private boolean supernotePanel(int width, int height) {
         // The Manta also reports "Supernote Nomad" as its model. Use the physical panel,
         // independent of app rotation, window size, density, or the simulation itself.
         android.view.Display.Mode mode = getWindowManager().getDefaultDisplay().getMode();
         return "Supernote".equalsIgnoreCase(android.os.Build.MANUFACTURER)
-                && Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == 1920
-                && Math.max(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == 2560;
+                && Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == width
+                && Math.max(mode.getPhysicalWidth(), mode.getPhysicalHeight()) == height;
     }
     boolean nomadMode() { return supportsNomadSimulation() && prefs.nomadMode(); }
+    /** Nomad-width controls, on a real Nomad or in the Manta's simulation. */
+    boolean compactLayout() { return nomadPanel() || nomadMode(); }
     void setNomadMode(boolean enabled) {
         if (busy()) return;
         enabled = enabled && supportsNomadSimulation();
@@ -755,7 +769,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         android.view.Window window = dialog.getWindow();
         if (window == null) return;
         int width = Math.min(dp(desiredWidth), root.getWidth()-dp(32));
-        boolean nomad = nomadMode();
+        boolean nomad = compactLayout();
         if (appRotation == Surface.ROTATION_0 && !nomad) { window.setLayout(width, -2); return; }
         ViewGroup content = window.findViewById(android.R.id.content);
         if (content == null || content.getChildCount() != 1 || content.getChildAt(0) instanceof QuarterTurnLayout) return;
@@ -811,6 +825,29 @@ public final class PaintActivity extends Activity implements ControlHost {
             if (book == savedBook) { drawingName = path; recovery(); }
             message("Saved " + path);
         }));
+    }
+    private static final int PICK_FOLDER = 1;
+    private Consumer<Uri> folderPicked;
+    /** Opens Android's folder picker at Supernote's EXPORT folder; keeps access to the chosen folder. */
+    void pickFolder(Consumer<Uri> picked) {
+        folderPicked = picked;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                .putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                        DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:EXPORT"));
+        try { startActivityForResult(intent, PICK_FOLDER); }
+        catch (android.content.ActivityNotFoundException error) { folderPicked = null; message("No folder picker on this tablet"); }
+    }
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != PICK_FOLDER) return;
+        Consumer<Uri> picked = folderPicked; folderPicked = null;
+        if (picked == null || result != RESULT_OK || data == null || data.getData() == null) return;
+        Uri tree = data.getData();
+        getContentResolver().takePersistableUriPermission(tree,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        picked.accept(tree);
     }
     private void exportPng() {
         pad.dryWet();

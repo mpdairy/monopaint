@@ -17,6 +17,7 @@ final class PageActionButton extends ImageButton {
     /** Header buttons keep their icon upright when the header strip turns. */
     private final boolean header;
     final PressOutline press;
+    private final ControlRaster controlRaster = new ControlRaster();
 
     PageActionButton(Context context, ControlHost host, boolean header) {
         super(context);
@@ -24,6 +25,9 @@ final class PageActionButton extends ImageButton {
         setBackgroundColor(Color.WHITE); setStateListAnimator(null); setElevation(0);
     }
     private boolean blocked() { return host.busy() || host.pageActionPending(); }
+    @Override public void draw(Canvas canvas) {
+        controlRaster.draw(canvas,getWidth(),getHeight(),super::draw);
+    }
     @Override public boolean onTouchEvent(MotionEvent event) {
         press.onTouch(event, isEnabled() && !blocked());
         boolean handled = super.onTouchEvent(event);
@@ -39,5 +43,5 @@ final class PageActionButton extends ImageButton {
         super.onDraw(canvas); canvas.restore();
         press.draw(canvas);
     }
-    @Override protected void onDetachedFromWindow() { press.detached(); super.onDetachedFromWindow(); }
+    @Override protected void onDetachedFromWindow() { press.detached(); controlRaster.close(); super.onDetachedFromWindow(); }
 }

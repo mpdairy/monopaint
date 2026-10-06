@@ -15,12 +15,13 @@ typedef struct {
     uint8_t *pixels;
     size_t length;
     int width, height, stride;
+    int offset;
     uint8_t *previous;
     int canvas_width, canvas_height, x, y;
     uint8_t request_flags, display_mode;
 } Display;
 
-// Installed Manta HT driver ABI, confirmed against Atelier's region update.
+// Installed Manta/Nomad HT driver ABI, confirmed against Atelier's region update.
 // These are device interface declarations, not vendor implementation code.
 typedef struct {
     int32_t left, top, right, bottom;
@@ -34,6 +35,29 @@ static void fail(JNIEnv *env, const char *message) {
     if (type) (*env)->ThrowNew(env,type,message);
 }
 
+// Restrict the experiment to queried layouts, never guess an ABI from Android's
+// model property (the Manta incorrectly says Nomad). Manta's 1920x2560 buffer
+// matches the screen; Nomad's 1872x1404 buffer is the panel's landscape scan
+// order (firmware hwrota=270), observed from the shared plane on 2026-10-05.
+static int supported_layout(const int32_t *info,int *width,int *height) {
+    *width=(uint32_t)info[1]&0xffff; *height=(uint32_t)info[1]>>16;
+    if (*width==1920 && *height==2560) return info[2]==1920 && info[3]==4915200;
+    if (*width==1872 && *height==1404) return info[2]==1872 && info[3]==2628288;
+    return 0;
+}
+
+// Packs the supported buffer size as width | height<<16, or 0 when unsupported.
+JNIEXPORT jint JNICALL
+Java_io_github_mpdairy_monopaint_DirectEink_nativeLayout(JNIEnv *env, jclass clazz) {
+    (void)env; (void)clazz;
+    int fd=open("/dev/ebc",O_RDWR|O_CLOEXEC);
+    if (fd<0) return 0;
+    int32_t info[32]={0};
+    int width=0,height=0,ok=ioctl(fd,0x48545201UL,info)==0 && supported_layout(info,&width,&height);
+    close(fd);
+    return ok ? width|height<<16 : 0;
+}
+
 JNIEXPORT jlong JNICALL
 Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz,
         jobject background,jint x,jint y,jint request_flags,jint display_mode) {
@@ -42,8 +66,9 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
     if (request_flags!=0 && request_flags!=1) {
         fail(env,"Unsupported display request flags"); return 0;
     }
-    // Mode 4 failed physical gray/white testing. Keep the mode 7 baseline.
-    if (display_mode!=7) {
+    // The pen presenter uses plane 1, mode 9/flags 1. Only exact binary
+    // control pixels are supported on that path; mode 7 retains gray drawing.
+    if (display_mode!=7 && !(display_mode==9 && request_flags==1)) {
         fail(env,"Unsupported display mode"); return 0;
     }
     int fd=open("/dev/ebc",O_RDWR|O_CLOEXEC);
@@ -52,11 +77,12 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
     if (ioctl(fd,0x48545201UL,info)!=0) {
         int error=errno; close(fd); fail(env,strerror(error)); return 0;
     }
-    // Restrict the experiment to the queried Manta layout, never guess an ABI
-    // from Android's model property (which incorrectly says Nomad here).
-    int width=(uint32_t)info[1]&0xffff, height=(uint32_t)info[1]>>16;
-    if (width!=1920 || height!=2560 || info[2]!=1920 || info[3]!=4915200) {
+    int width,height;
+    if (!supported_layout(info,&width,&height)) {
         close(fd); fail(env,"Unsupported display buffer layout"); return 0;
+    }
+    if (display_mode==9 && width!=1872) {
+        close(fd); fail(env,"Fast binary controls require the Nomad panel"); return 0;
     }
     AndroidBitmapInfo bitmap_info;
     if (AndroidBitmap_getInfo(env,background,&bitmap_info)!=ANDROID_BITMAP_RESULT_SUCCESS
@@ -75,6 +101,7 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeOpen(JNIEnv *env, jclass clazz
     if (!d) { munmap(pixels,length); close(fd); fail(env,"Display allocation failed"); return 0; }
     d->fd=fd; d->pixels=pixels; d->length=length;
     d->width=width; d->height=height; d->stride=info[2];
+    d->offset=display_mode==9 ? info[3] : 0;
     d->canvas_width=bitmap_info.width; d->canvas_height=bitmap_info.height; d->x=x; d->y=y;
     d->request_flags=(uint8_t)request_flags;
     d->display_mode=(uint8_t)display_mode;
@@ -118,6 +145,20 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativePresent(JNIEnv *env, jclass cl
     if (AndroidBitmap_lockPixels(env,bitmap,&source)!=ANDROID_BITMAP_RESULT_SUCCESS) {
         fail(env,"Cannot lock display bitmap"); return -1;
     }
+    // Do not threshold grays or submit partially converted data to the pen
+    // plane. The caller can use normal Android presentation on rejection.
+    if (d->display_mode==9) {
+        for (int y=top;y<bottom;y++) {
+            const uint8_t *src=(const uint8_t *)source+(size_t)y*info.stride+(size_t)left*4;
+            for (int x=left;x<right;x++,src+=4) {
+                if (src[3]!=255 || (src[0]!=0 && src[0]!=255)
+                        || src[1]!=src[0] || src[2]!=src[0]) {
+                    AndroidBitmap_unlockPixels(env,bitmap);
+                    fail(env,"Fast control pixels must be opaque black or white"); return -1;
+                }
+            }
+        }
+    }
     int changed=0;
     for (int y=top;y<bottom && !changed;y++) {
         const uint8_t *src=(const uint8_t *)source+(size_t)y*info.stride+(size_t)left*4;
@@ -134,12 +175,12 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativePresent(JNIEnv *env, jclass cl
     // Keep no-op suppression, without assuming single-pixel refresh bounds.
     for (int y=top;y<bottom;y++) {
         const uint8_t *src=(const uint8_t *)source+(size_t)y*info.stride+(size_t)left*4;
-        uint8_t *dst=d->pixels+(size_t)(y+oy)*d->stride+left+ox;
+        uint8_t *dst=d->pixels+d->offset+(size_t)(y+oy)*d->stride+left+ox;
         for (int x=left;x<right;x++,src+=4) *dst++=src[0]>>4;
     }
     __sync_synchronize();
     Update update={.left=left+ox,.top=top+oy,.right=right+ox,.bottom=bottom+oy,
-                   .offset=0,.mode=d->display_mode,.flags=d->request_flags};
+                   .offset=d->offset,.mode=d->display_mode,.flags=d->request_flags};
     int result=ioctl(d->fd,0x48545701UL,&update), error=errno;
     if (result>=0) {
         for (int y=top;y<bottom;y++) {
@@ -171,7 +212,7 @@ Java_io_github_mpdairy_monopaint_DirectEink_nativeReadGray(JNIEnv *env,jclass cl
     if (!d || x<0 || y<0 || x>=d->width || y>=d->height) {
         fail(env,"Invalid display sample"); return -1;
     }
-    return d->pixels[(size_t)y*d->stride+x];
+    return d->pixels[d->offset+(size_t)y*d->stride+x];
 }
 
 // Device-info query used by the installed Atelier's repaintC constructor.

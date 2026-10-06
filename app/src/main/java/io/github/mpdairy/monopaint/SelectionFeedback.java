@@ -13,6 +13,7 @@ import java.util.WeakHashMap;
 final class SelectionFeedback {
     boolean enabled = true;
     int submitted;
+    int lastDisplayMode;
     Rect lastScreenRegion;
     private boolean loggedFailure;
     private final Map<View, Rect> pending = new WeakHashMap<>();
@@ -56,6 +57,10 @@ final class SelectionFeedback {
         Bitmap before = direct ? capture(owner, area) : null;
         change.run();
         if (before == null) { owner.invalidate(area); return; }
+        present(owner, area, before);
+    }
+    /** Presents the control's current pixels over {@code before}, which it recycles. */
+    private void present(View owner, Rect area, Bitmap before) {
         Bitmap after = capture(owner, area);
         DirectEink display = null;
         boolean presented = false;
@@ -65,11 +70,14 @@ final class SelectionFeedback {
             android.graphics.Matrix bitmapToView = new android.graphics.Matrix();
             bitmapToView.setTranslate(area.left,area.top);
             // Each session owns only this control patch. The canvas is never included.
-            display = DirectEink.forView(owner,before,bitmapToView,0,7);
+            boolean fastBinary = DirectEink.fastBinaryControls() && opaqueBinary(after, dirty);
+            int mode = fastBinary ? 9 : 7;
+            display = DirectEink.forView(owner,before,bitmapToView,fastBinary ? 1 : 0,mode);
             if (display.present(after, dirty) > 0) {
                 presented = true;
                 retainForNextDraw(owner, area);
                 submitted++;
+                lastDisplayMode = mode;
                 lastScreenRegion = display.panelRegion(dirty);
             }
             // Busy queues fall back to the normal redraw. Never replay stale UI pixels.
@@ -78,10 +86,23 @@ final class SelectionFeedback {
             loggedFailure = true;
         } finally {
             if (display != null) display.close();
-            before.recycle(); after.recycle();
+            before.recycle();
+            after.recycle();
             if (!presented) owner.invalidate(area);
         }
     }
+
+    /** Decide from the submitted patch, including its border, without flattening grays. */
+    static boolean opaqueBinary(Bitmap bitmap, Rect area) {
+        int[] row = new int[area.width()];
+        for (int y = area.top; y < area.bottom; y++) {
+            bitmap.getPixels(row, 0, row.length, area.left, y, row.length, 1);
+            for (int pixel : row)
+                if (pixel != android.graphics.Color.BLACK && pixel != android.graphics.Color.WHITE) return false;
+        }
+        return true;
+    }
+
     private static Bitmap capture(View owner, Rect area) {
         Bitmap bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap); canvas.translate(-area.left, -area.top);

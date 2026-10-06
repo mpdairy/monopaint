@@ -151,13 +151,12 @@ final class NativePen {
                 if (directGray) {
                     if (host.getDisplay().getRotation()!=android.view.Surface.ROTATION_0)
                         throw new IllegalStateException("Direct display requires portrait rotation 0");
-                    int[] position=new int[2]; host.getLocationOnScreen(position);
                     directBitmap=listener.background();
                     if (directBitmap==null) {
                         directBitmap=Bitmap.createBitmap(host.getWidth(),host.getHeight(),Bitmap.Config.ARGB_8888);
                         directBitmap.eraseColor(Color.WHITE);
                     }
-                    directEink=new DirectEink(position[0],position[1],directBitmap,requestFlags,7);
+                    directEink=DirectEink.forView(host,directBitmap,new android.graphics.Matrix(),requestFlags,7);
                     directMaximum=size; directTilt=tiltBrush; directPointer=-1;
                     canvasPaint.setColor(color); canvasPaint.setAntiAlias(false);
                     canvasPaint.setFilterBitmap(false);
@@ -168,8 +167,7 @@ final class NativePen {
                         canvasPaint.setShader(new BitmapShader(dotTile,
                                 Shader.TileMode.REPEAT,Shader.TileMode.REPEAT));
                     }
-                    Log.i(ProbeActivity.TAG,"Direct gray region origin="+position[0]+","+position[1]
-                            +" mode=7 requestFlags="+requestFlags+" dots="+dotGray);
+                    Log.i(ProbeActivity.TAG,"Direct gray region mode=7 requestFlags="+requestFlags+" dots="+dotGray);
                 }
                 if (!directGray) installCanvasHandler(size, color, tiltBrush);
             }

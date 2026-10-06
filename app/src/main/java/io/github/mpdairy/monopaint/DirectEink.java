@@ -7,10 +7,11 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.view.View;
 
-/** Manta-only region presenter, using ordinary app permissions. */
+/** Manta/Nomad region presenter, using ordinary app permissions. */
 final class DirectEink {
     static { System.loadLibrary("monopaint_display"); }
     static native String probe();
+    private static native int nativeLayout();
     private static native long nativeOpen(Bitmap background, int x, int y, int requestFlags, int displayMode);
     private static native int nativePresent(long handle, Bitmap bitmap, int left, int top,
                                             int right, int bottom, int x, int y);
@@ -26,13 +27,10 @@ final class DirectEink {
     private final Rect bufferDirty = new Rect();
     private int sourceWidth, sourceHeight;
     private int bufferTurn=-1;
-    DirectEink(int x, int y, Bitmap background, int requestFlags, int displayMode) {
-        this.x=x; this.y=y;
-        handle=nativeOpen(background,x,y,requestFlags,displayMode);
-    }
     static DirectEink forView(View owner, Bitmap background, Matrix bitmapToView, int requestFlags, int displayMode) {
         Matrix toPanel = new Matrix(bitmapToView);
         toPanel.postConcat(PanelCoordinates.fromView(owner));
+        toPanel.postConcat(driverFromPanel());
         return new DirectEink(background,toPanel,requestFlags,displayMode);
     }
     private DirectEink(Bitmap background, Matrix toPanel, int requestFlags, int displayMode) {
@@ -43,7 +41,8 @@ final class DirectEink {
         RectF bounds = new RectF(0,0,background.getWidth(),background.getHeight());
         toPanel.mapRect(bounds);
         Rect pixels = new Rect(); bounds.roundOut(pixels);
-        if (pixels.isEmpty() || pixels.width()>1920 || pixels.height()>2560)
+        int layout=layout();
+        if (pixels.isEmpty() || pixels.width()>(layout&0xffff) || pixels.height()>(layout>>>16))
             throw new IllegalStateException("Panel patch outside supported display");
         x=pixels.left; y=pixels.top;
         sourceWidth=background.getWidth(); sourceHeight=background.getHeight();
@@ -61,6 +60,23 @@ final class DirectEink {
         copyToBuffer(background,new Rect(0,0,buffer.getWidth(),buffer.getHeight()));
         try { handle=nativeOpen(buffer,x,y,requestFlags,displayMode); }
         catch (RuntimeException | LinkageError error) { buffer.recycle(); throw error; }
+    }
+    static boolean fastBinaryControls() { return layout()==(1872 | 1404<<16); }
+    private static int layout=-1;
+    private static synchronized int layout() {
+        if (layout==-1) layout=nativeLayout();
+        return layout;
+    }
+    /**
+     * The driver buffer's scan order. Manta's matches the natural portrait panel.
+     * Nomad's is landscape: panel (x,y) is stored at (y, 1404-x), as observed
+     * in the shared plane and matching the firmware's hwrota=270.
+     */
+    private static Matrix driverFromPanel() {
+        int layout=layout(), width=layout&0xffff, height=layout>>>16;
+        Matrix result=new Matrix();
+        if (width>height) { result.setRotate(-90); result.postTranslate(0,height); }
+        return result;
     }
     synchronized int present(Bitmap bitmap, Rect dirty) {
         if (handle==0) return -1;
