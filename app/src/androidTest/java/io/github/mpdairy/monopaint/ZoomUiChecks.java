@@ -124,7 +124,7 @@ final class ZoomUiChecks {
                 test.waitForIdleSync();SystemClock.sleep(200);
                 main(test,() -> {
                     DirectEink direct=(DirectEink)get(pad,"direct");check(direct!=null,"Fast e-ink reconnects after gesture");
-                    Rect patch=direct.panelRegion(new Rect(0,0,view.getWidth(),view.getHeight()));
+                    Rect patch=direct.bufferRegion(new Rect(0,0,view.getWidth(),view.getHeight()));
                     int driverWidth=DirectEink.layout()[0];
                     int driverHeight=DirectEink.layout()[1];
                     check(patch.left>=0&&patch.top>=0&&patch.right<=driverWidth&&patch.bottom<=driverHeight,"Zoomed e-ink patch stays in the driver buffer");

@@ -19,7 +19,7 @@ Neither place trusts Android's model property. The Manta reports itself as
 | Fact | Manta | Nomad | Other |
 | --- | --- | --- | --- |
 | Panel (portrait) | 1920×2560 | 1404×1872 | — |
-| `landscapeTilt`: digitizer tilt arrives in the landscape scan frame | no | yes (hwrota=270) | no |
+| `landscapeTilt`: digitizer tilt arrives in the landscape scan frame | no | yes (hwrota=270; confirmed by hand 2026-10-06) | no |
 | `compactControls`: Pages button replaces the page row | no | yes | no |
 | `edgeSwipeSlopDp`: edge-swipe reach, tuned by hand | 24 | 6 | 24 |
 | `simulates`: smaller tablet it can preview at physical size | Nomad | — | — |
@@ -45,3 +45,6 @@ the Manta's digitizer and driver.
 3. A difference no field covers gets a new field with a name that says what it
    does, not which tablet it is for. Give every existing profile a value for it.
 4. Add a column to the table above and run the device checks on every tablet.
+   Device checks state their expectations in terms of these facts
+   (`TestAccess.panelTilt`, `DirectEink.bufferFromPanel()`, `compactLayout()`),
+   never a model name, so a new profile runs the same suites.

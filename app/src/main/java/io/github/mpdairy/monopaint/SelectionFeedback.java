@@ -14,7 +14,8 @@ final class SelectionFeedback {
     boolean enabled = true;
     int submitted;
     int lastDisplayMode;
-    Rect lastScreenRegion;
+    /** The last submitted patch, in driver buffer coordinates ({@link DirectEink#bufferRegion}). */
+    Rect lastBufferRegion;
     private boolean loggedFailure;
     private final Map<View, Rect> pending = new WeakHashMap<>();
     private ViewTreeObserver observer;
@@ -103,7 +104,7 @@ final class SelectionFeedback {
                 retainForNextDraw(owner, area);
                 submitted++;
                 lastDisplayMode = mode;
-                lastScreenRegion = display.panelRegion(dirty);
+                lastBufferRegion = display.bufferRegion(dirty);
             }
             // Busy queues fall back to the normal redraw. Never replay stale UI pixels.
         } catch (RuntimeException error) {

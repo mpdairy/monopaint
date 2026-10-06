@@ -22,8 +22,9 @@ final class SettingsUiChecks {
         boolean large=prefs.getBoolean("large_settings_text",false),hadLarge=prefs.contains("large_settings_text");
         boolean nomad=prefs.getBoolean("nomad_mode",false);
         AlertDialog[] dialog={null};
+        boolean canSimulate=(Boolean)call(app,"canSimulate");
         try {
-            for(boolean preview:new boolean[]{false,true})for(boolean big:new boolean[]{false,true})for(int quarter=0;quarter<4;quarter++) {
+            for(boolean preview:canSimulate?new boolean[]{false,true}:new boolean[]{false})for(boolean big:new boolean[]{false,true})for(int quarter=0;quarter<4;quarter++) {
                 final int turn=quarter;
                 main(test,() -> {
                     prefs.edit().putBoolean("large_settings_text",big).putBoolean("toolbox_right",turn%2!=0).apply();
@@ -35,9 +36,11 @@ final class SettingsUiChecks {
                 View decor=dialog[0].getWindow().getDecorView();SettingsScroller scroller=(SettingsScroller)findType(decor,SettingsScroller.class);
                 check(scroller!=null&&scroller.handle.getHeight()==scroller.getHeight(),"Scroll handle fills viewport");
                 View simulation=find(decor,"Nomad Simulation Mode"),toolbar=find(decor,"Toolbar");
-                check(simulation!=null&&simulation.getParent()==toolbar.getParent(),"Simulation toggle in settings list");
-                ViewGroup rows=(ViewGroup)toolbar.getParent();
-                check(rows.indexOfChild(toolbar)==rows.indexOfChild(simulation)+1,"Simulation toggle immediately precedes Toolbar");
+                if(canSimulate) {
+                    check(simulation!=null&&simulation.getParent()==toolbar.getParent(),"Simulation toggle in settings list");
+                    ViewGroup rows=(ViewGroup)toolbar.getParent();
+                    check(rows.indexOfChild(toolbar)==rows.indexOfChild(simulation)+1,"Simulation toggle immediately precedes Toolbar");
+                } else check(simulation==null,"No simulation toggle on a tablet that cannot simulate");
                 check(find(decor,"Tools sit opposite your drawing hand. Left-handed landscape tools stay at the top.")==null,"Hand description removed");
                 TextView shapes=(TextView)find(decor,"Shapes");
                 main(test,() -> {
@@ -61,7 +64,7 @@ final class SettingsUiChecks {
                     check(scroller.scroll.getScrollY()>0,"Down arrow scrolls settings");
                     main(test,() -> scroller.scroll.scrollTo(0,0));idle(test);
                 } else check(!scroller.scroll.canScrollVertically(1),"No scroll cue needed when everything fits");
-                if(preview&&big&&turn==0) {
+                if((preview||!canSimulate)&&big&&turn==0) {
                     Bitmap bitmap=test.getUiAutomation().takeScreenshot();
                     try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(app.getCacheDir(),"settings-scroll.png"))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}finally{bitmap.recycle();}
                 }
@@ -69,11 +72,13 @@ final class SettingsUiChecks {
                 report.append("PASS: settings layout/scroll; simulation=").append(preview).append(" large=").append(big).append(" turn=").append(turn).append(".\n");
             }
             // Verify the moved control still changes the saved setting through actual input.
-            main(test,() -> dialog[0]=(AlertDialog)call(app,"appSettings"));idle(test);
-            View control=find(dialog[0].getWindow().getDecorView(),"Nomad Simulation Mode");
-            main(test,() -> control.requestRectangleOnScreen(new android.graphics.Rect(0,0,control.getWidth(),control.getHeight()),true));idle(test);
-            ToolPickerChecks.tap(test,control);dialog[0]=null;
-            check(!prefs.getBoolean("nomad_mode",true),"Moved toggle changes simulation mode");
+            if(canSimulate) {
+                main(test,() -> dialog[0]=(AlertDialog)call(app,"appSettings"));idle(test);
+                View control=find(dialog[0].getWindow().getDecorView(),"Nomad Simulation Mode");
+                main(test,() -> control.requestRectangleOnScreen(new android.graphics.Rect(0,0,control.getWidth(),control.getHeight()),true));idle(test);
+                ToolPickerChecks.tap(test,control);dialog[0]=null;
+                check(!prefs.getBoolean("nomad_mode",true),"Moved toggle changes simulation mode");
+            }
         } finally {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();

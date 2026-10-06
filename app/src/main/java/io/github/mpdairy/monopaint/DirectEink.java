@@ -30,7 +30,7 @@ final class DirectEink {
     static DirectEink forView(View owner, Bitmap background, Matrix bitmapToView, int requestFlags, int displayMode) {
         Matrix toPanel = new Matrix(bitmapToView);
         toPanel.postConcat(PanelCoordinates.fromView(owner));
-        toPanel.postConcat(driverFromPanel());
+        toPanel.postConcat(bufferFromPanel());
         return new DirectEink(background,toPanel,requestFlags,displayMode);
     }
     private DirectEink(Bitmap background, Matrix toPanel, int requestFlags, int displayMode) {
@@ -74,7 +74,7 @@ final class DirectEink {
      * Nomad's is landscape: panel (x,y) is stored at (y, 1404-x), as observed
      * in the shared plane and matching the firmware's hwrota=270.
      */
-    private static Matrix driverFromPanel() {
+    static Matrix bufferFromPanel() {
         int width=layout()[0], height=layout()[1];
         Matrix result=new Matrix();
         if (width>height) { result.setRotate(-90); result.postTranslate(0,height); }
@@ -133,7 +133,8 @@ final class DirectEink {
         }
         return nativeReadGray(handle,x+localX,y+localY);
     }
-    Rect panelRegion(Rect source) {
+    /** A source rectangle in the driver buffer's coordinates, which are not the portrait panel's on a landscape buffer. */
+    Rect bufferRegion(Rect source) {
         RectF area=new RectF(source);
         if (sourceToBuffer!=null) sourceToBuffer.mapRect(area);
         Rect result=new Rect(); area.roundOut(result); result.offset(x,y); return result;

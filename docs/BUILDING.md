@@ -43,7 +43,10 @@ adb shell am instrument -w -e paintOnly true dev.tilesmile.supernote.paint.test/
 ```
 
 These checks use a temporary drawing and restore the original drawing and tool
-settings. They exercise the Manta-specific display path and require a Manta.
+settings. They run on both the Manta and the Nomad; checks of the Manta's Nomad simulation
+skip on a real Nomad. The runner grants the app all-files access first, so the
+"Keep your paintings safe" prompt never takes focus from a check. Keep the tablet
+awake and other apps out of the foreground while checks run.
 Use `-e settingsOnly true` for the fixed Shapes icon, simplified hand controls,
 Nomad Simulation Mode placement/toggle, and the persistent settings scroll rail.
 It verifies pen/finger dragging to both ends and arrow scrolling in all four
@@ -202,7 +205,7 @@ and tapping outside dismisses it without changing the drawing. Menu screenshots
 are saved as `orientation-menu-<rotation>-<toolboxRight>.png`.
 Artwork stays fixed relative to the tablet in every direction.
 
-To run device checks in a separate install with its own empty drawing library:
+To run device checks in a separate install with its own drawing library:
 
 ```sh
 ./gradlew -PisolatedChecks :app:assembleDebug :app:assembleDebugAndroidTest
@@ -212,7 +215,8 @@ adb shell am instrument -w -e orientationOnly true dev.tilesmile.supernote.paint
 ```
 
 The isolated app ID is `dev.tilesmile.supernote.paint.checks`; the normal app and
-its drawings stay separate. Omit `-PisolatedChecks` for a normal development build.
+its drawings stay separate. Its shared library and PNG exports use `MonoPaint checks`
+folders (`Document/MonoPaint checks`, `EXPORT/MonoPaint checks`), never the user's. Omit `-PisolatedChecks` for a normal development build.
 
 For brush raster, tilt input, head settings/presets and wet-brush checks, replace
 `-e paintOnly true` with `-e brushOnly true`. This focused run also restores the

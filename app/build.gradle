@@ -15,11 +15,16 @@ android {
         versionName '0.95'
         testInstrumentationRunner 'io.github.mpdairy.monopaint.WidthInstrumentation'
         ndk { abiFilters 'arm64-v8a' }
+        buildConfigField 'String', 'LIBRARY_FOLDER', '"MonoPaint"'
     }
+    buildFeatures { buildConfig true }
     buildTypes {
         debug {
-            // Device checks can run beside the user's app with an empty private library.
-            if (project.hasProperty('isolatedChecks')) applicationIdSuffix '.checks'
+            // Device checks can run beside the user's app with their own library, private or shared.
+            if (project.hasProperty('isolatedChecks')) {
+                applicationIdSuffix '.checks'
+                buildConfigField 'String', 'LIBRARY_FOLDER', '"MonoPaint checks"'
+            }
         }
     }
     compileOptions {

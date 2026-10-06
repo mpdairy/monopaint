@@ -34,7 +34,7 @@ import java.util.concurrent.Executors;
  * Files app shows) and Pictures/MonoPaint otherwise.
  */
 final class PngExport {
-    static final String FOLDER = Environment.DIRECTORY_PICTURES + "/MonoPaint", SUPERNOTE_FOLDER = "EXPORT/MonoPaint";
+    static final String FOLDER = Environment.DIRECTORY_PICTURES + "/" + BuildConfig.LIBRARY_FOLDER, SUPERNOTE_FOLDER = "EXPORT/" + BuildConfig.LIBRARY_FOLDER;
     // One queue so overlapping exports never interleave writes to the same names.
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private final PaintActivity app;

@@ -78,9 +78,22 @@ public final class WidthInstrumentation extends Instrumentation {
         palettePerfOnly = args != null && "true".equals(args.getString("palettePerfOnly"));
         start();
     }
+    /**
+     * Without file access the app opens on its "Keep your paintings safe" prompt, which would
+     * take window focus from every check. An isolated checks build keeps its own shared folder.
+     */
+    private void allowSharedStorage() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return;
+        android.os.ParcelFileDescriptor output = getUiAutomation().executeShellCommand(
+                "appops set --uid " + getTargetContext().getPackageName() + " MANAGE_EXTERNAL_STORAGE allow");
+        try (java.io.InputStream in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(output)) {
+            while (in.read() != -1) { }
+        } catch (java.io.IOException ignored) { }
+    }
     @Override public void onStart() {
         Bundle result = new Bundle();
         StringBuilder report = new StringBuilder();
+        allowSharedStorage();
         if (edgeBarsOnly || fullscreenOnly || colorBarOnly || settingsOnly || pagesOnly || nomadOnly || pickerOnly || shapesPerfOnly || shapesOnly || palettePerfOnly || paletteOnly || paintOnly || brushOnly || brushPerfOnly || storageOnly || orientationOnly || layersOnly || toolbarOnly || gradientOnly || airbrushOnly || eraseOnly || zoomOnly) {
             try {
                 if (edgeBarsOnly) EdgeBarChecks.run(this,report);

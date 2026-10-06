@@ -76,8 +76,8 @@ final class ColorBarChecks {
                                 check(app.selectionFeedback.lastDisplayMode==mode,"Correct device-specific request");
                                 DirectEink display=DirectEink.forView(picker,after,new Matrix(),mode==9?1:0,mode);
                                 try {
-                                    check(display.panelRegion(dirty).equals(app.selectionFeedback.lastScreenRegion),"Request covers old and new marker in driver coordinates");
-                                    check(display.panelRegion(new Rect(0,0,picker.getWidth(),picker.getHeight())).contains(app.selectionFeedback.lastScreenRegion),"Request stays within color bar");
+                                    check(display.bufferRegion(dirty).equals(app.selectionFeedback.lastBufferRegion),"Request covers old and new marker in driver coordinates");
+                                    check(display.bufferRegion(new Rect(0,0,picker.getWidth(),picker.getHeight())).contains(app.selectionFeedback.lastBufferRegion),"Request stays within color bar");
                                     // These planes are shared scratch: firmware/compositor may
                                     // rewrite them after ioctl. A later read is not a snapshot
                                     // of what our request submitted or what the panel displays.

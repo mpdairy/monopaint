@@ -11,6 +11,8 @@ import android.view.View;
  * panel on pen-down and released shortly after the click, so presses feel immediate.
  */
 final class PressOutline {
+    /** The box sits this far inside the control, centered on its stroke. */
+    static final int BOX_INSET_DP = 3;
     private static final int RELEASE_MS = 200;
     private final View owner;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -42,7 +44,7 @@ final class PressOutline {
     }
     void draw(Canvas canvas) { if (pressed) drawBox(canvas); }
     void drawBox(Canvas canvas) {
-        int inset = Ui.dp(owner.getContext(), 3), radius = Ui.dp(owner.getContext(), 4);
+        int inset = Ui.dp(owner.getContext(), BOX_INSET_DP), radius = Ui.dp(owner.getContext(), 4);
         canvas.drawRoundRect(inset, inset, owner.getWidth()-inset, owner.getHeight()-inset, radius, radius, paint);
     }
     void detached() { owner.removeCallbacks(release); pressed = false; }

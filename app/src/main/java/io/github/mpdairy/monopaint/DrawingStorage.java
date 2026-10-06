@@ -21,7 +21,7 @@ import java.io.File;
  * private files.
  */
 final class DrawingStorage {
-    static final String SHARED_NAME = (Device.supernote() ? "Document" : Environment.DIRECTORY_DOCUMENTS) + "/MonoPaint";
+    static final String SHARED_NAME = (Device.supernote() ? "Document" : Environment.DIRECTORY_DOCUMENTS) + "/" + BuildConfig.LIBRARY_FOLDER;
 
     static File shared() { return new File(Environment.getExternalStorageDirectory(), SHARED_NAME); }
     static File appPrivate(Context context) { return new File(context.getFilesDir(), "drawings"); }

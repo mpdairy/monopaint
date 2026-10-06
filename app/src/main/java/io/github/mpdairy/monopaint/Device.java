@@ -24,7 +24,8 @@ final class Device {
     final int panelWidth, panelHeight;
     /**
      * The digitizer reports tilt in the panel's landscape scan frame (the Nomad's firmware
-     * hwrota=270), while positions arrive already turned to portrait.
+     * hwrota=270), while positions arrive already turned to portrait. Confirmed by hand on a
+     * Nomad on 2026-10-06 with the Pencil and flat brush in all four app rotations.
      */
     final boolean landscapeTilt;
     /** Narrow controls: the header shows a Pages button in place of the page row. */

@@ -61,7 +61,9 @@ final class ToolbarChecks {
             test.waitForIdleSync();
             main(test,() -> {
                 View settings=dialog[0].getWindow().getDecorView();
-                check((Boolean)call(activity,"canSimulate") && findCheck(settings,"Nomad Simulation Mode")!=null,
+                check((findCheck(settings,"Nomad Simulation Mode")!=null)==(Boolean)call(activity,"canSimulate"),
+                        "Simulation toggle appears exactly when this tablet can simulate a smaller one");
+                check(activity.device!=Device.MANTA || (Boolean)call(activity,"canSimulate"),
                         "Connected Manta exposes simulation despite its misleading Nomad model name");
                 check(findCheck(settings,"Instant selection dots (experimental)")==null,"No optional instant selection setting");
                 check(findCheck(settings,"Blending stump")!=null && findCheck(settings,"Soften")==null,"Blending stump has its proper name");
@@ -103,7 +105,10 @@ final class ToolbarChecks {
                 library.select(ToolSettings.Tool.PENCIL);String id=library.add("Test pencil").id;
                 call(get(activity,"toolbar"),"rebuildTools");pencil.performClick();
                 check(buttons(activity).containsKey(id) && library.activeId().equals(id),"Hiding base tool preserves selected favorite");
-                for(String name:new String[]{"Airbrush","Fill","Shapes","Eraser","Blending stump"}) findCheck(dialog[0].getWindow().getDecorView(),name).performClick();
+                for(ToolSettings.Tool tool:Toolbar.TOOLS) {
+                    CheckBox other=findCheck(dialog[0].getWindow().getDecorView(),tool.label);
+                    if(tool!=ToolSettings.Tool.BRUSH && other.isChecked())other.performClick();
+                }
                 CheckBox brush=findCheck(dialog[0].getWindow().getDecorView(),"Brush");brush.performClick();
                 check(brush.isChecked() && buttons(activity).containsKey("tool:BRUSH"),"Cannot hide last regular tool");
                 call(activity,"saveToolState");

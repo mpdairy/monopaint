@@ -21,6 +21,7 @@ final class NomadUiChecks {
         if(test instanceof WidthInstrumentation && ((WidthInstrumentation)test).rotationPromptOnly) {
             RotationPromptChecks.run(test,app,report);return;
         }
+        if(!(Boolean)call(app,"canSimulate")) {report.append("SKIPPED Nomad simulation: this tablet cannot simulate a smaller one.\n");return;}
         SharedPreferences prefs=(SharedPreferences)get(app,"preferences");
         boolean original=prefs.getBoolean("nomad_mode",false);
         View frame=(View)get(app,"orientationFrame"),pad=(View)get(app,"pad");

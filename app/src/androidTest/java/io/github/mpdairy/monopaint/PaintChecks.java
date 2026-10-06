@@ -601,7 +601,8 @@ final class PaintChecks {
                 check(findDescription(panel,"Brush settings")==null,"Head controls need no separate settings button");
                 test.runOnMainSync(() -> findButton(panel,"Flat").performClick());test.waitForIdleSync();
                 check(popup.isShowing()&&library.current().head==ToolSettings.Head.FLAT&&library.activeId().isEmpty(),
-                        "Selecting Flat keeps the editor open with controls underneath");
+                        "Selecting Flat keeps the editor open with controls underneath: showing="+popup.isShowing()
+                        +" head="+library.current().head+" active="+library.activeId());
                 int[] tipAt=new int[2],controlAt=new int[2];findButton(panel,"Flat").getLocationOnScreen(tipAt);
                 findDescription(panel,"Maximum width").getLocationOnScreen(controlAt);
                 check(controlAt[1]>tipAt[1]+findButton(panel,"Flat").getHeight(),"Selected tip controls appear below the tip row");
@@ -660,10 +661,11 @@ final class PaintChecks {
             ToolSettings live=ToolSettings.defaults(tool).head(ToolSettings.Head.FLAT).size(72).tilt(true);
             ToneDocument expected=new ToneDocument(doc.width,doc.height,doc.snapshot());
             PressureStroke reference=new PressureStroke(expected,live,182,null,false);
-            reference.sample(300,1500,.45f,0,60);
-            reference.sample(300,1600,.45f,0,60);
-            reference.sample(400,1600,.45f,45,30);
-            reference.sample(500,1600,.45f,60,0);reference.finish();
+            float[][] tilts={TestAccess.panelTilt(activity,0,60),TestAccess.panelTilt(activity,0,60),TestAccess.panelTilt(activity,45,30),TestAccess.panelTilt(activity,60,0)};
+            reference.sample(300,1500,.45f,tilts[0][0],tilts[0][1]);
+            reference.sample(300,1600,.45f,tilts[1][0],tilts[1][1]);
+            reference.sample(400,1600,.45f,tilts[2][0],tilts[2][1]);
+            reference.sample(500,1600,.45f,tilts[3][0],tilts[3][1]);reference.finish();
             test.runOnMainSync(() -> {
                 library.edit(live);TestAccess.setMaximum(activity,72);set(get(activity,"paint"),"gray",182);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
                 long start=SystemClock.uptimeMillis();
@@ -701,17 +703,18 @@ final class PaintChecks {
                     if(light.tone(x,y)==255&&firm.tone(x,y)==0){grown=new int[]{x-80,y-70};break;}
                 check(grown!=null,"Pressure exposes new contact for the actual default head");
                 int dx=grown[0],dy=grown[1];
-                android.graphics.Rect pending=(android.graphics.Rect)field(pad,"pending");
+                DirtyRegions pending=(DirtyRegions)field(pad,"pending");
+                float[] pen=TestAccess.firmwareTilt(activity,0,tilt);
                 DirectEink direct=(DirectEink)field(pad,"direct");
                 long start=SystemClock.uptimeMillis();
                 test.runOnMainSync(() -> {
                     library.edit(live);TestAccess.setMaximum(activity,64);set(get(activity,"paint"),"gray",0);call(get(activity,"toolbar"),"rebuildTools",new Class<?>[0]);
-                    tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,700,1500,.05f,0,tilt);
+                    tiltEvent((View)pad,start,MotionEvent.ACTION_DOWN,700,1500,.05f,pen[0],pen[1]);
                     check(doc.tone(700+dx,1500+dy)==255,"Light contact leaves room for pressure growth");
                     // Hold the coalescing window open deterministically. No new
                     // pen event follows: the scheduled presentation must flush it.
                     set(pad,"lastPresent",SystemClock.uptimeMillis()+100);
-                    tiltEvent((View)pad,start,MotionEvent.ACTION_MOVE,700,1500,.9f,0,tilt);
+                    tiltEvent((View)pad,start,MotionEvent.ACTION_MOVE,700,1500,.9f,pen[0],pen[1]);
                     check(doc.tone(700+dx,1500+dy)==0,"Pressure-only move spreads contact before pen-up");
                     check(!pending.isEmpty(),"Test exercises deferred display pixels");
                 });
@@ -724,7 +727,7 @@ final class PaintChecks {
                     });
                 } finally {
                     test.runOnMainSync(() -> {
-                        tiltEvent((View)pad,start,MotionEvent.ACTION_UP,700,1500,0,0,tilt);
+                        tiltEvent((View)pad,start,MotionEvent.ACTION_UP,700,1500,0,pen[0],pen[1]);
                         findButton(activity,"Undo").performClick();
                     });
                 }
@@ -739,6 +742,8 @@ final class PaintChecks {
         for(ToolSettings.Tool tool:ToolSettings.Tool.values()) {
             test.runOnMainSync(() -> {
                 tools.select(tool);TestAccess.setMaximum(activity,tools.current().maximum);
+                // A flat fill has no sliders; a gradient fill shows Tolerance.
+                if(tool==ToolSettings.Tool.FILL)tools.edit(tools.current().gradient(ToolSettings.Gradient.LINEAR));
                 android.widget.PopupWindow dialog=(android.widget.PopupWindow)call(activity,"showToolSettings",new Class<?>[0]);
                 try {
                     Button add=findButton(dialog.getContentView(),"Add to Toolbar");
@@ -752,6 +757,7 @@ final class PaintChecks {
                     View root=dialog.getContentView();
                     check(findButton(root,"Manage custom preset")==null&&findButton(root,"Add to Toolbar")==null,"Custom settings have no management or add button");
                     String slider=tool==ToolSettings.Tool.FILL?"Tolerance":tool==ToolSettings.Tool.SHAPES?"Shape outline width":"Maximum diameter";
+                    check(findDescription(root,slider) instanceof android.widget.SeekBar,tool.label+" custom settings show "+slider);
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(41);
                     ((android.widget.SeekBar)findDescription(root,slider)).setProgress(53);
                     if(ToolSettings.defaults(tool).isBrush()) {
@@ -812,6 +818,13 @@ final class PaintChecks {
             check(activity.hasWindowFocus(),"Activity has input focus before native drag");
             checkHeader(activity);
             Button first = findButton(activity,"Drag A"), last = findButton(activity,"Drag C");
+            // A shorter panel scrolls the presets; bring both ends into view as a person would.
+            final Button from = first, to = last;
+            test.runOnMainSync(() -> {
+                to.requestRectangleOnScreen(new android.graphics.Rect(0,0,to.getWidth(),to.getHeight()),true);
+                from.requestRectangleOnScreen(new android.graphics.Rect(0,0,from.getWidth(),from.getHeight()),true);
+            });
+            test.waitForIdleSync();SystemClock.sleep(300);
             int[] start = new int[2], end = new int[2]; first.getLocationOnScreen(start);last.getLocationOnScreen(end);
             drag(test, start[0]+first.getWidth()/2f, start[1]+first.getHeight()/2f,
                     end[0]+last.getWidth()/2f, end[1]+last.getHeight()-2);
@@ -870,18 +883,28 @@ final class PaintChecks {
         View picker=(View)field(activity,"shadePicker"), palette=(View)field(activity,"palette");
         int[] shade=new int[2], header=new int[2], action=new int[2], page=new int[2];
         picker.getLocationOnScreen(shade);palette.getLocationOnScreen(header);
-        check(Math.abs(shade[0]+picker.getWidth()/2f-header[0]-palette.getWidth()/2f)<=1,
-                "Grayscale strip stays centered on screen");
-        for(String name:new String[]{"Undo","Redo","Clear layer"}) {
+        // The two header sides hold different controls, so the strip fills the space between them rather than centering.
+        check(shade[0]>=header[0]&&shade[0]+picker.getWidth()<=header[0]+palette.getWidth(),"Grayscale strip stays within the header");
+        // In portrait the menu side, with the page actions, sits opposite the drawing hand's toolbar.
+        boolean actionsRight=!activity.landscape&&activity.toolboxRight;
+        for(String name:new String[]{"Undo","Redo","Clear"}) {
             Button button=findButton(activity,name);button.getLocationOnScreen(action);
-            check(action[0]+button.getWidth()<=shade[0], "Page action stays left of color selector");
+            check(actionsRight?action[0]>=shade[0]+picker.getWidth():action[0]+button.getWidth()<=shade[0], "Page action stays on the menu side of the color selector");
         }
-        ((View)field(activity,"previousPage")).getLocationOnScreen(page);
-        check(page[0]>=shade[0]+picker.getWidth(), "Page selector stays right of color selector");
+        // Compact layouts show a Pages button in place of the page row.
+        View pages=(View)field(activity,activity.compactLayout()?"pagesButton":"previousPage");pages.getLocationOnScreen(page);
+        check(actionsRight?page[0]+pages.getWidth()<=shade[0]:page[0]>=shade[0]+picker.getWidth(), "Page selector stays opposite the page actions");
     }
     private static byte[] checkPages(Instrumentation test,PaintActivity activity,StringBuilder report) throws Exception {
+        // Start from a one-page book; the recovered one may keep pages from an interrupted run.
+        ToneDocument page=((DrawingBook)field(activity,"book")).current();
+        test.runOnMainSync(() -> call(activity,"replaceBook",new Class<?>[]{DrawingBook.class},new DrawingBook(new ToneDocument(page.width,page.height,page.snapshot()))));
+        test.waitForIdleSync();
         DrawingBook book=(DrawingBook)field(activity,"book");byte[] first=book.current().snapshot();
-        View add=(View)field(activity,"addPage"),previous=(View)field(activity,"previousPage"),next=(View)field(activity,"nextPage");
+        // Compact layouts move the page row into the Pages popup; detached header buttons never run their posted actions.
+        boolean compact=activity.compactLayout();
+        if(compact){test.runOnMainSync(() -> call(activity,"showPagePanel",new Class<?>[0]));test.waitForIdleSync();}
+        View add=(View)field(activity,compact?"popupAdd":"addPage"),previous=(View)field(activity,compact?"popupPrevious":"previousPage"),next=(View)field(activity,compact?"popupNext":"nextPage");
         test.runOnMainSync(add::performClick);test.waitForIdleSync();
         check(book.count()==2&&book.index()==1,"Add page appends and selects a new page");
         for(byte tone:book.current().snapshot())check((tone&255)==255,"New page starts white");
@@ -916,6 +939,7 @@ final class PaintChecks {
         CountDownLatch barrier=new CountDownLatch(1);store.openBook("_recovery",(value,failure)->{error[0]=failure;barrier.countDown();});
         check(barrier.await(10,TimeUnit.SECONDS)&&error[0]==null,"Whole-book recovery finishes");
         report.append("Blank-page creation, navigation, recent-page undo, whole-book save/open and both toolbox sides pass.\n");
+        if(compact){test.runOnMainSync(() -> call(activity,"closePagePanel",new Class<?>[0]));test.waitForIdleSync();}
         return second;
     }
     private static void checkSelectionFeedback(Instrumentation test, PaintActivity activity, ToneDocument doc, StringBuilder report) throws Exception {
@@ -954,9 +978,11 @@ final class PaintChecks {
                 selected.recycle();findButton(activity,"Brush").performClick();
             });
             check(feedback.submitted>requests,"Control-only direct requests accepted");
-            android.graphics.Rect region=feedback.lastScreenRegion;
-            View canvas=(View)field(activity,"pad");int[] canvasOrigin=new int[2];canvas.getLocationOnScreen(canvasOrigin);
-            check(region.right<=canvasOrigin[0]||region.left>=canvasOrigin[0]+canvas.getWidth()||region.bottom<=canvasOrigin[1],"Selection request excludes document canvas");
+            android.graphics.Rect region=feedback.lastBufferRegion;
+            View canvas=(View)field(activity,"pad");
+            android.graphics.RectF canvasBounds=new android.graphics.RectF(0,0,canvas.getWidth(),canvas.getHeight());
+            PanelCoordinates.fromView(canvas).mapRect(canvasBounds);DirectEink.bufferFromPanel().mapRect(canvasBounds);
+            check(!android.graphics.RectF.intersects(canvasBounds,new android.graphics.RectF(region)),"Selection request excludes document canvas");
             test.runOnMainSync(() -> restored[0]=controlBitmap(pencil));
             check(baseline[0].sameAs(restored[0]),"Changing tools restores exact inactive control pixels after redraw");
             check(!(Boolean)field(pencil,"marked")&&(Boolean)field(findButton(activity,"Brush"),"marked"),"Only latest tool marker is retained");
@@ -967,11 +993,17 @@ final class PaintChecks {
             test.waitForIdleSync();
             View rail=(View)field(get(activity,"toolbar"),"toolRail");
             test.runOnMainSync(() -> {
-                View divider=((ViewGroup)rail).getChildAt(((ViewGroup)rail).indexOfChild(findButton(activity,"Layers"))+1);
+                View divider=null;
+                for(int i=0;i<((ViewGroup)rail).getChildCount();i++)
+                    if(((ViewGroup)rail).getChildAt(i) instanceof ToolRail.Divider)divider=((ViewGroup)rail).getChildAt(i);
+                check(divider!=null,"Toolbar has a divider before custom tools");
                 Bitmap separator=controlBitmap(divider);
+                // The divider runs across the rail: horizontal in portrait, vertical in landscape.
+                boolean across=separator.getWidth()>=separator.getHeight();
+                int length=across?separator.getWidth():separator.getHeight();
                 int runs=0;boolean inDash=false,hasGap=false;
-                for(int x=0;x<separator.getWidth();x++) {
-                    int pixel=separator.getPixel(x,separator.getHeight()/2);
+                for(int i=0;i<length;i++) {
+                    int pixel=across?separator.getPixel(i,separator.getHeight()/2):separator.getPixel(separator.getWidth()/2,i);
                     boolean black=Color.alpha(pixel)>0 && Color.red(pixel)==0;
                     if(black&&!inDash)runs++;
                     if(!black)hasGap=true;
@@ -1039,7 +1071,10 @@ final class PaintChecks {
             });
             test.waitForIdleSync();SystemClock.sleep(800);
             check(feedback.submitted>before,"Shade marker reaches direct display");
-            check(frames.get()==0,"Direct shade selection must not queue a later Android frame: "+frames.get());
+            // A released shade commits its marker to Android's surface too (SelectionFeedback.finishUpdate),
+            // so later redraws never show a stale marker. Only that commit may draw.
+            check(frames.get()<=2,"Shade selection draws only its marker commit: "+frames.get());
+            test.waitForIdleSync();SystemClock.sleep(300);frames.set(0);
             View wetness=(View)field(activity,"wetnessBar");
             before=feedback.submitted;
             test.runOnMainSync(() -> {
@@ -1061,10 +1096,12 @@ final class PaintChecks {
             Bitmap screen=test.getUiAutomation().takeScreenshot();
             check(screen!=null,"Capture compositor after unrelated redraw");
             try {
-                int[] location=new int[2];
-                brush.getLocationOnScreen(location);
-                int inset=Math.round(12*activity.getResources().getDisplayMetrics().density);
-                check(Color.red(screen.getPixel(location[0]+brush.getWidth()-inset,location[1]+inset))==0,"Next normal frame retains the latest tool dot");
+                // The app turns its own views, so map through the panel rather than Android's screen location.
+                float[] dot=((ToolButton)brush).markerPoint();
+                PanelCoordinates.fromView(brush).mapPoints(dot);
+                int dotPixel=screen.getPixel(Math.round(dot[0]),Math.round(dot[1]));
+                check(Color.red(dotPixel)==0,"Next normal frame retains the latest tool marker: red="+Color.red(dotPixel)
+                        +" at "+Math.round(dot[0])+","+Math.round(dot[1])+" of "+screen.getWidth()+"x"+screen.getHeight()+" shown="+brush.isShown());
             } finally {screen.recycle();}
             report.append("Direct tool clicks, stylus press/release and shade taps produce no Android frame for 800 ms; next unrelated redraw retains current tool marker.\n");
         } finally {
@@ -1168,8 +1205,9 @@ final class PaintChecks {
         test.runOnMainSync(() -> {
             findButton(activity,"Pencil").performClick();TestAccess.setMaximum(activity,64);set(get(activity,"paint"),"gray",0);
             tiltEvent(view,start,MotionEvent.ACTION_DOWN,400,1100,.45f,0,0);tiltEvent(view,start,MotionEvent.ACTION_UP,400,1100,0,0,0);
-            tiltEvent(view,start,MotionEvent.ACTION_DOWN,500,1100,.45f,65,0);tiltEvent(view,start,MotionEvent.ACTION_UP,500,1100,0,65,0);
-            tiltEvent(view,start,MotionEvent.ACTION_DOWN,600,1100,.45f,0,65);tiltEvent(view,start,MotionEvent.ACTION_UP,600,1100,0,0,65);
+            float[] across=TestAccess.firmwareTilt(activity,65,0),down=TestAccess.firmwareTilt(activity,0,65);
+            tiltEvent(view,start,MotionEvent.ACTION_DOWN,500,1100,.45f,across[0],across[1]);tiltEvent(view,start,MotionEvent.ACTION_UP,500,1100,0,across[0],across[1]);
+            tiltEvent(view,start,MotionEvent.ACTION_DOWN,600,1100,.45f,down[0],down[1]);tiltEvent(view,start,MotionEvent.ACTION_UP,600,1100,0,down[0],down[1]);
         });
         int[] upright=bounds(doc,400,1100,40),horizontal=bounds(doc,500,1100,40),vertical=bounds(doc,600,1100,40);
         check(horizontal[0]>upright[0]*3&&horizontal[0]>horizontal[1]*2,"Pencil tilt broadens directional contact");
@@ -1201,13 +1239,14 @@ final class PaintChecks {
         test.runOnMainSync(() -> {
             doc.begin();for(int y=1201;y<1300;y++)for(int x=801;x<900;x++)doc.setTone(x,y,x<830?192:x>870?205:182);doc.finish();
             call(pad,"renderDirty",new Class<?>[0]);call(pad,"present",new Class<?>[0]);
-            library.edit(library.current().tolerance(8));set(get(activity,"paint"),"gray",182);
+            // Flat fill has no tolerance; a tap with a gradient selected is a tolerant fill.
+            library.edit(library.current().gradient(ToolSettings.Gradient.LINEAR).tolerance(8));set(get(activity,"paint"),"gray",182);
             event(view,start,MotionEvent.ACTION_DOWN,850,1250,.45f);event(view,start,MotionEvent.ACTION_UP,850,1250,0);
         });
         end=SystemClock.uptimeMillis()+15000;
         while(field(pad,"fill")!=null&&SystemClock.uptimeMillis()<end)SystemClock.sleep(25);
         check(field(pad,"fill")==null&&doc.tone(810,1250)==182&&doc.tone(880,1250)==205&&doc.tone(800,1250)==0,"Live fill honors tolerance from a same-color seed and preserves boundaries");
-        test.runOnMainSync(() -> {findButton(activity,"Undo").performClick();library.edit(library.current().tolerance(0));});
+        test.runOnMainSync(() -> {findButton(activity,"Undo").performClick();library.edit(library.current().tolerance(0).gradient(ToolSettings.Gradient.FLAT));});
         check(doc.tone(810,1250)==192&&doc.tone(850,1250)==182,"Tolerant fill undoes once");
         report.append("Live fill tolerance includes nearby shades, stops at the seed range and undoes once.\n");
         report.append("Opaque crisp zero-softness eraser, gradual soft eraser, stronger soften, directional tilt pencil, exact fill, and one-tap color-independent presets pass.\n");

@@ -76,7 +76,8 @@ final class OrientationChecks {
                 call(pad,"renderAll");
                 layout(activity,false);
                 check(get(pad,"direct")!=null,"Landscape uses direct e-ink presentation");
-                check(get(get(pad,"direct"),"buffer")==null,"Landscape page reaches the panel without a rotated bitmap copy");
+                // The page stays in the panel's portrait frame. Only a buffer scanned in another frame needs a rotated copy.
+                check((get(get(pad,"direct"),"buffer")==null)==DirectEink.bufferFromPanel().isIdentity(),"Landscape page reaches the panel without a rotated bitmap copy when the driver buffer is portrait");
                 stroke(activity,pad,320,340,480,340);
                 check(doc.tone(400,340)==0,"Landscape pen coordinates match displayed page");
                 // Header touches travel through the rotated View hierarchy.
@@ -173,6 +174,15 @@ final class OrientationChecks {
         test.waitForIdleSync();
         try {
             View source=preset(activity,first.id), target=preset(activity,last.id);
+            // A narrower panel scrolls the rail; bring the adjacent presets into view as a person would.
+            final View from=source, to=target;
+            main(test,() -> {
+                to.requestRectangleOnScreen(new android.graphics.Rect(0,0,to.getWidth(),to.getHeight()),true);
+                from.requestRectangleOnScreen(new android.graphics.Rect(0,0,from.getWidth(),from.getHeight()),true);
+            });
+            test.waitForIdleSync();
+            main(test,() -> check(PanelCoordinates.fullyVisible(from,new android.graphics.Rect(0,0,from.getWidth(),from.getHeight()))
+                    &&PanelCoordinates.fullyVisible(to,new android.graphics.Rect(0,0,to.getWidth(),to.getHeight())),"Dragged presets are on screen"));
             float[] start=physicalPoint(source,source.getWidth()/2f,source.getHeight()/2f);
             float[] end=physicalPoint(target,target.getWidth()-2,target.getHeight()/2f);
             PaintChecks.drag(test,start[0],start[1],end[0],end[1],0);
@@ -199,7 +209,14 @@ final class OrientationChecks {
         int y=(Integer)get(activity,"appRotation")==Surface.ROTATION_90 ? 1100 : 1400;
         ToneDocument reference=new ToneDocument(document.width,document.height,document.snapshot());
         PressureStroke expected=new PressureStroke(reference,settings,0);
-        expected.sample(900,y,.2f,25,-55); expected.sample(1020,y,.45f,-40,30); expected.sample(1140,y,.35f,50,-20); expected.finish();
+        float[][] tilts={TestAccess.panelTilt(activity,25,-55),TestAccess.panelTilt(activity,-40,30),TestAccess.panelTilt(activity,50,-20)};
+        expected.sample(900,y,.2f,tilts[0][0],tilts[0][1]); expected.sample(1020,y,.45f,tilts[1][0],tilts[1][1]); expected.sample(1140,y,.35f,tilts[2][0],tilts[2][1]); expected.finish();
+        // The flat head's footprint follows the tablet's tilt frame; sample a pixel it actually painted.
+        int[] found=null;
+        for(int dy=-24;dy<=24&&found==null;dy++)for(int dx=-24;dx<=24;dx++)
+            if(reference.tone(1140+dx,y+dy)==0){found=new int[]{1140+dx,y+dy};break;}
+        check(found!=null,"Reference stroke paints black near its end");
+        final int[] black=found;
         test.waitForIdleSync(); SystemClock.sleep(150);
         int draws=(Integer)get(pad,"drawCount"); long[] elapsed={0};
         try {
@@ -218,22 +235,22 @@ final class OrientationChecks {
                 activity.dispatchTouchEvent(up); up.recycle();
                 elapsed[0]=System.nanoTime()-started;
                 check(Arrays.equals(reference.snapshot(),document.snapshot()),"Physical pen positions and original signed tilt degrees survive app rotation, including history");
-                check(get(pad,"direct")!=null && get(get(pad,"direct"),"buffer")==null,"Direct page submits its original bitmap");
+                check(get(pad,"direct")!=null && (get(get(pad,"direct"),"buffer")==null)==DirectEink.bufferFromPanel().isIdentity(),"Direct page submits its original bitmap to a portrait driver buffer");
             });
-            await(test,() -> ((android.graphics.Rect)get(pad,"pending")).isEmpty(),"Direct pen pixels submitted");
+            await(test,() -> ((DirtyRegions)get(pad,"pending")).isEmpty(),"Direct pen pixels submitted");
             test.waitForIdleSync(); SystemClock.sleep(200);
             main(test,() -> {
                 check((Integer)get(pad,"drawCount")==draws,"Landscape pen and pen-up do not request Android canvas frames");
                 DirectEink direct=(DirectEink)get(pad,"direct"); Bitmap bitmap=(Bitmap)get(pad,"display");
                 check(direct.readGray(1140,y)==((bitmap.getPixel(1140,y)>>>16)&255)/16,"Landscape pen pixels reach native panel buffer");
-                check(direct.readGray(1140,y)==0,"Tilted black brush appears in the panel buffer");
+                check(direct.readGray(black[0],black[1])==0,"Tilted black brush appears in the panel buffer");
             });
             selection(test,activity,pad);
             // A full compositor redraw must reproduce the same artwork, rather than stale pre-pen pixels.
             main(test,() -> { view.invalidate(); activity.getWindow().getDecorView().invalidate(); });
             test.waitForIdleSync(); SystemClock.sleep(200);
             Bitmap refreshed=test.getUiAutomation().takeScreenshot();
-            float[] point={1140,y}; ((Matrix)get(pad,"pageToView")).mapPoints(point); PanelCoordinates.fromView(view).mapPoints(point);
+            float[] point={black[0],black[1]}; ((Matrix)get(pad,"pageToView")).mapPoints(point); PanelCoordinates.fromView(view).mapPoints(point);
             check((refreshed.getPixel(Math.round(point[0]),Math.round(point[1]))&0xffffff)==0,"Full screen redraw retains fast landscape ink");
             refreshed.recycle();
             report.append("App rotation ").append(get(activity,"appRotation")).append(": direct pen + batched signed tilt, no Android pen frames, control patches and full refresh pass; replay CPU ")
@@ -293,7 +310,10 @@ final class OrientationChecks {
             });
             screenshot(test,activity,"orientation-menu-"+get(activity,"appRotation")+"-"+get(activity,"toolboxRight")+".png");
             android.view.ViewGroup rows=(android.view.ViewGroup)((android.view.ViewGroup)((android.view.ViewGroup)popup.getContentView()).getChildAt(0)).getChildAt(0);
-            View settings=rows.getChildAt(4);
+            View settings=null;
+            for(int i=0;i<rows.getChildCount();i++)
+                if(rows.getChildAt(i) instanceof android.widget.TextView&&"Settings".contentEquals(((android.widget.TextView)rows.getChildAt(i)).getText()))settings=rows.getChildAt(i);
+            check(settings!=null,"File menu has a Settings item");
             // Input reaches a popup only once its window has focus, which can lag behind main-thread idle.
             await(test,() -> popup.getContentView().hasWindowFocus(),"File menu receives input");
             injectTap(test,physicalPoint(settings,settings.getWidth()/2f,settings.getHeight()/2f));
@@ -349,8 +369,8 @@ final class OrientationChecks {
         try {
             check(feedback.submitted>submitted,"Rotated color selection reaches direct display");
             DirectEink direct=(DirectEink)get(pad,"direct"); Bitmap bitmap=(Bitmap)get(pad,"display");
-            android.graphics.Rect page=direct.panelRegion(new android.graphics.Rect(0,0,bitmap.getWidth(),bitmap.getHeight()));
-            check(!android.graphics.Rect.intersects(page,feedback.lastScreenRegion),"Color update stays outside the physical artwork");
+            android.graphics.Rect page=direct.bufferRegion(new android.graphics.Rect(0,0,bitmap.getWidth(),bitmap.getHeight()));
+            check(!android.graphics.Rect.intersects(page,feedback.lastBufferRegion),"Color update stays outside the physical artwork");
         } finally {
             main(test,() -> {
                 View shade=(View)get(activity,"shadePicker");tapLocal(activity,shade,shade.getWidth()-1,shade.getHeight()/2f);
@@ -368,7 +388,8 @@ final class OrientationChecks {
         int menuY=layoutY(root,(View)get(activity,"menuButton"));
         int undoY=layoutY(root,tagged((View)get(activity,"palette"),"Undo"));
         int shadeY=layoutY(root,(View)get(activity,"shadePicker"));
-        int pageY=layoutY(root,(View)get(activity,"previousPage"));
+        // Compact layouts show a Pages button in place of the page row.
+        int pageY=layoutY(root,(View)get(activity,activity.compactLayout()?"pagesButton":"previousPage"));
         check(menuY<undoY && undoY<shadeY && shadeY<pageY,"Side column reads menu, undo, colors, then pages from top to bottom");
         check(((LinearLayout)get(get(activity,"toolbar"),"toolRail")).getOrientation()==LinearLayout.HORIZONTAL,"Tool rail runs horizontally");
         Bitmap bitmap=(Bitmap)get(pad,"display");

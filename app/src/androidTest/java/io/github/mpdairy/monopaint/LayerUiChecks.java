@@ -70,9 +70,9 @@ final class LayerUiChecks {
                     android.view.MotionEvent down=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_DOWN,eye.getWidth()/2f,eye.getHeight()/2f,0);
                     eye.dispatchTouchEvent(down);down.recycle();
                     check((Boolean)get(get(eye,"press"),"pressed")&&feedback.submitted>submissions,"Eye press presents an immediate box on the fast display");
-                    android.graphics.Rect region=feedback.lastScreenRegion;
+                    android.graphics.Rect region=feedback.lastBufferRegion;
                     android.graphics.RectF bounds=new android.graphics.RectF(0,0,eye.getWidth(),eye.getHeight());
-                    PanelCoordinates.fromView(eye).mapRect(bounds);
+                    PanelCoordinates.fromView(eye).mapRect(bounds);DirectEink.bufferFromPanel().mapRect(bounds);
                     check(bounds.contains(new android.graphics.RectF(region)),"Eye feedback stays within its rotated control");
                     android.view.MotionEvent cancel=android.view.MotionEvent.obtain(0,0,android.view.MotionEvent.ACTION_CANCEL,0,0,0);
                     eye.dispatchTouchEvent(cancel);cancel.recycle();

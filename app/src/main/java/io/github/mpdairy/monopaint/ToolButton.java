@@ -133,9 +133,17 @@ final class ToolButton extends Button {
             canvas.drawRect(getWidth()/2f-dp(3), getHeight()-dp(7), getWidth()/2f+dp(3), getHeight()-dp(1), markerPaint);
             canvas.restore(); return;
         }
-        float x = markerLeft ? dp(12) : getWidth()-dp(12), y = dp(12);
-        markerPaint.setColor(Color.WHITE); canvas.drawCircle(x, y, dp(6), markerPaint);
-        markerPaint.setColor(Color.BLACK); canvas.drawCircle(x, y, dp(4), markerPaint);
+        float[] center = markerPoint();
+        markerPaint.setColor(Color.WHITE); canvas.drawCircle(center[0], center[1], dp(6), markerPaint);
+        markerPaint.setColor(Color.BLACK); canvas.drawCircle(center[0], center[1], dp(4), markerPaint);
+    }
+    /** A point the selection marker paints solid black, in this view's coordinates. */
+    float[] markerPoint() {
+        if (selectionOutline) return new float[]{getWidth()/2f, dp(PressOutline.BOX_INSET_DP)};
+        if (!markerBelow) return new float[]{markerLeft ? dp(12) : getWidth()-dp(12), dp(12)};
+        float[] center = {getWidth()/2f, getHeight()-dp(4)};
+        Matrix turn = new Matrix(); turn.setRotate(-host.toolbarTurn(), getWidth()/2f, getHeight()/2f); turn.mapPoints(center);
+        return center;
     }
     /** Favorites show their number as dots, so similar tools stay distinguishable. */
     private void drawPresetDots(Canvas canvas) {
