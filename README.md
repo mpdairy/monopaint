@@ -56,18 +56,14 @@ details and PNG conversion.
 
 ## Current limits
 
-This is an early, unofficial app tested on **Manta (1920 × 2560, arm64)**.
-The direct display path is Manta-specific; Nomad and other tablets are unverified.
-There is no in-app image export yet. Drawings live in the
-app's private storage, and undo history does not survive a restart.
+This is an early, unofficial app tested on the **Supernote Manta (1920 × 2560)**
+and **Nomad (1404 × 1872)**, both arm64. Other tablets are unverified: the fast
+e-ink path needs a supported Supernote screen, and other tablets use the slower
+Android drawing fallback. Undo history does not survive a restart.
 
-## Nomad testers wanted
-
-If you try MonoPaint on a Nomad, [open an issue](https://github.com/mpdairy/monopaint/issues)
-with your firmware and app versions, whether pressure/tilt works, and how live
-ink, grays, and selection refreshes behave. Test on a new drawing first. The fast
-display path currently requires the Manta screen layout; Nomad may use the slower
-Android drawing fallback. Nomad support is not yet verified.
+If you try MonoPaint on another tablet, [open an issue](https://github.com/mpdairy/monopaint/issues)
+with your device, firmware and app versions, whether pressure/tilt works, and how
+live ink, grays, and selection refreshes behave. Test on a new painting first.
 
 ## Development and license
 

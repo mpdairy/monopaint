@@ -1,11 +1,12 @@
-MonoPaint 0.95 runs on the Supernote Nomad and lets you hide the bars.
+MonoPaint 0.96 keeps your paintings safe in shared storage and smooths out the Nomad.
 
-- **Nomad support**, with faster, smoother controls and tilt-following brushes.
-- **Hide the bars:** swipe one finger off a bar's screen edge to toggle that bar,
-  or two-finger double tap to toggle both. Each page can keep its size or expand
-  to fill the screen (undoable).
-- **Double-tap Zoom** to return to 100%.
-- **Export PNG → Change folder…** saves where the Supernote file manager can see it.
+- **Paintings live in `Document/MonoPaint`** once you allow file access, so they
+  survive uninstalling or reinstalling and show up in the Files app. Existing
+  paintings move there automatically and are now `.mpaint` files.
+- **Export PNG** saves to `EXPORT/MonoPaint` on a Supernote by default.
+- **New painting / Open painting** ask to save unsaved changes first.
+- **Smoother on the Nomad:** a faster color selector with fewer stray marker
+  copies, and shape previews and gradient lines that follow the pen without trails.
 
 Download **monopaint.apk** and follow the [sideload instructions](https://github.com/mpdairy/monopaint#sideload-onto-a-manta).
-Update with `adb install -r monopaint.apk` to keep your drawings and settings.
+Update with `adb install -r monopaint.apk` to keep your paintings and settings.
