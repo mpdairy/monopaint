@@ -128,7 +128,7 @@ public final class PaintActivity extends Activity implements ControlHost {
         if (library.activeId().isEmpty() && library.current().isBrush()) library.edit(library.current().asBrush());
         paint.eraseMode &= library.current().supportsEraseMode();
         // Start in private storage; loadDrawing() moves the library to shared storage when allowed.
-        store = new DocumentStore(DrawingStorage.appPrivate(this));
+        store = new DocumentStore(DrawingStorage.appPrivate(this), DrawingStorage.recovery(this));
 
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE);

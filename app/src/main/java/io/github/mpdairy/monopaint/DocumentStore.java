@@ -15,15 +15,21 @@ final class DocumentStore {
     interface Result<T> { void complete(T value, Exception error); }
     /** Read and replaced only on {@link #IO}. */
     private DrawingFiles files;
+    /**
+     * The working drawing's recovery file. It stays in private storage wherever the library is:
+     * Supernote Cloud syncs Document/, and syncing a file rewritten every few seconds left
+     * conflict copies and broken temporary files there until autosave failed.
+     */
+    private final File recovery;
     // Keep one process-wide queue: a recreated Activity must read after the
     // previous Activity's pending atomic save, not race it with a new worker.
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private Snapshot pending;
     private boolean scheduled;
 
-    /** A store for the drawing library in {@code library} (see {@link DrawingStorage}). */
-    DocumentStore(File library) {
-        files = new DrawingFiles(library);
+    /** A store for the drawing library in {@code library}, autosaving to {@code recovery} (see {@link DrawingStorage}). */
+    DocumentStore(File library, File recovery) {
+        files = new DrawingFiles(library); this.recovery = recovery;
         IO.execute(this::upgradeLegacyNames);
     }
     /** Runs on {@link #IO} before anything else reads the library; a failure leaves the old names readable by retrying next time. */
@@ -32,7 +38,7 @@ final class DocumentStore {
         catch (IOException e) { android.util.Log.e(ProbeActivity.TAG, "Could not rename .tsm drawings", e); }
     }
     private File file(String name) throws IOException {
-        return name.equals("_recovery") ? files.recovery() : files.drawing(name);
+        return name.equals("_recovery") ? recovery : files.drawing(name);
     }
     static boolean validName(String name) {
         return DrawingFiles.validName(name);
@@ -99,7 +105,7 @@ final class DocumentStore {
     void recover(Result<RecoveryCodec.Recovered> result) {
         IO.execute(() -> {
             try {
-                AtomicFile atomic = new AtomicFile(files.recovery());
+                AtomicFile atomic = new AtomicFile(recovery);
                 if (!exists(atomic.getBaseFile())) { result.complete(null, null); return; }
                 try (FileInputStream input = atomic.openRead()) { result.complete(RecoveryCodec.read(input), null); }
             } catch (Exception e) { result.complete(null, e); }
@@ -125,27 +131,48 @@ final class DocumentStore {
         });
     }
     /**
-     * Moves the whole library, recovery file included, into {@code library} and uses it from
-     * then on; queued saves land wherever the library is when they run. A recovery file already
-     * there with unsaved changes (say, from before a reinstall) is kept as a named drawing.
-     * On failure the store stays where it was, and moving again finishes the job.
+     * Moves the library's drawings into {@code library} and uses it from then on; queued saves
+     * land wherever the library is when they run. The recovery file stays put. On failure the
+     * store stays where it was, and moving again finishes the job.
      */
     void relocate(File library, Result<Void> result) {
         IO.execute(() -> {
             try {
                 DrawingFiles target = new DrawingFiles(library);
-                if (!target.sameLibrary(files)) {
-                    target.folder("");
-                    if (exists(files.recovery())) keepUnsavedRecovery(target);
-                    move("", target);
-                }
-                files = target; upgradeLegacyNames(); result.complete(null, null);
+                if (!target.sameLibrary(files)) { target.folder(""); move("", target); }
+                files = target; upgradeLegacyNames(); adoptLibraryRecovery(); result.complete(null, null);
             } catch (Exception e) { result.complete(null, e); }
         });
     }
-    private static void keepUnsavedRecovery(DrawingFiles target) throws IOException {
-        AtomicFile recovery = new AtomicFile(target.recovery());
-        if (!exists(recovery.getBaseFile())) return;
+    /**
+     * Before 0.97 the recovery file lived in the library, where cloud sync copied it as
+     * "_recovery_CONFLICT_…" drawings and left "_recovery.mpaint.new" folders behind. Takes
+     * that recovery over when there is no private one, keeps it as a named drawing when it
+     * has unsaved changes of its own, and removes it and the sync's leftovers.
+     */
+    private void adoptLibraryRecovery() throws IOException {
+        File old = files.recovery();
+        if (old.getCanonicalPath().equals(recovery.getCanonicalPath())) return;
+        if (exists(old)) {
+            AtomicFile source = new AtomicFile(old);
+            if (!exists(recovery)) {
+                byte[] bytes = source.readFully();
+                write(new AtomicFile(recovery), output -> output.write(bytes));
+                if (!Arrays.equals(bytes, new AtomicFile(recovery).readFully()))
+                    throw new IOException("The private copy of the recovery file did not match; the original was kept");
+            } else keepUnsavedRecovery(files, source);
+            source.delete();
+        }
+        File[] entries = files.folder("").listFiles();
+        if (entries == null) return;
+        for (File entry : entries) {
+            String name = entry.getName();
+            // A directory is removed only when empty; delete() refuses otherwise.
+            if (name.equals(old.getName() + ".new") || name.startsWith("_recovery_CONFLICT_") && name.endsWith(DrawingFiles.EXTENSION))
+                entry.delete();
+        }
+    }
+    private static void keepUnsavedRecovery(DrawingFiles target, AtomicFile recovery) throws IOException {
         RecoveryCodec.Recovered recovered;
         try (FileInputStream input = recovery.openRead()) { recovered = RecoveryCodec.read(input); }
         if (!recovered.book.unsaved()) return;
@@ -171,12 +198,11 @@ final class DocumentStore {
             }
         }
         for (String name : drawings) {
-            boolean recovery = path.isEmpty() && name.equals("_recovery");
-            if (!recovery && !DrawingFiles.validName(name)) continue;
-            AtomicFile source = new AtomicFile(recovery ? files.recovery() : files.drawing(DrawingFiles.child(path, name)));
+            if (!DrawingFiles.validName(name)) continue;
+            AtomicFile source = new AtomicFile(files.drawing(DrawingFiles.child(path, name)));
             byte[] bytes = source.readFully();
-            File destination = recovery ? target.recovery() : target.drawing(DrawingFiles.child(path, name));
-            if (!recovery && exists(destination)) {
+            File destination = target.drawing(DrawingFiles.child(path, name));
+            if (exists(destination)) {
                 if (Arrays.equals(bytes, new AtomicFile(destination).readFully())) { source.delete(); continue; }
                 destination = target.drawing(target.unusedName(path, name));
             }

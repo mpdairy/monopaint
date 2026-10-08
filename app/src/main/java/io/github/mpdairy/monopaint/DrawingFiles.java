@@ -50,6 +50,7 @@ final class DrawingFiles {
         return contained(new File(folder(parent(path)), name(path) + EXTENSION));
     }
 
+    /** Where the recovery file lived before 0.97; {@link DocumentStore} now keeps it in private storage. */
     File recovery() throws IOException { return new File(folder(""), "_recovery" + EXTENSION); }
 
     void createFolder(String parent, String name) throws IOException {

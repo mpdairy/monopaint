@@ -206,7 +206,7 @@ final class PaintChecks {
             // Recreated stores must share the old Activity's writer queue.
             CountDownLatch nextRead = new CountDownLatch(1);
             store.recoverLater(new DocumentStore.Snapshot(doc), (value, failure) -> error[0] = failure);
-            new DocumentStore(DrawingStorage.library(current)).open("_recovery", (value, failure) -> {
+            new DocumentStore(DrawingStorage.library(current), DrawingStorage.recovery(current)).open("_recovery", (value, failure) -> {
                 restored[0] = value; error[0] = failure; nextRead.countDown();
             });
             check(nextRead.await(10,TimeUnit.SECONDS) && error[0] == null
@@ -1343,7 +1343,7 @@ final class PaintChecks {
     }
     private static void namedSave(Instrumentation test, ToneDocument doc) throws Exception {
         java.io.File scratch = new java.io.File(test.getTargetContext().getCacheDir(), "document-check-" + System.nanoTime());
-        DocumentStore store = new DocumentStore(scratch);
+        DocumentStore store = new DocumentStore(scratch, new java.io.File(scratch, "_recovery" + DrawingFiles.EXTENSION));
         CountDownLatch done = new CountDownLatch(1);
         final Exception[] error = new Exception[1]; final ToneDocument[] restored = new ToneDocument[1];
         store.save("Test drawing",new DocumentStore.Snapshot(doc),(value,failure) -> error[0]=failure);

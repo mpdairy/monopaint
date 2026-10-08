@@ -10,6 +10,12 @@ with each change; when cutting a release, turn that section into
 - On the Nomad, tapping a button in the Layers panel no longer leaves it stuck
   on screen after the panel closes, even through a screen refresh. The whole
   panel now disappears at once.
+- Autosave no longer breaks when Supernote Cloud sync is on. The autosave copy
+  of the painting you're working on now stays inside MonoPaint instead of in
+  `Document/MonoPaint`, where syncing it left hundreds of `_recovery` copies and
+  eventually made autosave fail. MonoPaint removes those leftovers from the
+  folder the first time it opens. Paintings you save are still kept in
+  `Document/MonoPaint`.
 
 ## 0.96
 

@@ -197,7 +197,7 @@ final class ShapeUiChecks {
                 call(activity,"saveToolState");call(activity,"recovery");
             });
             TestSessionSave.await(activity);
-            try(java.io.FileInputStream input=new java.io.FileInputStream(new java.io.File(DrawingStorage.library(activity),"_recovery"+DrawingFiles.EXTENSION))) {
+            try(java.io.FileInputStream input=new java.io.FileInputStream(DrawingStorage.recovery(activity))) {
                 RecoveryCodec.Recovered recovered=RecoveryCodec.read(input);
                 check(recovered.path.equals(name),"Original drawing destination restored");
                 check(recovered.book.index()==originalPages.index&&recovered.book.count()==originalPages.pages.size(),"Original page restored");

@@ -25,6 +25,8 @@ final class DrawingStorage {
 
     static File shared() { return new File(Environment.getExternalStorageDirectory(), SHARED_NAME); }
     static File appPrivate(Context context) { return new File(context.getFilesDir(), "drawings"); }
+    /** The working drawing's autosave, always private; see {@link DocumentStore}. */
+    static File recovery(Context context) { return new File(appPrivate(context), "_recovery" + DrawingFiles.EXTENSION); }
 
     static boolean sharedAllowed(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return Environment.isExternalStorageManager();

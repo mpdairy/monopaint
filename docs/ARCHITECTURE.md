@@ -59,5 +59,7 @@ and the autosave/recovery file in the background (`BookCodec`, `DocumentCodec`,
 `RecoveryCodec`). `DrawingStorage` chooses the library folder: shared
 `Document/MonoPaint` on a Supernote (the folder its Files app shows) or
 `Documents/MonoPaint` elsewhere, once the app has file access, so drawings outlive the app,
-otherwise its private files. At launch `DocumentStore.relocate` moves anything
-left in private storage into the shared library before the drawing loads.
+otherwise its private files. At launch `DocumentStore.relocate` moves drawings
+left in private storage into the shared library before the drawing loads. The
+recovery file always stays private: Supernote Cloud syncs `Document/`, and syncing
+a file rewritten every few seconds left conflict copies until autosave failed.
