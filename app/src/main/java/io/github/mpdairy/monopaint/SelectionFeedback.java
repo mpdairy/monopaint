@@ -17,6 +17,8 @@ final class SelectionFeedback {
     /** The last submitted patch, in driver buffer coordinates ({@link DirectEink#bufferRegion}). */
     Rect lastBufferRegion;
     private boolean loggedFailure;
+    /** Panel area this session drew through the Nomad's fast pen plane (mode 9). */
+    private final android.graphics.RectF fastInk = new android.graphics.RectF();
     private final Map<View, Rect> pending = new WeakHashMap<>();
     private ViewTreeObserver observer;
     // Refresh cached Android drawing commands when another UI action needs a frame.
@@ -62,6 +64,13 @@ final class SelectionFeedback {
             pixels.recycle();
         }
     }
+    /**
+     * Returns and forgets the fast ink drawn so far. Android redraws and panel refreshes
+     * do not remove pen-plane pixels, so a closing popup must erase this area itself.
+     */
+    android.graphics.RectF takeFastInk() {
+        android.graphics.RectF area = new android.graphics.RectF(fastInk); fastInk.setEmpty(); return area;
+    }
     void close() {
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(syncBeforeDraw);
         observer = null; pending.clear();
@@ -105,6 +114,11 @@ final class SelectionFeedback {
                 submitted++;
                 lastDisplayMode = mode;
                 lastBufferRegion = display.bufferRegion(dirty);
+                if (fastBinary) {
+                    android.graphics.RectF panel = new android.graphics.RectF(dirty);
+                    bitmapToView.postConcat(PanelCoordinates.fromView(owner)); bitmapToView.mapRect(panel);
+                    fastInk.union(panel);
+                }
             }
             // Busy queues fall back to the normal redraw. Never replay stale UI pixels.
         } catch (RuntimeException error) {
@@ -131,7 +145,8 @@ final class SelectionFeedback {
 
     private static Bitmap capture(View owner, Rect area) {
         Bitmap bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap); canvas.translate(-area.left, -area.top);
+        // Apply the scroll offset a parent would, so scrolled text lands inside the view.
+        Canvas canvas = new Canvas(bitmap); canvas.translate(-area.left-owner.getScrollX(), -area.top-owner.getScrollY());
         owner.draw(canvas); return bitmap;
     }
     static Rect difference(Bitmap before, Bitmap after) {

@@ -30,8 +30,13 @@ final class DirectEink {
     static DirectEink forView(View owner, Bitmap background, Matrix bitmapToView, int requestFlags, int displayMode) {
         Matrix toPanel = new Matrix(bitmapToView);
         toPanel.postConcat(PanelCoordinates.fromView(owner));
-        toPanel.postConcat(bufferFromPanel());
-        return new DirectEink(background,toPanel,requestFlags,displayMode);
+        return forPanel(background,toPanel,requestFlags,displayMode);
+    }
+    /** A session for pixels placed by panel coordinates, e.g. after their view has closed. */
+    static DirectEink forPanel(Bitmap background, Matrix bitmapToPanel, int requestFlags, int displayMode) {
+        Matrix toBuffer = new Matrix(bitmapToPanel);
+        toBuffer.postConcat(bufferFromPanel());
+        return new DirectEink(background,toBuffer,requestFlags,displayMode);
     }
     private DirectEink(Bitmap background, Matrix toPanel, int requestFlags, int displayMode) {
         float[] values = new float[9]; toPanel.getValues(values);

@@ -87,6 +87,16 @@ press/release pair and verify that the box is already clear when the counter
 changes. These checks passed on both tablets in every rotation/toolbar position;
 saved pages, settings and reopened canvases matched the pre-update backups.
 Physical acceptance of this follow-up remains to be confirmed.
+A 0.96 report found mode 9 press boxes left behind by the Layers panel. Pen-plane
+pixels persist through Android redraws and panel refreshes (user-confirmed), so
+releasing the press first only left the unpressed button there instead.
+SelectionFeedback now records the panel area it drew in mode 9; when the popup
+closes, DrawingPad writes white over the whole panel through mode 9 and forces
+the canvas back through its mode 7 session once reconnected. Erasing the whole
+panel, not just the pressed buttons, makes it vanish at once (user-confirmed on
+the Nomad, including the canvas reappearing under it). Layer names were also blank
+because single-line text scrolls its view, and ControlRaster, direct captures and
+ToolButton overlays ignored that scroll offset; all three now apply it.
 
 A preliminary test tried
 reading the shared display planes after submission and saw mismatches on

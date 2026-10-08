@@ -26,7 +26,7 @@ final class PageActionButton extends ImageButton {
     }
     private boolean blocked() { return host.busy() || host.pageActionPending(); }
     @Override public void draw(Canvas canvas) {
-        controlRaster.draw(canvas,getWidth(),getHeight(),super::draw);
+        controlRaster.draw(canvas,this,super::draw);
     }
     @Override public boolean onTouchEvent(MotionEvent event) {
         press.onTouch(event, isEnabled() && !blocked());

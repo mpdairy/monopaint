@@ -63,8 +63,11 @@ final class LayersPanel {
         float top = app.landscape ? anchor.bottom : anchor.top;
         RectF bounds = Popups.rect(Popups.clamp(left, 0, rootWidth-width), Popups.clamp(top, 0, rootHeight-height), width, height);
         app.selectionFeedback.update(trigger, trigger.markerArea(), () -> trigger.marked = true);
+        RectF panelArea = new RectF(bounds); PanelCoordinates.fromView(app.root).mapRect(panelArea);
         popup.setOnDismissListener(() -> {
             if (app.layersPopup == popup) app.layersPopup = null;
+            // Erase the whole panel with its fast ink, so taps don't vanish before the rest.
+            if (!app.layerFeedback.takeFastInk().isEmpty()) app.pad.eraseFastInk(panelArea);
             app.layerFeedback.close();
             app.selectionFeedback.update(trigger, trigger.markerArea(), () -> trigger.marked = false);
         });

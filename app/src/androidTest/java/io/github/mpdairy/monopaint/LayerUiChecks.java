@@ -30,8 +30,10 @@ final class LayerUiChecks {
             });
             open(test,activity); tap(test,find(popup(activity).getContentView(),"Add layer"));
             await(test,() -> doc.layerCount()==2,"Add layer responds");
+            int doneErased=(Integer)get(pad,"fastInkRefreshes");
             tap(test,find(popup(activity).getContentView(),"Done"));
             await(test,() -> get(pad,"direct")!=null,"Fast display reconnects");
+            awaitFastInkErased(test,pad,doneErased,"Done press");
             main(test,() -> {
                 PressureStroke stroke=new PressureStroke(doc,ToolSettings.defaults(ToolSettings.Tool.BRUSH).size(32),180);
                 stroke.sample(200,200,.45f); stroke.finish();
@@ -103,8 +105,12 @@ final class LayerUiChecks {
                 });
                 open(test,activity);
                 screenshot(test,activity,"layers-"+quarter+"-"+side+".png");
-                tap(test,find(popup(activity).getContentView(),"Layer 2"));
+                View name=find(popup(activity).getContentView(),"Layer 2");
+                main(test,() -> check(inkInside(name)>0,"Layer name is drawn inside its button"));
+                int nameErased=(Integer)get(pad,"fastInkRefreshes");
+                tap(test,name);
                 await(test,() -> doc.activeLayer()==1&&get(activity,"layersPopup")==null,"Rotated layer selection hit target");
+                awaitFastInkErased(test,pad,nameErased,"Layer name press");
                 await(test,() -> get(pad,"direct")!=null,"Rotated fast display reconnects");
                 for(boolean all:new boolean[]{false,true}) {
                     byte[] before=DrawingBook.encode(doc);
@@ -126,7 +132,7 @@ final class LayerUiChecks {
             // Let asynchronous compression run while all eight full-size layers and the display stay resident.
             SystemClock.sleep(2000);
             main(test,() -> check(get(activity,"saveError")==null,"Eight-layer autosave succeeds"));
-            report.append("PASS: eye visibility updates in place without detaching the panel, layer add/select/show/hide/reorder, opaque brush and transparent eraser, all four orientations and both hands, display reconnection, eight full-resolution layers and autosave.\n");
+            report.append("PASS: layer names drawn, fast ink erased after the panel closes, eye visibility updates in place without detaching the panel, layer add/select/show/hide/reorder, opaque brush and transparent eraser, all four orientations and both hands, display reconnection, eight full-resolution layers and autosave.\n");
         } finally {
             main(test,() -> {
                 PopupWindow popup=popup(activity); if(popup!=null) popup.dismiss();
@@ -147,6 +153,19 @@ final class LayerUiChecks {
             check(button.isSelected(),"Layers toolbar stays outlined while open");
         });
         await(test,() -> popup(activity)!=null&&popup(activity).isShowing(),"Layers opened");test.waitForIdleSync();SystemClock.sleep(100);
+    }
+    /** On the Nomad, presses are pen-plane ink that only the app can erase once the panel closes. */
+    private static void awaitFastInkErased(Instrumentation test,Object pad,int before,String what) throws Exception {
+        if(!DirectEink.fastBinaryControls()) return;
+        await(test,() -> (Integer)get(pad,"fastInkRefreshes")>before&&((android.graphics.RectF)get(pad,"fastInk")).isEmpty(),what+" fast ink is erased after the panel closes");
+    }
+    /** Black pixels inside the control's border, drawn as its parent would, scroll offset included. */
+    private static int inkInside(View view) {
+        Bitmap bitmap=Bitmap.createBitmap(view.getWidth(),view.getHeight(),Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);canvas.translate(-view.getScrollX(),-view.getScrollY());view.draw(canvas);
+        int inset=Ui.dp(view.getContext(),8),ink=0;
+        for(int y=inset;y<bitmap.getHeight()-inset;y++) for(int x=inset;x<bitmap.getWidth()-inset;x++) if(bitmap.getPixel(x,y)==android.graphics.Color.BLACK) ink++;
+        bitmap.recycle();return ink;
     }
     private static PopupWindow popup(PaintActivity activity) throws Exception {return (PopupWindow)get(activity,"layersPopup");}
     private static View find(View view,String text) {

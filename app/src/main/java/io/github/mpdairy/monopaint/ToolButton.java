@@ -51,7 +51,7 @@ final class ToolButton extends Button {
     private int dp(float value) { return Ui.dp(getContext(), value); }
 
     @Override public void draw(Canvas canvas) {
-        controlRaster.draw(canvas,getWidth(),getHeight(),super::draw);
+        controlRaster.draw(canvas,this,super::draw);
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
@@ -105,6 +105,12 @@ final class ToolButton extends Button {
     }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        // Single-line text scrolls the canvas; overlays belong to the control's own bounds.
+        int save = canvas.save();
+        canvas.translate(getScrollX(), getScrollY());
+        try { drawOverlays(canvas); } finally { canvas.restoreToCount(save); }
+    }
+    private void drawOverlays(Canvas canvas) {
         if (centerIcon != null) {
             int half = dp(iconHalf), x = getWidth()/2+dp(iconOffset), y = getHeight()/2-(caption != null ? dp(9) : 0);
             canvas.save();

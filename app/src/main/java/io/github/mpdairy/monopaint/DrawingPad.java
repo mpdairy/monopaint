@@ -52,6 +52,9 @@ final class DrawingPad extends View {
     private DirectEink previewDirect;
     /** Pixels {@link #previewDirect} showed, re-presented through {@link #direct} when the preview ends. */
     private final Rect previewArea = new Rect();
+    /** Panel area of closed controls' fast ink, presented again through {@link #direct}; see {@link #eraseFastInk}. */
+    private final RectF fastInk = new RectF();
+    private int fastInkRefreshes;
     private final NativePen input;
     private int pointer = -1, retries;
     private long lastPresent;
@@ -373,6 +376,7 @@ final class DrawingPad extends View {
             if (!input.prepareDocumentCanvas()) throw new IllegalStateException(input.status);
             direct = viewportBitmap == null ? DirectEink.forView(this, display, pageToView, 0, 7)
                     : DirectEink.forView(this, viewportBitmap.bitmap, new Matrix(), 0, 7);
+            refreshFastInk();
         } catch (RuntimeException | LinkageError error) {
             Log.w(ProbeActivity.TAG, "Using Android drawing presentation", error);
             if (!fallbackNotice) { app.message("Fast display unavailable; using standard drawing"); fallbackNotice = true; }
@@ -386,6 +390,45 @@ final class DrawingPad extends View {
         input.disable();
     }
     void present() { flush(true); }
+    /**
+     * Removes fast ink a closed popup left over the canvas. The Nomad keeps pen-plane
+     * (mode 9) pixels through Android redraws and panel refreshes, so blank that plane
+     * here and show the canvas again through the gray session once it is connected.
+     */
+    void eraseFastInk(RectF panelArea) {
+        if (panelArea.isEmpty()) return;
+        Rect area = new Rect(); panelArea.roundOut(area);
+        Bitmap white = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888);
+        white.eraseColor(Color.WHITE);
+        DirectEink blank = null;
+        try {
+            Matrix toPanel = new Matrix(); toPanel.setTranslate(area.left, area.top);
+            blank = DirectEink.forPanel(white, toPanel, 1, 9);
+            blank.refresh(white, new Rect(0, 0, area.width(), area.height()));
+        } catch (RuntimeException | LinkageError error) {
+            Log.w(ProbeActivity.TAG, "Fast ink stays until the canvas redraws", error);
+        } finally {
+            if (blank != null) blank.close();
+            white.recycle();
+        }
+        fastInk.union(panelArea);
+        refreshFastInk();
+    }
+    private void refreshFastInk() {
+        if (fastInk.isEmpty() || direct == null) return;
+        Matrix toPanel = new Matrix(viewportBitmap == null ? pageToView : new Matrix());
+        toPanel.postConcat(PanelCoordinates.fromView(this));
+        Matrix fromPanel = new Matrix();
+        if (!toPanel.invert(fromPanel)) return;
+        RectF mapped = new RectF(fastInk); fromPanel.mapRect(mapped);
+        Rect area = new Rect(); mapped.roundOut(area);
+        Bitmap source = presented();
+        if (!area.intersect(0, 0, source.getWidth(), source.getHeight())) { fastInk.setEmpty(); return; }
+        flush(true);
+        // Forced: the software pixels are unchanged, only the panel's are stale.
+        if (direct.refresh(source, area) < 0) { postDelayed(this::refreshFastInk, 8); return; }
+        fastInk.setEmpty(); fastInkRefreshes++;
+    }
     /**
      * Presents a moving preview (a shape or the gradient guide) through the Nomad's fast
      * black/white pen path, like the color bar. Gray-mode frames queue on the Nomad, so a

@@ -6,6 +6,11 @@ with each change; when cutting a release, turn that section into
 
 ## Unreleased (since 0.96)
 
+- Layer names show again in the Layers panel on the Nomad.
+- On the Nomad, tapping a button in the Layers panel no longer leaves it stuck
+  on screen after the panel closes, even through a screen refresh. The whole
+  panel now disappears at once.
+
 ## 0.96
 
 - The color selector is faster on the Nomad: only the small marker below the
