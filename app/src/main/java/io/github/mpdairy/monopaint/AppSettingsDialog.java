@@ -13,7 +13,7 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.util.ArrayList;
 
-/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, smooth edges, tablet simulation and toolbar contents. */
+/** The Settings dialog: drawing hand, rotation, sizes, wet gravity, smooth edges, screen drawing, tablet simulation and toolbar contents. */
 final class AppSettingsDialog {
     private final PaintActivity app;
     private final PaintPreferences prefs;
@@ -48,6 +48,7 @@ final class AppSettingsDialog {
         smooth.setChecked(prefs.smoothEdges());
         smooth.setOnCheckedChangeListener((button, checked) -> prefs.setSmoothEdges(checked));
         content.addView(smooth);
+        if (Device.supernote()) screenDrawing();
         CheckBox simulate = new CheckBox(app);
         if (app.canSimulate()) {
             String label = app.device.simulates.name + " Simulation Mode";
@@ -61,11 +62,23 @@ final class AppSettingsDialog {
         SettingsForm.style(content, prefs.largeSettingsText());
         SettingsScroller scroll = new SettingsScroller(app, content);
         dialog = new AlertDialog.Builder(app).setTitle("Settings").setView(scroll).setPositiveButton("Done", null).create();
-        dialog.show(); app.compactDialog(dialog);
+        dialog.show(); app.compactDialog(dialog, 520);
         simulate.setOnCheckedChangeListener((button, checked) -> { dialog.dismiss(); app.setSimulating(checked); });
         manualRotation.setOnClickListener(v -> { dialog.dismiss(); app.requestQuarter(app.landscape ? 0 : 3); });
     }
     private int dp(float value) { return app.dp(value); }
+    /** Fast e-ink or Android drawing, with the firmware build so a report can name it. */
+    private void screenDrawing() {
+        label("Screen drawing");
+        RadioGroup drawing = SettingsForm.pair(app, "Fast e-ink", "Standard Android", prefs.androidDrawing(),
+                app::setAndroidDrawing);
+        drawing.getChildAt(0).setContentDescription("Fast e-ink drawing");
+        drawing.getChildAt(1).setContentDescription("Standard Android drawing");
+        content.addView(drawing);
+        String tested = app.device.firmwareTested() ? "tested on this tablet"
+                : "not yet tested on this tablet. If the screen misbehaves, try Standard Android.";
+        content.addView(SettingsForm.hintText(app, "Firmware " + Device.firmware() + ": " + tested));
+    }
     private void label(String text) {
         TextView label = new TextView(app); label.setText(text); content.addView(label);
     }

@@ -187,8 +187,11 @@ final class SettingsForm {
         RadioGroup group = new RadioGroup(context); group.setOrientation(LinearLayout.HORIZONTAL);
         RadioButton a = new RadioButton(context), b = new RadioButton(context);
         a.setId(View.generateViewId()); b.setId(View.generateViewId()); a.setText(first); b.setText(second);
-        group.addView(a, new LinearLayout.LayoutParams(0, Ui.dp(context, 48), 1));
-        group.addView(b, new LinearLayout.LayoutParams(0, Ui.dp(context, 48), 1));
+        // At least a touch target tall, and taller when a label wraps rather than clipping it.
+        for (RadioButton button : new RadioButton[]{a, b}) {
+            button.setMinHeight(Ui.dp(context, 48));
+            group.addView(button, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        }
         group.check(secondChosen ? b.getId() : a.getId());
         group.setOnCheckedChangeListener((g, id) -> chosen.accept(id == b.getId()));
         return group;

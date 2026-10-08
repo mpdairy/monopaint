@@ -69,8 +69,17 @@ final class DirectEink {
     /** The panel offers the binary pen path (mode 9) for exact black/white controls. */
     static boolean fastBinaryControls() { return layout()[2]!=0; }
     private static int[] layout;
+    private static final int[] NONE = new int[3];
+    private static volatile boolean androidDrawing;
+    /**
+     * Settings' Standard Android drawing: report no driver, so every caller takes its Android
+     * fallback and the firmware's e-ink interfaces are left alone.
+     */
+    static void useAndroidDrawing(boolean value) { androidDrawing = value; }
+    static boolean androidDrawing() { return androidDrawing; }
     /** The driver buffer as {width, height, fast binary}; zeros when unsupported. Known buffers are listed in direct_eink.c. */
     static synchronized int[] layout() {
+        if (androidDrawing) return NONE;
         if (layout==null) { layout=nativeLayout(); if (layout==null) layout=new int[3]; }
         return layout;
     }

@@ -16,6 +16,14 @@ with each change; when cutting a release, turn that section into
   eventually made autosave fail. MonoPaint removes those leftovers from the
   folder the first time it opens. Paintings you save are still kept in
   `Document/MonoPaint`.
+- Settings has a new **Screen drawing** choice. **Fast e-ink** is the normal
+  mode. **Standard Android** is slower but avoids MonoPaint's direct screen
+  updates, for firmware (such as a beta) that shows black boxes or other screen
+  glitches. Settings also shows your firmware build and whether MonoPaint has
+  been tested on it, and MonoPaint tells you once when it starts on firmware
+  it hasn't been tested on.
+- The Settings window is wider, and choices with long names (such as
+  "Standard Android") are no longer cut off.
 
 ## 0.96
 

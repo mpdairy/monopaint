@@ -79,12 +79,43 @@ final class SettingsUiChecks {
                 ToolPickerChecks.tap(test,control);dialog[0]=null;
                 check(!prefs.getBoolean("nomad_mode",true),"Moved toggle changes simulation mode");
             }
+            screenDrawing(test,app,prefs);
+            report.append("PASS: Screen drawing switches between fast e-ink and Standard Android, which leaves the driver alone.\n");
         } finally {
             main(test,() -> {
                 if(dialog[0]!=null)dialog[0].dismiss();
                 if(hadLarge)prefs.edit().putBoolean("large_settings_text",large).apply();else prefs.edit().remove("large_settings_text").apply();
                 call(app,"setSimulating",new Class<?>[]{boolean.class},nomad);
             });
+        }
+    }
+    /** Standard Android drawing must leave no direct session and report no driver; fast e-ink must come back. */
+    private static void screenDrawing(Instrumentation test,PaintActivity app,SharedPreferences prefs)throws Exception {
+        View[] choice={null};AlertDialog[] dialog={null};boolean original=prefs.getBoolean("android_drawing",false);
+        try {
+            for(String label:new String[]{"Standard Android drawing","Fast e-ink drawing"}) {
+                main(test,() -> dialog[0]=(AlertDialog)call(app,"appSettings"));idle(test);
+                View decor=dialog[0].getWindow().getDecorView();choice[0]=find(decor,label);
+                check(choice[0]!=null,label+" offered in Settings");
+                check(find(decor,"Firmware "+Device.firmware()+": tested on this tablet")!=null
+                        ||find(decor,"Firmware "+Device.firmware()+": not yet tested on this tablet. If the screen misbehaves, try Standard Android.")!=null,
+                        "Settings names the firmware build");
+                main(test,() -> choice[0].requestRectangleOnScreen(new android.graphics.Rect(0,0,choice[0].getWidth(),choice[0].getHeight()),true));idle(test);
+                ToolPickerChecks.tap(test,choice[0]);idle(test);
+                main(test,() -> {dialog[0].dismiss();dialog[0]=null;});
+                Object pad=get(app,"pad");
+                for(int i=0;i<40&&(get(pad,"direct")==null)!=label.startsWith("Standard");i++){SystemClock.sleep(50);test.waitForIdleSync();}
+                if(label.startsWith("Standard")) {
+                    check(prefs.getBoolean("android_drawing",false),"Standard Android drawing is saved");
+                    check(DirectEink.androidDrawing()&&DirectEink.layout()[0]==0&&!DirectEink.fastBinaryControls(),"Standard Android reports no e-ink driver");
+                    check(get(pad,"direct")==null,"Canvas uses Android drawing");
+                } else {
+                    check(!prefs.getBoolean("android_drawing",true)&&!DirectEink.androidDrawing(),"Fast e-ink drawing is saved");
+                    check(get(pad,"direct")!=null,"Canvas fast path returns");
+                }
+            }
+        } finally {
+            main(test,() -> {if(dialog[0]!=null)dialog[0].dismiss();call(app,"setAndroidDrawing",new Class<?>[]{boolean.class},original);});
         }
     }
     private static void drag(Instrumentation test,View view,float from,float to,boolean stylus) {

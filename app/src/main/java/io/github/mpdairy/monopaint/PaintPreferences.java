@@ -31,6 +31,12 @@ final class PaintPreferences {
     /** Dry brush strokes anti-alias their edges, for cleaner exports. */
     boolean smoothEdges() { return flag("smooth_edges", false); }
     void setSmoothEdges(boolean value) { setFlag("smooth_edges", value); }
+    /** Draw through Android instead of MonoPaint's fast e-ink path, for firmware that breaks it. */
+    boolean androidDrawing() { return flag("android_drawing", false); }
+    void setAndroidDrawing(boolean value) { setFlag("android_drawing", value); }
+    /** The untested firmware build the user was last told about; empty before any. */
+    String untestedFirmwareNoticed() { return store.getString("untested_firmware_noticed", ""); }
+    void setUntestedFirmwareNoticed(String build) { store.edit().putString("untested_firmware_noticed", build).apply(); }
     /** Folder chosen for PNG exports, as a document-tree URI; empty means Pictures/MonoPaint. */
     String exportFolder() { return store.getString("export_folder", ""); }
     void setExportFolder(String uri) { store.edit().putString("export_folder", uri).apply(); }

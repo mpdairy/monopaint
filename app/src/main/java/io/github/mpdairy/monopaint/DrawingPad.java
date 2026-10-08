@@ -370,6 +370,8 @@ final class DrawingPad extends View {
     void connectDisplay() {
         scheduleWet();
         if (app.canvasCovered() || !app.resumed || !hasWindowFocus() || app.loading || display == null || direct != null) return;
+        // Standard Android drawing leaves the firmware pen and e-ink interfaces untouched.
+        if (DirectEink.androidDrawing()) return;
         if (isLayoutRequested() || app.root.isLayoutRequested() || app.orientationFrame.isLayoutRequested()
                 || app.previewFrame.isLayoutRequested()) return;
         try {

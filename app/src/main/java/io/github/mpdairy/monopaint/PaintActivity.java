@@ -122,6 +122,8 @@ public final class PaintActivity extends Activity implements ControlHost {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         preferences = getSharedPreferences(PaintPreferences.FILE, MODE_PRIVATE);
         prefs = new PaintPreferences(preferences);
+        DirectEink.useAndroidDrawing(prefs.androidDrawing());
+        noticeUntestedFirmware();
         navigationLocked = prefs.navigationLocked();
         prefs.loadPaint(paint);
         library = prefs.toolLibrary(() -> message("Could not load presets. A recovery copy has been kept."));
@@ -520,6 +522,25 @@ public final class PaintActivity extends Activity implements ControlHost {
         saveToolState(); recovery();
     }
 
+    /**
+     * Fast e-ink is a guess on firmware the device checks have not run on with this tablet.
+     * Say so once per build, so a misbehaving screen has an obvious way out.
+     */
+    private void noticeUntestedFirmware() {
+        if (!Device.supernote() || device.firmwareTested() || prefs.androidDrawing()
+                || Device.firmware().equals(prefs.untestedFirmwareNoticed())) return;
+        prefs.setUntestedFirmwareNoticed(Device.firmware());
+        message("MonoPaint hasn't been tested on this firmware. If the screen misbehaves, "
+                + "choose Standard Android drawing in Settings.");
+    }
+    /** Switches between fast e-ink and Android drawing (Settings' Screen drawing). */
+    void setAndroidDrawing(boolean enabled) {
+        pad.suspend();
+        prefs.setAndroidDrawing(enabled);
+        DirectEink.useAndroidDrawing(enabled);
+        root.invalidate(); pad.connectDisplay();
+    }
+
     void dispatchCancelledTouch(MotionEvent event) { super.dispatchTouchEvent(event); }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
@@ -781,7 +802,7 @@ public final class PaintActivity extends Activity implements ControlHost {
     // Dialogs
 
     void compactDialog(AlertDialog dialog) { compactDialog(dialog, 440); }
-    private void compactDialog(AlertDialog dialog, int width) {
+    void compactDialog(AlertDialog dialog, int width) {
         orientDialog(dialog, width);
         SettingsForm.style(dialog.getWindow().getDecorView(), prefs.largeSettingsText());
         for (int which : new int[]{AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL}) {
