@@ -161,6 +161,8 @@ final class DrawingPad extends View {
         pageRotation = app.appRotation;
         boolean swapped = pageRotation == Surface.ROTATION_90 || pageRotation == Surface.ROTATION_270;
         viewport.configure(getWidth(), getHeight(), swapped ? height : width, swapped ? width : height);
+        // An expanded page fills the screen; open it at 100% under the bars, not shrunk beside them.
+        if (viewport.opening() && viewport.fitScale < 1 && homeOnScreen()) viewport.openActualSize(app.prefs.toolboxRight());
         float scale = viewport.scale();
         place(pageToView, scale, viewport.x, viewport.y);
         pageToView.invert(viewToPage);
@@ -192,6 +194,17 @@ final class DrawingPad extends View {
         place(home, 1, viewport.homeX(app.prefs.toolboxRight()), viewport.homeY());
         return home;
     }
+    /** The whole screen, bars included, in this view's coordinates. */
+    RectF screenArea() {
+        RectF pad = Popups.bounds(app.root, this);
+        return new RectF(-pad.left, -pad.top, app.root.getWidth() - pad.left, app.root.getHeight() - pad.top);
+    }
+    /** Whether the page at 100% in its home placement stays on the screen. */
+    private boolean homeOnScreen() {
+        RectF page = new RectF(0, 0, display.getWidth(), display.getHeight()); homeToView().mapRect(page);
+        RectF screen = screenArea(); screen.inset(-0.5f, -0.5f);
+        return screen.contains(page);
+    }
     private void viewportChanged() {
         disconnectDisplay(); updateViewport(); invalidate();
         if (!navigating) post(this::connectDisplay);
@@ -220,7 +233,7 @@ final class DrawingPad extends View {
         // Same-sized fitted pages share a transform. Snapshot the old panel
         // background before rendering the next page, even with Pages open.
         if (document != null && display != null && page.width == document.width && page.height == document.height
-                && viewport.zoom == 1 && app.resumed && hasWindowFocus() && !isLayoutRequested()
+                && viewport.untouched() && app.resumed && hasWindowFocus() && !isLayoutRequested()
                 && !app.root.isLayoutRequested() && !app.previewFrame.isLayoutRequested()
                 && app.rotateButton.getVisibility() != View.VISIBLE) {
             try { turn = new PageTurnDisplay(this, presented(), viewportBitmap == null ? pageToView : new Matrix(), app.pagePanel); }

@@ -21,7 +21,6 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -119,7 +118,6 @@ public final class PaintActivity extends Activity implements ControlHost {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         device = Device.current(this);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         preferences = getSharedPreferences(PaintPreferences.FILE, MODE_PRIVATE);
         prefs = new PaintPreferences(preferences);
         DirectEink.useAndroidDrawing(prefs.androidDrawing());

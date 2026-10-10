@@ -107,11 +107,7 @@ final class FullscreenController {
         // added only under the bars and 100% still returns the artwork to where it began.
         Matrix inverse=new Matrix();
         app.pad.homeToView().invert(inverse);
-        RectF area=new RectF(0,0,app.pad.getWidth(),app.pad.getHeight());
-        if(mode==0) {
-            RectF pad=Popups.bounds(app.root,app.pad);
-            area.set(-pad.left,-pad.top,app.root.getWidth()-pad.left,app.root.getHeight()-pad.top);
-        }
+        RectF area=mode==0?app.pad.screenArea():new RectF(0,0,app.pad.getWidth(),app.pad.getHeight());
         inverse.mapRect(area);
         ToneDocument page=app.pad.document;
         int left=Math.max(0,(int)Math.ceil(-area.left)),top=Math.max(0,(int)Math.ceil(-area.top));

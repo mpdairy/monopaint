@@ -15,6 +15,19 @@ drawing/page. Do not leave the app closed or claim its session was restored
 without checking. Preserve existing app data; never uninstall or clear data as
 part of a routine update.
 
+# Building on this machine
+
+The shell doesn't set `ANDROID_HOME`, and there is no `local.properties`, so a
+plain `./gradlew` fails with "SDK location not found". The SDK is in
+`~/Android/Sdk`, so build with:
+
+```sh
+ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+```
+
+Over ADB the Manta also reports its model as "Supernote Nomad". Tell the tablets
+apart by `adb shell wm size`: the Manta's panel is 1920x2560.
+
 # Changelog
 
 Record every user-facing change in `CHANGELOG.md` under **Unreleased** as part
