@@ -4,7 +4,9 @@ User-facing changes since the last release. Add an entry under **Unreleased**
 with each change; when cutting a release, turn that section into
 `dist/RELEASE_NOTES.md` and retitle it with the new version.
 
-## Unreleased (since 0.96)
+## Unreleased (since 0.97)
+
+## 0.97
 
 - Layer names show again in the Layers panel on the Nomad.
 - On the Nomad, tapping a button in the Layers panel no longer leaves it stuck
