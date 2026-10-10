@@ -24,6 +24,19 @@ with each change; when cutting a release, turn that section into
   it hasn't been tested on.
 - The Settings window is wider, and choices with long names (such as
   "Standard Android") are no longer cut off.
+- Exporting one page of a painting with several pages now names the file for
+  its page, such as `statues004.png`, instead of `statues.png`.
+- Export PNG has a **Dithered, as on screen** option. It saves the same black
+  and white dots MonoPaint shows on the tablet instead of smooth grays. Dots
+  only look right at one size, so you also pick the size: the page's own, as
+  large as fits a Manta or Nomad screen (for example, exporting a Manta
+  painting as the Nomad would show it), or a custom width or height that keeps
+  the page's proportions. The app remembers these choices for later exports.
+- A page you expanded to fill the screen now opens at 100%, where you painted
+  it, instead of shrunk (to about 91%) to fit beside the toolbars.
+- MonoPaint no longer keeps the tablet awake. The screen now sleeps and locks
+  after the tablet's normal idle time, so leaving MonoPaint open won't drain
+  the battery.
 
 ## 0.96
 

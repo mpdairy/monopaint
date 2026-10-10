@@ -176,8 +176,10 @@ final class ToneDocument {
         selectLayer(active); captured=new boolean[columns()*((height+TILE-1)/TILE)]; clearDirty();
     }
     static void validateSize(int width, int height) {
-        if (width <= 0 || height <= 0 || width > 4096 || height > 4096
-                || (long)width * height > MAX_PIXELS) throw new IllegalArgumentException("Invalid canvas size");
+        if (!validSize(width, height)) throw new IllegalArgumentException("Invalid canvas size");
+    }
+    static boolean validSize(int width, int height) {
+        return width > 0 && height > 0 && width <= 4096 && height <= 4096 && (long)width * height <= MAX_PIXELS;
     }
     private static byte[] paper(int width, int height) {
         validateSize(width, height);

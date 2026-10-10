@@ -40,6 +40,12 @@ final class PaintPreferences {
     /** Folder chosen for PNG exports, as a document-tree URI; empty means Pictures/MonoPaint. */
     String exportFolder() { return store.getString("export_folder", ""); }
     void setExportFolder(String uri) { store.edit().putString("export_folder", uri).apply(); }
+    /** PNG exports use the screen's black and white dots instead of smooth grays. */
+    boolean exportDithered() { return flag("export_dithered", false); }
+    void setExportDithered(boolean value) { setFlag("export_dithered", value); }
+    /** Dithered PNG size: "page", a Supernote's name to fill its screen, or "custom:" and a width. */
+    String exportSize() { return store.getString("export_size", "page"); }
+    void setExportSize(String size) { store.edit().putString("export_size", size).apply(); }
     boolean navigationLocked() { return flag("navigation_locked", true); }
     void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
     /** Whether the user has picked a shape, so Shapes shows that shape's icon. */

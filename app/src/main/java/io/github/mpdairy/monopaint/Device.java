@@ -19,7 +19,7 @@ final class Device {
             "Chauvet.E103.2606141001.2389_release");
     /** Any other tablet, or a Supernote panel no profile matches. */
     static final Device OTHER = new Device("Android", 0, 0, false, false, 24, null);
-    private static final Device[] SUPERNOTES = {MANTA, NOMAD};
+    static final Device[] SUPERNOTES = {MANTA, NOMAD};
 
     final String name;
     /** The physical panel in natural portrait, in pixels; 0 when unknown. */

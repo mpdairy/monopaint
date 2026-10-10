@@ -30,6 +30,19 @@ final class ViewportBitmap {
         }
         nativeCompose(target,tones.toArray(new byte[0][]),alpha.toArray(new byte[0][]),java.util.Arrays.copyOf(opacity,tones.size()),dither?DOTS:null);
     }
+    /** The page as a screen of that size would show it: smoothly scaled tones, then its dots. */
+    static Bitmap dithered(ToneDocument document,int width,int height) {
+        Bitmap page=Bitmap.createBitmap(document.width,document.height,Bitmap.Config.ARGB_8888);
+        boolean same=width==document.width && height==document.height;
+        compose(document,page,same);
+        if(same) return page;
+        Bitmap scaled=Bitmap.createScaledBitmap(page,width,height,true);
+        page.recycle();
+        ViewportBitmap screen=new ViewportBitmap(width,height);
+        screen.update(scaled,new Matrix(),null);
+        scaled.recycle();
+        return screen.bitmap;
+    }
     final Bitmap bitmap;
     private final Matrix inverse=new Matrix();
     private final float[] values=new float[9];

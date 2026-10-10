@@ -32,6 +32,8 @@ java -cp "$test_classes" io.github.mpdairy.monopaint.ShapeChecks
 java -cp "$test_classes" io.github.mpdairy.monopaint.PaintLoadChecks
 
 java -cp "$test_classes" io.github.mpdairy.monopaint.CanvasSizeChecks
+javac -d "$test_classes" app/src/main/java/io/github/mpdairy/monopaint/ExportSize.java app/src/test/java/io/github/mpdairy/monopaint/ExportSizeChecks.java
+java -cp "$test_classes" io.github.mpdairy.monopaint.ExportSizeChecks
 javac -d "$test_classes" app/src/main/java/io/github/mpdairy/monopaint/MultiFingerTap.java app/src/test/java/io/github/mpdairy/monopaint/MultiFingerTapChecks.java
 java -cp "$test_classes" io.github.mpdairy.monopaint.MultiFingerTapChecks
 

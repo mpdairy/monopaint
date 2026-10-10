@@ -237,11 +237,22 @@ final class PageNavigationChecks {
             doc.render(expected,0,0,width,height);ViewportBitmap.compose(doc,bitmap,true);
             bitmap.getPixels(actual,0,width,0,0,width,height);
             check(java.util.Arrays.equals(expected,actual),"Native full-page raster matches Java for all shades, alpha and hidden layers");
+            android.graphics.Bitmap same=ViewportBitmap.dithered(doc,width,height);
+            same.getPixels(actual,0,width,0,0,width,height);same.recycle();
+            check(java.util.Arrays.equals(expected,actual),"Dithered export at page size matches the screen");
+            byte[] gray=new byte[64*48];java.util.Arrays.fill(gray,(byte)140);
+            ToneDocument flat=new ToneDocument(64,48,gray);
+            int[] dots=new int[40*30],shrunk=new int[dots.length];
+            new ToneDocument(40,30,java.util.Arrays.copyOf(gray,dots.length)).render(dots,0,0,40,30);
+            android.graphics.Bitmap scaled=ViewportBitmap.dithered(flat,40,30);
+            check(scaled.getWidth()==40 && scaled.getHeight()==30,"Dithered export takes the chosen size");
+            scaled.getPixels(shrunk,0,40,0,0,40,30);scaled.recycle();
+            check(java.util.Arrays.equals(dots,shrunk),"Scaled export dithers its shade at the new resolution");
             for(int i=0;i<8;i++)doc.setLayerVisible(i,false);
             ViewportBitmap.compose(doc,bitmap,true);bitmap.getPixels(actual,0,width,0,0,width,height);
             for(int pixel:actual)check(pixel==android.graphics.Color.WHITE,"All hidden layers leave white paper");
         } finally {bitmap.recycle();}
-        report.append("PASS: Native page raster exactly matches calibrated Java rendering across eight alpha/hidden layers.\n");
+        report.append("PASS: Native page raster exactly matches calibrated Java rendering across eight alpha/hidden layers, and dithered exports at page and scaled sizes.\n");
     }
     private static void event(Instrumentation test,int action,long down,float x,float y) {
         MotionEvent.PointerProperties properties=new MotionEvent.PointerProperties();properties.id=0;properties.toolType=MotionEvent.TOOL_TYPE_STYLUS;
