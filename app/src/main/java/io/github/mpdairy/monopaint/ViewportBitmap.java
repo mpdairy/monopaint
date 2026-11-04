@@ -14,6 +14,26 @@ final class ViewportBitmap {
         for(int tone=0;tone<256;tone++) for(int y=0;y<8;y++) for(int x=0;x<8;x++)
             DOTS[tone*64+y*8+x]=DotPattern.pixel(tone,x,y);
     }
+    /** Tones with at least this many white dots of 64 count as paper while moving. */
+    private static final int MOVING_PAPER_WHITE_DOTS=60;
+    /** White dots of 64 in the moving background, the same gray as Mosaic's pan and zoom. */
+    private static final int MOVING_GRAY_WHITE_DOTS=56;
+    /** Pinch and pan: solid black ink on a dotted gray, only black and white so A2 can show it. */
+    static final int[] MOVING_DOTS=new int[256*64];
+    static {
+        for(int tone=0;tone<256;tone++) for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+            boolean ink=DotPattern.whiteCount(tone)<MOVING_PAPER_WHITE_DOTS;
+            MOVING_DOTS[tone*64+y*8+x]=!ink && movingGrayRank(x,y)<MOVING_GRAY_WHITE_DOTS?0xffffffff:0xff000000;
+        }
+    }
+    private static int movingGrayRank(int x,int y) {
+        int rank=0;
+        for(int bit=0;bit<3;bit++) {
+            int xBit=x>>bit&1,yBit=y>>bit&1;
+            rank|=((xBit^yBit)*2+yBit)<<(2*(2-bit));
+        }
+        return rank;
+    }
     private static native void nativeRender(Bitmap source,Bitmap target,float[] inverse,int[] dots,
                                              int left,int top,int right,int bottom);
     private static native void nativeCompose(Bitmap target,byte[][] tones,byte[][] alpha,int[] opacity,int[] dots);
@@ -45,6 +65,8 @@ final class ViewportBitmap {
         return screen.bitmap;
     }
     final Bitmap bitmap;
+    /** Draws with {@link #MOVING_DOTS} instead of the calibrated shades. */
+    boolean moving;
     private final Matrix inverse=new Matrix();
     private final float[] values=new float[9];
     ViewportBitmap(int width,int height) {
@@ -61,7 +83,7 @@ final class ViewportBitmap {
         }
         if(!pageToView.invert(inverse)) throw new IllegalStateException("Invalid zoom transform");
         inverse.getValues(values);
-        nativeRender(tones,bitmap,values,DOTS,area.left,area.top,area.right,area.bottom);
+        nativeRender(tones,bitmap,values,moving?MOVING_DOTS:DOTS,area.left,area.top,area.right,area.bottom);
         return area;
     }
     void close() { bitmap.recycle(); }

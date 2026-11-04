@@ -6,6 +6,10 @@ with each change; when cutting a release, turn that section into
 
 ## 0.99 (Unreleased)
 
+- While you pinch or pan, the screen switches to a fast black and white view to
+  leave fewer ghosts: everything you've drawn turns solid black on a dotted gray
+  background, with the screen in A2. Your real shades come back when your fingers
+  lift. Only the view changes; the painting isn't touched.
 - New **Lasso** tool: draw a loop around part of the current layer to pick it
   up, then drag inside it to move it, drag a corner dot to resize it, or drag
   the round knob to turn it. The knob turns with the piece, so it stays under

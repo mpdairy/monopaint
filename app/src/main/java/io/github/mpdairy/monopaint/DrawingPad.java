@@ -141,6 +141,8 @@ final class DrawingPad extends View {
     private boolean navigationFrameScheduled;
     private long lastNavigationFrame, lastNavigationRasterNanos, lastNavigationPresentNanos;
     private int navigationFrameCount;
+    /** A2 starts once the first black and white frame of a gesture has been drawn. */
+    private boolean a2AfterFrame;
     private final Runnable navigationFrame = this::drawNavigationFrame;
     private float fingerX, fingerY, fingerSpan;
     /** Fingers are ignored until this time after the pen was last near the screen. */
@@ -209,6 +211,7 @@ final class DrawingPad extends View {
         if (viewportBitmap != null && (!scaled || viewportBitmap.bitmap.getWidth() != getWidth()
                 || viewportBitmap.bitmap.getHeight() != getHeight())) { viewportBitmap.close(); viewportBitmap = null; }
         if (scaled && viewportBitmap == null) viewportBitmap = new ViewportBitmap(getWidth(), getHeight());
+        if (viewportBitmap != null) viewportBitmap.moving = navigating;
         if (wasScaled != scaled) renderAll();
         else if (viewportBitmap != null) { viewportBitmap.update(display, pageToView, null); redrawGuide(); }
         pending.clear(); app.toolbar.refreshZoom();
@@ -356,6 +359,7 @@ final class DrawingPad extends View {
     }
     @Override protected void onDraw(Canvas canvas) {
         drawCount++;
+        if (a2AfterFrame) { a2AfterFrame = false; post(this::enterA2); }
         canvas.drawColor(Color.WHITE);
         if (viewportBitmap != null) canvas.drawBitmap(viewportBitmap.bitmap, 0, 0, null);
         else if (display != null) canvas.drawBitmap(display, pageToView, null);
@@ -393,7 +397,7 @@ final class DrawingPad extends View {
     /** Starts direct presentation and native pen input once nothing covers the canvas. */
     void connectDisplay() {
         scheduleWet();
-        if (app.canvasCovered() || !app.resumed || !hasWindowFocus() || app.loading || display == null || direct != null) return;
+        if (app.canvasCovered() || !app.resumed || !hasWindowFocus() || app.loading || display == null || direct != null || navigating) return;
         // Standard Android drawing leaves the firmware pen and e-ink interfaces untouched.
         if (!FastEink.enabled()) return;
         if (isLayoutRequested() || app.root.isLayoutRequested() || app.orientationFrame.isLayoutRequested()
@@ -1090,8 +1094,9 @@ final class DrawingPad extends View {
             fingerX = (event.getX(0)+event.getX(1))/2; fingerY = (event.getY(0)+event.getY(1))/2;
             fingerSpan = (float)Math.hypot(event.getX(1)-event.getX(0), event.getY(1)-event.getY(0));
             if (fingerSpan < dp(24)) { touchBlocked = true; fingerA = fingerB = -1; return true; }
+            // A2 is a View mode, so gesture frames go through Android, not the direct gray session.
             disconnectDisplay(); navigating = true;
-            updateViewport(); connectDisplay();
+            updateViewport(); a2AfterFrame = true; invalidate();
             getParent().requestDisallowInterceptTouchEvent(true); return true;
         }
         int a = event.findPointerIndex(fingerA), b = event.findPointerIndex(fingerB);
@@ -1114,11 +1119,17 @@ final class DrawingPad extends View {
         if (!navigating) return;
         if (navigationFrameScheduled) drawNavigationFrame();
         navigating = false; getParent().requestDisallowInterceptTouchEvent(false);
-        if (viewport.zoom == 1 && viewport.scale() == 1) {
-            disconnectDisplay(); updateViewport(); invalidate();
-        }
-        if (direct == null) post(this::connectDisplay); else scheduleWet();
+        // Leave A2 while the black and white frame still shows, then bring back the real
+        // shades. The forced gray refresh once the session reconnects clears A2's ghosts.
+        a2AfterFrame = false;
+        input.setA2(false);
+        updateViewport(); invalidate();
+        RectF whole = new RectF(0, 0, getWidth(), getHeight());
+        PanelCoordinates.fromView(this).mapRect(whole);
+        fastInk.union(whole);
+        post(this::connectDisplay);
     }
+    private void enterA2() { if (navigating) input.setA2(true); }
     private void drawNavigationFrame() {
         removeCallbacks(navigationFrame); navigationFrameScheduled = false;
         if (!navigating) return;

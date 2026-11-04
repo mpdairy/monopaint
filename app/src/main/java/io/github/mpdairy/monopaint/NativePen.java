@@ -25,6 +25,7 @@ final class NativePen {
         default void preview(Bitmap ownedCopy, Rect dirty) { ownedCopy.recycle(); }
         default Bitmap background() { return null; }
     }
+    private static final int EINK_MODE_A2 = 4;
     private final View host;
     private final Listener listener;
     private Object controller;
@@ -479,6 +480,13 @@ final class NativePen {
         if (controller == null) return;
         try { call("clearContent", new Class<?>[]{Rect.class, boolean.class, boolean.class}, null, true, true); }
         catch (Exception e) { fail("PW clear", e); }
+    }
+    /** View-local A2 for frames that are only black and white; off restores the firmware default. */
+    void setA2(boolean on) {
+        try {
+            if (on) View.class.getMethod("setEinkUpdateMode", int.class).invoke(host, EINK_MODE_A2);
+            else View.class.getMethod("resetEinkUpdateMode").invoke(host);
+        } catch (Exception e) { Log.w(ProbeActivity.TAG, "A2 unavailable", e); }
     }
     void disable() {
         enabled = false;

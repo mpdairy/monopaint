@@ -207,16 +207,16 @@ final class ZoomUiChecks {
     }
     private static void previewChecks(Instrumentation test,PaintActivity activity,Object pad,int quarter,StringBuilder report)throws Exception {
         View view=(View)pad;float x=view.getWidth()/2f,y=view.getHeight()/2f;
-        int[] frames={0},draws={0};Object[] presenter={null};
+        int[] frames={0};
         main(test,() -> {
             set(pad,"penGuardUntil",0L);
             touch(activity,pad,MotionEvent.ACTION_DOWN,new int[]{7},new int[]{1},new float[]{x-100,y});
             touch(activity,pad,MotionEvent.ACTION_POINTER_DOWN|(1<<8),new int[]{7,12},new int[]{1,1},new float[]{x-100,y,x+100,y});
-            presenter[0]=get(pad,"direct");check(presenter[0]!=null,"Gesture owns a direct presenter");
+            check(get(pad,"direct")==null,"Gesture hands the canvas to Android for A2");
         });
         test.waitForIdleSync();
         main(test,() -> {
-            frames[0]=(Integer)get(pad,"navigationFrameCount");draws[0]=(Integer)get(pad,"drawCount");
+            frames[0]=(Integer)get(pad,"navigationFrameCount");
             for(int i=0;i<100;i++) {
                 float span=110+i;
                 touch(activity,pad,MotionEvent.ACTION_MOVE,new int[]{7,12},new int[]{1,1},new float[]{x-span+20,y+15,x+span+20,y+15});
@@ -227,14 +227,20 @@ final class ZoomUiChecks {
         test.waitForIdleSync();SystemClock.sleep(80);
         main(test,() -> {
             check((Integer)get(pad,"navigationFrameCount")==frames[0]+1,"One frame consumes the complete queued burst");
-            check((Integer)get(pad,"drawCount")==draws[0],"Live navigation avoids Android canvas redraws");
-            check(get(pad,"direct")==presenter[0],"Gesture reuses its direct presenter");
+            check(get(pad,"direct")==null,"Live navigation stays on Android for A2");
             check(Math.abs(((CanvasViewport)get(pad,"viewport")).zoom-2.09f)<.01,"Latest finger position wins");
             ViewportBitmap raster=(ViewportBitmap)get(pad,"viewportBitmap");
             ViewportBitmap expected=new ViewportBitmap(view.getWidth(),view.getHeight());
             try {
+                expected.moving=true;
                 expected.update((Bitmap)get(pad,"display"),(Matrix)get(pad,"pageToView"),null);
-                check(expected.bitmap.sameAs(raster.bitmap),"Preview preserves every calibrated pixel");
+                check(expected.bitmap.sameAs(raster.bitmap),"Preview shows the moving black and gray look");
+                int white=0;
+                for(int i=0;i<64;i++) {
+                    check(ViewportBitmap.MOVING_DOTS[i]==android.graphics.Color.BLACK,"Darkest ink is solid black while moving");
+                    if(ViewportBitmap.MOVING_DOTS[255*64+i]==android.graphics.Color.WHITE) white++;
+                }
+                check(white==56,"Paper is 56 of 64 dots white while moving");
             } finally {expected.close();}
             // An external redraw must retain the newest preview, not the old fitted page.
             Bitmap androidFrame=Bitmap.createBitmap(view.getWidth(),view.getHeight(),Bitmap.Config.ARGB_8888);

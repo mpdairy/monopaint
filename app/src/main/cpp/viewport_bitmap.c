@@ -54,7 +54,7 @@ Java_io_github_mpdairy_monopaint_ViewportBitmap_nativeRender(JNIEnv *env,jclass 
             float p=(swapped?m[1]:m[4])*(y+.5f)+(swapped?m[2]:m[5]);
             int row=p>=0 && p<(swapped?src.width:src.height)?(int)p:-1;
             int phase=(y&7)*8;
-            if(row<0) {for(int x=bx;x<end_x;x++)*out++=0xffffffff;continue;}
+            if(row<0) {for(int x=bx;x<end_x;x++)*out++=(uint32_t)pattern[255*64+phase+(x&7)];continue;}
             const uint8_t *base=(uint8_t *)source_pixels+(size_t)row*(swapped?4:src.stride);
             for(int x=bx;x<end_x;x++) {
                 int offset=columns[x-left];
