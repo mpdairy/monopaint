@@ -6,6 +6,30 @@ with each change; when cutting a release, turn that section into
 
 ## 0.99 (Unreleased)
 
+- **The app remembers how you turned it.** If you switch MonoPaint to landscape
+  (or any other turn), it opens that way next time instead of starting upright.
+- **Turn the canvas with two fingers.** With the new **Turn canvas** button
+  unlocked, twist two fingers on the canvas to turn the page to any angle while
+  you pinch and pan, as in other drawing apps. The fingers have to twist a few degrees before the page follows,
+  so an ordinary pinch or pan stays level, and a turn that ends within a few
+  degrees of upright or a quarter turn settles onto it. Double-tap **Zoom** to go
+  back to 100% with the page upright. Your pen paints exactly where it touches
+  while the page is turned.
+- **Turning has its own lock.** A **Turn canvas** button sits beside **Zoom**, with
+  its own padlock, so you can allow pinch and pan without accidental turning, or
+  turn the page while zoom and pan stay put. Both start locked; each lock is
+  remembered, and the button can be hidden or moved in Settings like the others.
+- **Merge down can stop asking.** Its confirmation has a **Don't ask me again**
+  box; **Settings → Ask before merging layers** turns the question back on.
+- **Merge down** in the Layers panel joins the selected layer into the layer
+  below it, so you can free up a layer once that part of the picture is settled.
+  The picture looks the same: each layer's opacity is applied as they join, so the
+  merged layer is set to 100% opacity, and it keeps the lower layer's name. Both
+  layers must be showing, and masking fluid is left as it is. Undo splits them
+  apart again. On a large page a merge takes up a lot of Undo memory, so some of
+  your older steps before it may no longer be available.
+- A page can now have up to **10 layers**, up from 8. A painting with more than 8
+  layers opens in this version or newer, not in an older one.
 - New **Lasso** tool: draw a loop around part of the current layer to pick it
   up, then drag inside it to move it, drag a corner dot to resize it, or drag
   the round knob to turn it. The knob turns with the piece, so it stays under

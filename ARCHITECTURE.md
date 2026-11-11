@@ -1,0 +1,74 @@
+# Code structure
+
+All app code is in `app/src/main/java/io/github/mpdairy/monopaint`.
+
+## The painting screen
+
+`PaintActivity` owns the open book, the current selection and the layout, and
+coordinates the panels. Android and the e-ink driver always stay in portrait; the
+app turns its own view tree (`QuarterTurnLayout`), so popups are placed in the
+app's upright coordinates and mapped back to the portrait window (`Popups`).
+
+| Class | Role |
+| --- | --- |
+| `DrawingPad` | The canvas: rendering, direct e-ink presentation, pen gestures, pinch/twist/pan, wet paint |
+| `CanvasViewport`, `FingerTwist` | The page's zoom, free turn and position (the turn spins the page about its own corner, on top of the app's quarter-turn orientation); `FingerTwist` decides when two fingers' twist is deliberate. Native page rendering handles any turn in `viewport_turn.h` |
+| `Toolbar` | Side toolbar: tools, Layers, Zoom and Turn canvas (separate locks), palette strip and favorites (drag to reorder) |
+| `ToolSettingsPanel` | Settings popup for the selected tool, opened beside its toolbar button |
+| `PaletteEditor`, `LayersPanel`, `AppSettingsDialog` | The other panels |
+| `RotationPrompt` | Sensor-driven "Rotate" suggestion |
+| `ShadePicker`, `WetnessBar` | Color bar controls |
+| `ToolButton`, `PageActionButton`, `PressOutline` | Icon controls and their immediate pressed outline |
+| `SelectionFeedback` | Sends small control changes straight to the panel |
+| `PaintState` | Current color, erase mode and wet/transparent paint |
+| `PaintPreferences` | Typed access to saved settings |
+
+## Tablets
+
+`Device` is the only class that identifies hardware. Code asks it about a named
+fact, such as `landscapeTilt` or `compactControls`, and asks the fasteink
+library's `FastEink` about the e-ink driver. It never checks for a model. `PanelPreviewLayout`
+previews a smaller tablet's panel (the Manta's Nomad simulation). See
+[DEVICES.md](DEVICES.md) for the profiles and how to add a tablet.
+
+## Tools
+
+Tool settings are immutable `ToolSettings` objects. `ToolLibrary` remembers the
+settings of each built-in tool and the user's favorites, and stores them in a
+versioned binary format.
+
+To add a tool:
+
+1. Append a constant to `ToolSettings.Tool` with its label and kind. Never reorder
+   the constants. Add a format version in `ToolLibrary` (`FORMAT` and `toolCount`).
+2. Give it an icon in `ToolIcons`.
+3. Describe its settings rows in `ToolControls`, using `SettingsForm`'s bound
+   sliders, checkboxes and hints. Each control reads and edits the current
+   `ToolSettings`; the panel saves and refreshes the toolbar automatically.
+4. Return its `DrawingStroke` from `ToolStrokes.create`. A stroke receives pen samples
+   in page coordinates and edits the `ToneDocument`; `finish()` commits one undo step.
+5. Add it to `Toolbar.TOOLS` to show it in the side toolbar.
+
+Fill, Shapes and Lasso are drag-and-release gestures rather than strokes. `DrawingPad` runs
+them itself. Live previews draw straight into the display raster without touching the
+document: `ShapePreview` and `SelectionPreview` composite the layers natively (sharing
+`cpp/layers.h` with page composition), and `CanvasGuide` draws guide lines over the artwork,
+such as the gradient's direction or a selection's frame, and restores what was beneath.
+
+A Lasso loop lifts a `FloatingSelection` from the active layer, and **Import image…**
+(`ImageImport`) floats a picture the same way. The piece moves, scales and turns over the
+page; `DrawingPad.placeSelection` lays it as one undo step when the pen lands elsewhere or
+any other action calls `finishStroke`, and Undo drops it instead (`cancelSelection`).
+
+## Documents
+
+`ToneDocument` holds one page's layers and undo history. `DrawingBook` holds the
+pages and tracks whether it has unsaved changes, and `DocumentStore` saves books
+and the autosave/recovery file in the background (`BookCodec`, `DocumentCodec`,
+`RecoveryCodec`). `DrawingStorage` chooses the library folder: shared
+`Document/MonoPaint` on a Supernote (the folder its Files app shows) or
+`Documents/MonoPaint` elsewhere, once the app has file access, so drawings outlive the app,
+otherwise its private files. At launch `DocumentStore.relocate` moves drawings
+left in private storage into the shared library before the drawing loads. The
+recovery file always stays private: Supernote Cloud syncs `Document/`, and syncing
+a file rewritten every few seconds left conflict copies until autosave failed.
