@@ -13,7 +13,7 @@ app's upright coordinates and mapped back to the portrait window (`Popups`).
 | --- | --- |
 | `DrawingPad` | The canvas: rendering, direct e-ink presentation, pen gestures, pinch/twist/pan, wet paint |
 | `CanvasViewport`, `FingerTwist` | The page's zoom, free turn and position (the turn spins the page about its own corner, on top of the app's quarter-turn orientation); `FingerTwist` decides when two fingers' twist is deliberate. Native page rendering handles any turn in `viewport_turn.h` |
-| `Toolbar` | Side toolbar: tools, Layers, Zoom, palette strip and favorites (drag to reorder) |
+| `Toolbar` | Side toolbar: tools, Layers, Zoom and Turn canvas (separate locks), palette strip and favorites (drag to reorder) |
 | `ToolSettingsPanel` | Settings popup for the selected tool, opened beside its toolbar button |
 | `PaletteEditor`, `LayersPanel`, `AppSettingsDialog` | The other panels |
 | `RotationPrompt` | Sensor-driven "Rotate" suggestion |

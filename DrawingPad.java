@@ -1076,7 +1076,7 @@ final class DrawingPad extends View {
             if (pen) penGuardUntil = SystemClock.uptimeMillis()+250;
             return false;
         }
-        if (app.navigationLocked) { touchBlocked = true; endNavigation(); return true; }
+        if (app.navigationLocked && app.rotationLocked) { touchBlocked = true; endNavigation(); return true; }
         if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_UP) { endNavigation(); return true; }
         if (touchBlocked) return true;
         if (action == MotionEvent.ACTION_POINTER_UP) {
@@ -1106,7 +1106,11 @@ final class DrawingPad extends View {
             float span = (float)Math.hypot(event.getX(b)-event.getX(a), event.getY(b)-event.getY(a));
             float line = fingerLine(event, a, b);
             if (span < dp(24)) { fingerTwist.skip(line); return true; }
-            viewport.gesture(span/fingerSpan, fingerTwist.move(line), fingerX, fingerY, x, y);
+            // Each lock holds back only its own part: a locked turn ignores the twist, and
+            // locked zoom and pan leave the page where it is while the fingers turn it about themselves.
+            float turn = app.rotationLocked ? 0 : fingerTwist.move(line);
+            if (app.navigationLocked) viewport.gesture(1, turn, fingerX, fingerY, fingerX, fingerY);
+            else viewport.gesture(span/fingerSpan, turn, fingerX, fingerY, x, y);
             fingerX = x; fingerY = y; fingerSpan = span;
             if (!navigationFrameScheduled) {
                 navigationFrameScheduled = true;
@@ -1123,7 +1127,7 @@ final class DrawingPad extends View {
         fingerA = fingerB = -1;
         if (!navigating) return;
         // A twist that ends near upright or a quarter turn settles onto it, about where the fingers were.
-        float settle = viewport.snapTurn();
+        float settle = app.rotationLocked ? 0 : viewport.snapTurn();
         if (settle != 0) { viewport.gesture(1, settle, fingerX, fingerY, fingerX, fingerY); navigationFrameScheduled = true; }
         if (navigationFrameScheduled) drawNavigationFrame();
         navigating = false; getParent().requestDisallowInterceptTouchEvent(false);

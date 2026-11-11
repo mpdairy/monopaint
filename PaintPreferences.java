@@ -1,0 +1,135 @@
+package io.github.mpdairy.monopaint;
+
+import android.content.SharedPreferences;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Typed access to the app's saved settings. Every read goes to {@link SharedPreferences},
+ * so values written elsewhere are always current. Key names are part of the installed
+ * app's saved state; keep them unchanged.
+ */
+final class PaintPreferences {
+    static final String FILE = "painting";
+    final SharedPreferences store;
+    PaintPreferences(SharedPreferences store) { this.store = store; }
+
+    private boolean flag(String key, boolean fallback) { return store.getBoolean(key, fallback); }
+    private void setFlag(String key, boolean value) { store.edit().putBoolean(key, value).apply(); }
+
+    /** Left-handed layout: the toolbar sits on the right. */
+    boolean toolboxRight() { return flag("toolbox_right", false); }
+    void setToolboxRight(boolean value) { setFlag("toolbox_right", value); }
+    boolean largeSettingsText() { return flag("large_settings_text", false); }
+    void setLargeSettingsText(boolean value) { setFlag("large_settings_text", value); }
+    /** Preview a smaller tablet's layout (on a Manta, the Nomad's). The key predates other tablets. */
+    boolean simulateSmallerPanel() { return flag("nomad_mode", false); }
+    void setSimulateSmallerPanel(boolean value) { setFlag("nomad_mode", value); }
+    /** Wet paint runs toward whichever page edge the tablet tilts down. */
+    boolean wetGravity() { return flag("wet_gravity", true); }
+    void setWetGravity(boolean value) { setFlag("wet_gravity", value); }
+    /** Dry brush strokes anti-alias their edges, for cleaner exports. */
+    boolean smoothEdges() { return flag("smooth_edges", false); }
+    void setSmoothEdges(boolean value) { setFlag("smooth_edges", value); }
+    /** Draw through Android instead of MonoPaint's fast e-ink path, for firmware that breaks it. */
+    boolean androidDrawing() { return flag("android_drawing", false); }
+    void setAndroidDrawing(boolean value) { setFlag("android_drawing", value); }
+    /** The untested firmware build the user was last told about; empty before any. */
+    String untestedFirmwareNoticed() { return store.getString("untested_firmware_noticed", ""); }
+    void setUntestedFirmwareNoticed(String build) { store.edit().putString("untested_firmware_noticed", build).apply(); }
+    /** The shared-storage folder the last imported picture came from. */
+    String importFolder() { return store.getString("import_folder", "Download"); }
+    void setImportFolder(String folder) { store.edit().putString("import_folder", folder).apply(); }
+    /** Whether the last imported picture went on a new layer; the current layer at first. */
+    boolean importNewLayer() { return flag("import_new_layer", false); }
+    void setImportNewLayer(boolean value) { setFlag("import_new_layer", value); }
+    /** Folder chosen for PNG exports, as a document-tree URI; empty means Pictures/MonoPaint. */
+    String exportFolder() { return store.getString("export_folder", ""); }
+    void setExportFolder(String uri) { store.edit().putString("export_folder", uri).apply(); }
+    /** PNG exports use the screen's black and white dots instead of smooth grays. */
+    boolean exportDithered() { return flag("export_dithered", false); }
+    void setExportDithered(boolean value) { setFlag("export_dithered", value); }
+    /** Dithered PNG size: "page", a Supernote's name to fill its screen, or "custom:" and a width. */
+    String exportSize() { return store.getString("export_size", "page"); }
+    void setExportSize(String size) { store.edit().putString("export_size", size).apply(); }
+    /** The quarter turn the app was last turned to (0 to 3 from natural portrait), kept across restarts. */
+    int appQuarter() { int quarter = store.getInt("app_quarter", 0); return quarter < 0 || quarter > 3 ? 0 : quarter; }
+    void setAppQuarter(int quarter) { store.edit().putInt("app_quarter", quarter).apply(); }
+    boolean navigationLocked() { return flag("navigation_locked", true); }
+    void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
+    /** Whether twisting two fingers is locked, apart from the zoom and pan lock. */
+    boolean rotationLocked() { return flag("rotation_locked", true); }
+    void setRotationLocked(boolean value) { setFlag("rotation_locked", value); }
+    /** Whether the user has picked a shape, so Shapes shows that shape's icon. */
+    boolean shapeChosen(boolean fallback) { return flag("shape_chosen", fallback); }
+    /** Whether the toolbar's Brush pen selects the wet brush pen; the dry one at first. */
+    boolean wetBrushPen() { return flag("wet_brush_pen", false); }
+    void setWetBrushPen(boolean value) { setFlag("wet_brush_pen", value); }
+    void setShapeChosen() { setFlag("shape_chosen", true); }
+
+    /** Toolbar entries are tool names plus {@code LAYERS}, {@code ZOOM}, {@code TURN} and {@code PALETTE}. */
+    boolean toolbarItemVisible(String key) { return flag("tool_visible_" + key, true); }
+    void setToolbarItemVisible(String key, boolean visible) { setFlag("tool_visible_" + key, visible); }
+    /** Saved toolbar order, possibly missing newer entries or containing removed ones. */
+    String[] toolbarOrder() { return store.getString("toolbar_order", "").split(","); }
+    void setToolbarOrder(List<String> keys) { store.edit().putString("toolbar_order", String.join(",", keys)).apply(); }
+
+    static final int MAX_PALETTE_SHADES = 16;
+    /** Saved palette shades; never empty unless the user deleted every shade. */
+    ArrayList<Integer> paletteShades() {
+        ArrayList<Integer> shades = new ArrayList<>();
+        String saved = store.getString("palette_shades", "0,162,225,255");
+        if (saved.isEmpty()) return shades;
+        for (String item : saved.split(",")) {
+            try {
+                int value = Integer.parseInt(item);
+                if (value >= 0 && value <= 255 && shades.size() < MAX_PALETTE_SHADES) shades.add(value);
+            } catch (NumberFormatException ignored) { }
+        }
+        if (shades.isEmpty()) shades.add(0);
+        return shades;
+    }
+    void setPaletteShades(List<Integer> shades) {
+        StringBuilder value = new StringBuilder();
+        for (int shade : shades) { if (value.length() > 0) value.append(','); value.append(shade); }
+        store.edit().putString("palette_shades", value.toString()).apply();
+    }
+
+    /** Restores the saved color and canvas modes. */
+    void loadPaint(PaintState state) {
+        state.wetCanvas = flag("wet_canvas", false);
+        state.transparentPaint = flag("transparent_paint", false);
+        state.watercolor = flag("watercolor", false);
+        state.eraseMode = flag("erase_mode", false);
+        state.maskingFluid = flag("masking_fluid", false);
+        state.wetness = Math.max(0, Math.min(100, store.getInt("canvas_wetness", 65)));
+        // The slider alone wets the canvas: a dry one shows it at zero.
+        if (state.wetness == 0 || !state.wetCanvas) { state.wetCanvas = false; state.wetness = 0; }
+        state.gray = Math.max(0, Math.min(255, store.getInt("gray", 0)));
+        state.brushInk.restore(store.getFloat("brush_ink", 0), 0);
+        state.brushLoad.restore(store.getFloat("brush_load_ink", 0), store.getFloat("brush_load_tint", 1 - state.gray / 255f));
+    }
+
+    /** Saved tools and favorites, or a fresh library. Unreadable data is kept in a backup key. */
+    ToolLibrary toolLibrary(Runnable unreadable) {
+        ToolLibrary library = new ToolLibrary();
+        library.edit(library.current().size(Math.max(2, Math.min(128, store.getInt("diameter", 64)))));
+        String saved = store.getString("tools", null);
+        if (saved == null) return library;
+        try { return ToolLibrary.decode(java.util.Base64.getDecoder().decode(saved)); }
+        catch (Exception error) {
+            store.edit().putString("tools_unreadable_backup", saved).apply();
+            unreadable.run();
+            return library;
+        }
+    }
+
+    void savePaint(PaintState state, ToolLibrary library) throws java.io.IOException {
+        // "diameter" also seeds the brush size if the tool library is ever missing.
+        store.edit().putInt("gray", state.gray).putInt("diameter", library.current().maximum)
+                .putBoolean("wet_canvas", state.wetCanvas).putBoolean("transparent_paint", state.transparentPaint).putBoolean("watercolor", state.watercolor)
+                .putBoolean("erase_mode", state.eraseMode).putBoolean("masking_fluid", state.maskingFluid).putFloat("brush_ink", state.brushInk.fullness())
+                .putFloat("brush_load_ink", state.brushLoad.fullness()).putFloat("brush_load_tint", state.brushLoad.tint()).putInt("canvas_wetness", state.wetness)
+                .putString("tools", java.util.Base64.getEncoder().encodeToString(library.encode())).apply();
+    }
+}

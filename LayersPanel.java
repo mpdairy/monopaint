@@ -51,8 +51,10 @@ final class LayersPanel {
         action(order, "Move down", () -> { change(() -> document.moveLayer(document.activeLayer()-1)); reopen(); }, active > 0);
         LinearLayout manage = new LinearLayout(app); rows.addView(manage);
         action(manage, "Rename", this::rename, true);
-        action(manage, "Merge down", this::merge, active > 0);
         action(manage, "Delete", this::delete, document.layerCount() > 1);
+        // On its own row: shared with two other buttons its label wraps and is cut off.
+        LinearLayout combine = new LinearLayout(app); rows.addView(combine);
+        action(combine, "Merge down", this::merge, active > 0);
         SettingsForm.style(rows, app.prefs.largeSettingsText());
 
         ScrollView scroll = new ScrollView(app); scroll.addView(rows);

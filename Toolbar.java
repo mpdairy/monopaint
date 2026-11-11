@@ -26,7 +26,7 @@ final class Toolbar {
             ToolSettings.Tool.AIRBRUSH, ToolSettings.Tool.FILL, ToolSettings.Tool.SHAPES,
             ToolSettings.Tool.ERASER, ToolSettings.Tool.SOFTEN, ToolSettings.Tool.LASSO};
     /** Toolbar entries that are not tools. */
-    static final String LAYERS = "LAYERS", ZOOM = "ZOOM", PALETTE = "PALETTE";
+    static final String LAYERS = "LAYERS", ZOOM = "ZOOM", TURN = "TURN", PALETTE = "PALETTE";
 
     private final PaintActivity app;
     final ToolRail toolRail;
@@ -36,7 +36,7 @@ final class Toolbar {
     final PresetDragHandler presetDrag = new PresetDragHandler();
     /** Selectable buttons by key: {@code tool:<TOOL>} for built-ins, the preset ID for favorites. */
     final Map<String, ToolButton> selectionButtons = new LinkedHashMap<>();
-    ToolButton layersButton, zoomButton;
+    ToolButton layersButton, zoomButton, turnButton;
     LinearLayout sidebarPalette;
     final ArrayList<PaletteSwatch> sidebarSwatches = new ArrayList<>();
     /** Progress text for long operations such as fills. */
@@ -84,13 +84,13 @@ final class Toolbar {
     boolean shapeChosen() {
         return app.prefs.shapeChosen(!library().builtin(ToolSettings.Tool.SHAPES).equals(ToolSettings.defaults(ToolSettings.Tool.SHAPES)));
     }
-    private boolean isTool(String key) { return !key.equals(LAYERS) && !key.equals(ZOOM) && !key.equals(PALETTE); }
+    private boolean isTool(String key) { return !key.equals(LAYERS) && !key.equals(ZOOM) && !key.equals(TURN) && !key.equals(PALETTE); }
 
     /** All entries in the saved order, with any new entries appended. */
     ArrayList<String> toolbarOrder() {
         ArrayList<String> defaults = new ArrayList<>(), order = new ArrayList<>();
         for (ToolSettings.Tool tool : TOOLS) defaults.add(tool.name());
-        defaults.add(LAYERS); defaults.add(ZOOM); defaults.add(PALETTE);
+        defaults.add(LAYERS); defaults.add(ZOOM); defaults.add(TURN); defaults.add(PALETTE);
         for (String key : app.prefs.toolbarOrder()) if (defaults.contains(key) && !order.contains(key)) order.add(key);
         // A newly offered entry joins beside the one it follows by default, not at the end.
         for (int i = 0; i < defaults.size(); i++) if (!order.contains(defaults.get(i)))
@@ -130,13 +130,14 @@ final class Toolbar {
                 library.select(ToolSettings.Tool.valueOf(key)); break;
             }
         }
-        layersButton = null; zoomButton = null;
+        layersButton = null; zoomButton = null; turnButton = null;
         sidebarPalette = null; sidebarSwatches.clear();
         toolRail.removeAllViews(); selectionButtons.clear();
         for (String key : toolbarOrder()) {
             if (!app.prefs.toolbarItemVisible(key)) continue;
             if (key.equals(PALETTE)) addSidebarPalette();
             else if (key.equals(ZOOM)) addZoom();
+            else if (key.equals(TURN)) addTurn();
             else if (key.equals(LAYERS)) addLayers();
             else addTool(ToolSettings.Tool.valueOf(key));
         }
@@ -168,6 +169,12 @@ final class Toolbar {
         zoomButton.iconHalf = 16;
         zoomButton.overlay = (canvas, button) -> drawLock(canvas, button, app.navigationLocked);
         markActive(zoomButton, false); refreshZoom();
+    }
+    private void addTurn() {
+        turnButton = railButton("Turn canvas", R.drawable.ic_canvas_turn, app::toggleRotationLock);
+        turnButton.iconHalf = 16;
+        turnButton.overlay = (canvas, button) -> drawLock(canvas, button, app.rotationLocked);
+        markActive(turnButton, false); describeNavigation();
     }
     /** A selectable tool or favorite: tap selects, tapping again opens its settings if it has any. */
     private ToolButton selectable(String key, String name, int icon, boolean settings, Runnable select) {
@@ -264,12 +271,13 @@ final class Toolbar {
         else { change.run(); zoomButton.invalidate(); }
     }
     void describeNavigation() {
-        if (zoomButton == null) return;
-        zoomButton.setContentDescription("Zoom " + zoomButton.caption + ". Zoom, rotate and pan "
+        if (zoomButton != null) zoomButton.setContentDescription("Zoom " + zoomButton.caption + ". Pinch and pan "
                 + (app.navigationLocked ? "locked. Tap to unlock." : "unlocked. Tap to lock.")
                 + " Double-tap for 100 percent.");
+        if (turnButton != null) turnButton.setContentDescription("Turn canvas. Two-finger twist "
+                + (app.rotationLocked ? "locked. Tap to unlock." : "unlocked. Tap to lock."));
     }
-    /** The padlock in the Zoom button's corner; open when pinch, twist and pan are allowed. */
+    /** The padlock in a lock button's corner (Zoom or Turn canvas); open when its gesture is allowed. */
     private static void drawLock(Canvas canvas, ToolButton button, boolean locked) {
         // This corner is also captured by SelectionFeedback for immediate e-ink updates.
         Paint paint = new Paint();

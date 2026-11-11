@@ -74,7 +74,8 @@ airbrush and gradient fills paint as usual.
 | Item | What it does |
 |:-:|---|
 | <img src="icons/layers.svg" width="24"><br>**Layers** | Up to 10 layers per page. <img src="icons/layer_visible.svg" width="24"> shows or hides a layer. **Merge down** joins the selected layer into the one below it: the picture looks the same, each layer's opacity is applied, and the merged layer keeps the lower layer's name at 100% opacity. Both layers must be showing. One undo splits them again. |
-| <img src="icons/zoom.svg" width="24"><br>**Zoom** | Tap to lock/unlock pinch, twist and pan. Twist two fingers to turn the canvas to any angle; it follows once the twist passes a few degrees, and settles upright or on a quarter turn if you finish within a few degrees of one. Quickly double-tap for 100%, upright, with the artwork back where the page began (an expanded page reaches under the bars), keeping the lock setting. |
+| <img src="icons/zoom.svg" width="24"><br>**Zoom** | Tap to lock/unlock pinch and pan. Quickly double-tap for 100%, upright, with the artwork back where the page began (an expanded page reaches under the bars), keeping the lock settings. |
+| <img src="icons/turn_canvas.svg" width="24"><br>**Turn canvas** | Beside Zoom, with its own lock: tap to lock/unlock the two-finger twist. Twist to turn the canvas to any angle; it follows once the twist passes a few degrees, and settles upright or on a quarter turn if you finish within a few degrees of one. With Zoom locked, two fingers turn the page about themselves without moving or zooming it; with Turn canvas locked, twisting is ignored while you pinch and pan. |
 | <img src="icons/palette.svg" width="24"><br>**Palette** | Your saved swatches. |
 | **Custom tools** | **Add to Toolbar** saves a tool with its settings. |
 
@@ -86,7 +87,7 @@ airbrush and gradient fills paint as usual.
 | <img src="icons/undo.svg" width="24"> <img src="icons/redo.svg" width="24"><br>**Undo / Redo** | Undo or redo the last change. Tap the canvas with **two fingers** to undo, or **three fingers** to redo. |
 | <img src="icons/page.svg" width="24"><br>**Page** (Manta) | Drops down a column of page actions: <img src="icons/new.svg" width="16"> add a page, <img src="icons/pages.svg" width="16"> duplicate the page, <img src="icons/page_delete.svg" width="16"> delete the page, <img src="icons/page_clear.svg" width="16"> clear the whole page, and <img src="icons/layer_clear.svg" width="16"> clear the current layer. Deleting a page asks first; clearing can be undone. |
 | <img src="icons/pages.svg" width="24"> <img src="icons/new.svg" width="24"><br>**Pages** | Change pages or add a page. On the Nomad, the Pages box also holds the other page actions in a second row. |
-| <img src="icons/rotate.svg" width="24"><br>**Rotate** | Appears when you turn the tablet. Tap it to rotate. |
+| <img src="icons/rotate.svg" width="24"><br>**Rotate** | Appears when you turn the tablet. Tap it to rotate. MonoPaint remembers the turn and opens that way next time. |
 
 ## Fullscreen and canvas size
 
