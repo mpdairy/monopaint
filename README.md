@@ -17,8 +17,8 @@ grayscale shading, and a blending stump for sketching on e-ink.
 - Masking fluid that keeps paint off an area until you peel it.
 - Pencil, airbrush, eraser, blending stump, flat and gradient fills, and shapes.
 - 65 grayscale shades, an eyedropper, a swatch palette, and an eraser color for any tool.
-- Up to 8 layers per page, multiple pages you can duplicate, undo/redo (or tap with two or three fingers), and custom saved tools.
-- Portrait or landscape for either drawing hand, plus lockable pinch zoom.
+- Up to 10 layers per page (merge one down into the next), multiple pages you can duplicate, undo/redo (or tap with two or three fingers), and custom saved tools.
+- Portrait or landscape for either drawing hand, plus lockable pinch zoom and two-finger canvas rotation.
 - Saves as you work, locally. No account or network access.
 
 **[Tool and feature guide](docs/TOOLS.md)**: what every icon does and how to use it.
