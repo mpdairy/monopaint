@@ -48,6 +48,11 @@ final class AppSettingsDialog {
         smooth.setChecked(prefs.smoothEdges());
         smooth.setOnCheckedChangeListener((button, checked) -> prefs.setSmoothEdges(checked));
         content.addView(smooth);
+        CheckBox confirmMerge = new CheckBox(app);
+        confirmMerge.setText("Ask before merging layers"); confirmMerge.setContentDescription("Ask before merging layers");
+        confirmMerge.setChecked(prefs.confirmMerge());
+        confirmMerge.setOnCheckedChangeListener((button, checked) -> prefs.setConfirmMerge(checked));
+        content.addView(confirmMerge);
         if (Device.supernote()) screenDrawing();
         CheckBox simulate = new CheckBox(app);
         if (app.canSimulate()) {

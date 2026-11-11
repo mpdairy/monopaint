@@ -7,6 +7,7 @@ import android.graphics.Typeface;
 import android.text.InputFilter;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
@@ -150,11 +151,18 @@ final class LayersPanel {
         // Say why now, rather than after the person has confirmed.
         String blocked = document.mergeBlocker();
         if (blocked != null) { app.message(blocked); return; }
+        if (!app.prefs.confirmMerge()) { change(document::mergeDown); return; }
         int active = document.activeLayer();
-        app.showDialog(new AlertDialog.Builder(app).setTitle("Merge " + document.layerName(active) + " down?")
+        CheckBox stopAsking = new CheckBox(app); stopAsking.setText("Don't ask me again");
+        stopAsking.setContentDescription("Don't ask before merging again"); stopAsking.setPadding(dp(8), dp(8), dp(8), dp(8));
+        LinearLayout option = new LinearLayout(app); option.setPadding(dp(20), 0, dp(20), 0); option.addView(stopAsking);
+        app.showDialog(new AlertDialog.Builder(app).setTitle("Merge " + document.layerName(active) + " down?").setView(option)
                 .setMessage("It joins " + document.layerName(active-1) + ", which keeps its name. The picture looks the same,"
                         + " and the merged layer is set to 100% opacity. You can undo this.")
-                .setPositiveButton("Merge", (dialog, which) -> change(document::mergeDown))
+                .setPositiveButton("Merge", (dialog, which) -> {
+                    if (stopAsking.isChecked()) app.prefs.setConfirmMerge(false);
+                    change(document::mergeDown);
+                })
                 .setNegativeButton("Cancel", null));
     }
     private void delete() {

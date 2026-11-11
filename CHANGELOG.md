@@ -19,6 +19,8 @@ with each change; when cutting a release, turn that section into
   its own padlock, so you can allow pinch and pan without accidental turning, or
   turn the page while zoom and pan stay put. Both start locked; each lock is
   remembered, and the button can be hidden or moved in Settings like the others.
+- **Merge down can stop asking.** Its confirmation has a **Don't ask me again**
+  box; **Settings → Ask before merging layers** turns the question back on.
 - **Merge down** in the Layers panel joins the selected layer into the layer
   below it, so you can free up a layer once that part of the picture is settled.
   The picture looks the same: each layer's opacity is applied as they join, so the

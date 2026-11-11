@@ -55,6 +55,9 @@ final class PaintPreferences {
     /** The quarter turn the app was last turned to (0 to 3 from natural portrait), kept across restarts. */
     int appQuarter() { int quarter = store.getInt("app_quarter", 0); return quarter < 0 || quarter > 3 ? 0 : quarter; }
     void setAppQuarter(int quarter) { store.edit().putInt("app_quarter", quarter).apply(); }
+    /** Whether Merge down asks first; the person can switch it off in the dialog and back on in Settings. */
+    boolean confirmMerge() { return flag("confirm_merge", true); }
+    void setConfirmMerge(boolean value) { setFlag("confirm_merge", value); }
     boolean navigationLocked() { return flag("navigation_locked", true); }
     void setNavigationLocked(boolean value) { setFlag("navigation_locked", value); }
     /** Whether twisting two fingers is locked, apart from the zoom and pan lock. */

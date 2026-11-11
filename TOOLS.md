@@ -73,7 +73,7 @@ airbrush and gradient fills paint as usual.
 
 | Item | What it does |
 |:-:|---|
-| <img src="icons/layers.svg" width="24"><br>**Layers** | Up to 10 layers per page. <img src="icons/layer_visible.svg" width="24"> shows or hides a layer. **Merge down** joins the selected layer into the one below it: the picture looks the same, each layer's opacity is applied, and the merged layer keeps the lower layer's name at 100% opacity. Both layers must be showing. One undo splits them again. |
+| <img src="icons/layers.svg" width="24"><br>**Layers** | Up to 10 layers per page. <img src="icons/layer_visible.svg" width="24"> shows or hides a layer. **Merge down** joins the selected layer into the one below it: the picture looks the same, each layer's opacity is applied, and the merged layer keeps the lower layer's name at 100% opacity. Both layers must be showing. One undo splits them again. It asks first; tick **Don't ask me again** to skip that, and turn it back on in Settings. |
 | <img src="icons/zoom.svg" width="24"><br>**Zoom** | Tap to lock/unlock pinch and pan. Quickly double-tap for 100%, upright, with the artwork back where the page began (an expanded page reaches under the bars), keeping the lock settings. |
 | <img src="icons/turn_canvas.svg" width="24"><br>**Turn canvas** | Beside Zoom, with its own lock: tap to lock/unlock the two-finger twist. Twist to turn the canvas to any angle; it follows once the twist passes a few degrees, and settles upright or on a quarter turn if you finish within a few degrees of one. With Zoom locked, two fingers turn the page about themselves without moving or zooming it; with Turn canvas locked, twisting is ignored while you pinch and pan. |
 | <img src="icons/palette.svg" width="24"><br>**Palette** | Your saved swatches. |
@@ -111,7 +111,7 @@ Existing saved drawings also support these options.
 ## Settings
 
 **Menu → Settings** has the drawing hand, rotation, settings text size,
-**Watercolor uses gravity** (wet paint runs downhill), **Smooth brush edges**
+**Watercolor uses gravity** (wet paint runs downhill), **Ask before merging layers**, **Smooth brush edges**
 (anti-aliased dry brush and hard eraser strokes; better for PNG exports; adds a tiny bit of lag), Nomad Simulation Mode,
 and which tools appear on the toolbar.
 
